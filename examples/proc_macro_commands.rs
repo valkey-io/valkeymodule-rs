@@ -1,34 +1,34 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use redis_module::RedisError;
-use redis_module::{redis_module, Context, RedisResult, RedisString, RedisValue};
-use redis_module_macros::{command, RedisValue};
+use redis_module_macros::{command, ValkeyValue};
+use valkey_module::ValkeyError;
+use valkey_module::{valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue};
 
-#[derive(RedisValue)]
-struct RedisValueDeriveInner {
+#[derive(ValkeyValue)]
+struct ValkeyValueDeriveInner {
     i1: i64,
 }
 
-#[derive(RedisValue)]
-struct RedisValueDerive {
+#[derive(ValkeyValue)]
+struct ValkeyValueDerive {
     i: i64,
     f: f64,
     s: String,
     u: usize,
     v: Vec<i64>,
-    #[RedisValueAttr{flatten: true}]
-    inner: RedisValueDeriveInner,
-    v2: Vec<RedisValueDeriveInner>,
+    #[ValkeyValueAttr{flatten: true}]
+    inner: ValkeyValueDeriveInner,
+    v2: Vec<ValkeyValueDeriveInner>,
     hash_map: HashMap<String, String>,
     hash_set: HashSet<String>,
-    ordered_map: BTreeMap<String, RedisValueDeriveInner>,
+    ordered_map: BTreeMap<String, ValkeyValueDeriveInner>,
     ordered_set: BTreeSet<String>,
 }
 
-#[derive(RedisValue)]
-enum RedisValueEnum {
+#[derive(ValkeyValue)]
+enum ValkeyValueEnum {
     Str(String),
-    RedisValue(RedisValueDerive),
+    ValkeyValue(ValkeyValueDerive),
 }
 
 #[command(
@@ -47,25 +47,25 @@ enum RedisValueEnum {
 )]
 fn redis_value_derive(
     _ctx: &Context,
-    args: Vec<RedisString>,
-) -> Result<RedisValueEnum, RedisError> {
+    args: Vec<ValkeyString>,
+) -> Result<ValkeyValueEnum, ValkeyError> {
     if args.len() > 1 {
-        Ok(RedisValueEnum::Str("OK".to_owned()))
+        Ok(ValkeyValueEnum::Str("OK".to_owned()))
     } else {
-        Ok(RedisValueEnum::RedisValue(RedisValueDerive {
+        Ok(ValkeyValueEnum::ValkeyValue(ValkeyValueDerive {
             i: 10,
             f: 1.1,
             s: "s".to_owned(),
             u: 20,
             v: vec![1, 2, 3],
-            inner: RedisValueDeriveInner { i1: 1 },
+            inner: ValkeyValueDeriveInner { i1: 1 },
             v2: vec![
-                RedisValueDeriveInner { i1: 1 },
-                RedisValueDeriveInner { i1: 2 },
+                ValkeyValueDeriveInner { i1: 1 },
+                ValkeyValueDeriveInner { i1: 2 },
             ],
             hash_map: HashMap::from([("key".to_owned(), "val".to_owned())]),
             hash_set: HashSet::from(["key".to_owned()]),
-            ordered_map: BTreeMap::from([("key".to_owned(), RedisValueDeriveInner { i1: 10 })]),
+            ordered_map: BTreeMap::from([("key".to_owned(), ValkeyValueDeriveInner { i1: 10 })]),
             ordered_set: BTreeSet::from(["key".to_owned()]),
         }))
     }
@@ -85,8 +85,8 @@ fn redis_value_derive(
         ]
     }
 )]
-fn classic_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::SimpleStringStatic("OK"))
+fn classic_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
 #[command(
@@ -104,8 +104,8 @@ fn classic_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
         ]
     }
 )]
-fn keyword_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::SimpleStringStatic("OK"))
+fn keyword_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
 #[command(
@@ -123,14 +123,14 @@ fn keyword_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
         ]
     }
 )]
-fn num_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::SimpleStringStatic("OK"))
+fn num_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
-redis_module! {
+valkey_module! {
     name: "server_events",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [],
 }

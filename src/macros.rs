@@ -56,7 +56,7 @@ macro_rules! redis_event_handler {
         ) -> c_int {
             let context = $crate::Context::new(ctx);
 
-            let redis_key = $crate::RedisString::string_as_slice(key);
+            let redis_key = $crate::ValkeyString::string_as_slice(key);
             let event_str = unsafe { CStr::from_ptr(event) };
             $event_handler(
                 &context,
@@ -95,7 +95,7 @@ macro_rules! redis_event_handler {
 /// It registers the defined module, sets it up and initialises properly,
 /// registers all the commands and types.
 #[macro_export]
-macro_rules! redis_module {
+macro_rules! valkey_module {
     (
         name: $module_name:expr,
         version: $module_version:expr,
@@ -169,7 +169,7 @@ macro_rules! redis_module {
         $(
             #[redis_module_macros::info_command_handler]
             #[inline]
-            fn module_info(ctx: &InfoContext, for_crash_report: bool) -> RedisResult<()> {
+            fn module_info(ctx: &InfoContext, for_crash_report: bool) -> ValkeyResult<()> {
                 $info_func(ctx, for_crash_report);
 
                 Ok(())
@@ -194,7 +194,7 @@ macro_rules! redis_module {
             use std::ffi::{CString, CStr};
 
             use $crate::raw;
-            use $crate::RedisString;
+            use $crate::ValkeyString;
             use $crate::server_events::register_server_events;
             use $crate::configuration::register_i64_configuration;
             use $crate::configuration::register_string_configuration;

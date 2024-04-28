@@ -1,4 +1,4 @@
-use crate::RedisError;
+use crate::ValkeyError;
 use std::error;
 use std::fmt;
 use std::fmt::Display;
@@ -17,8 +17,8 @@ impl Error {
     }
 }
 
-impl From<RedisError> for Error {
-    fn from(err: RedisError) -> Self {
+impl From<ValkeyError> for Error {
+    fn from(err: ValkeyError) -> Self {
         Self::generic(err.to_string().as_str())
     }
 }

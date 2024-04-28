@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use redis_module::InfoContext;
-use redis_module::{redis_module, RedisResult};
 use redis_module_macros::{info_command_handler, InfoSection};
+use valkey_module::InfoContext;
+use valkey_module::{valkey_module, ValkeyResult};
 
 #[derive(Debug, Clone, InfoSection)]
 struct Info {
@@ -11,7 +11,7 @@ struct Info {
 }
 
 #[info_command_handler]
-fn add_info(ctx: &InfoContext, _for_crash_report: bool) -> RedisResult<()> {
+fn add_info(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
     let mut dictionary = HashMap::new();
     dictionary.insert("key".to_owned(), "value".into());
     let data = Info {
@@ -23,10 +23,10 @@ fn add_info(ctx: &InfoContext, _for_crash_report: bool) -> RedisResult<()> {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "info_handler_struct",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [],
 }

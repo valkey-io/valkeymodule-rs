@@ -1,8 +1,9 @@
-use redis_module::{
-    redis_module, Context, NotifyEvent, RedisError, RedisResult, RedisString, RedisValue, Status,
-};
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicI64, Ordering};
+use valkey_module::{
+    valkey_module, Context, NotifyEvent, Status, ValkeyError, ValkeyResult, ValkeyString,
+    ValkeyValue,
+};
 
 static NUM_KEY_MISSES: AtomicI64 = AtomicI64::new(0);
 static NUM_KEYS: AtomicI64 = AtomicI64::new(0);
@@ -32,16 +33,16 @@ fn on_stream(ctx: &Context, _event_type: NotifyEvent, _event: &str, _key: &[u8])
     ctx.log_debug("Stream event received!");
 }
 
-fn event_send(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn event_send(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() > 1 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
-    let key_name = RedisString::create(NonNull::new(ctx.ctx), "mykey");
+    let key_name = ValkeyString::create(NonNull::new(ctx.ctx), "mykey");
     let status = ctx.notify_keyspace_event(NotifyEvent::GENERIC, "events.send", &key_name);
     match status {
         Status::Ok => Ok("Event sent".into()),
-        Status::Err => Err(RedisError::Str("Generic error")),
+        Status::Err => Err(ValkeyError::Str("Generic error")),
     }
 }
 
@@ -49,23 +50,23 @@ fn on_key_miss(_ctx: &Context, _event_type: NotifyEvent, _event: &str, _key: &[u
     NUM_KEY_MISSES.fetch_add(1, Ordering::SeqCst);
 }
 
-fn num_key_miss(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::Integer(NUM_KEY_MISSES.load(Ordering::SeqCst)))
+fn num_key_miss(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_KEY_MISSES.load(Ordering::SeqCst)))
 }
 
 fn on_new_key(_ctx: &Context, _event_type: NotifyEvent, _event: &str, _key: &[u8]) {
     NUM_KEYS.fetch_add(1, Ordering::SeqCst);
 }
 
-fn num_keys(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::Integer(NUM_KEYS.load(Ordering::SeqCst)))
+fn num_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_KEYS.load(Ordering::SeqCst)))
 }
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "events",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["events.send", event_send, "", 0, 0, 0],

@@ -4,11 +4,11 @@ use std::ops::{Deref, DerefMut};
 use std::ptr;
 
 use crate::context::blocked::BlockedClient;
-use crate::{raw, Context, RedisResult};
+use crate::{raw, Context, ValkeyResult};
 
 pub struct RedisGILGuardScope<'ctx, 'mutex, T, G: RedisLockIndicator> {
     _context: &'ctx G,
-    mutex: &'mutex RedisGILGuard<T>,
+    mutex: &'mutex ValkeyGILGuard<T>,
 }
 
 impl<'ctx, 'mutex, T, G: RedisLockIndicator> Deref for RedisGILGuardScope<'ctx, 'mutex, T, G> {
@@ -54,13 +54,13 @@ pub unsafe trait RedisLockIndicator {}
 /// need to protect this variable with some mutex (because
 /// we know this variable is protected by Redis lock).
 /// For example, look at examples/threads.rs
-pub struct RedisGILGuard<T> {
+pub struct ValkeyGILGuard<T> {
     obj: UnsafeCell<T>,
 }
 
-impl<T> RedisGILGuard<T> {
-    pub fn new(obj: T) -> RedisGILGuard<T> {
-        RedisGILGuard {
+impl<T> ValkeyGILGuard<T> {
+    pub fn new(obj: T) -> ValkeyGILGuard<T> {
+        ValkeyGILGuard {
             obj: UnsafeCell::new(obj),
         }
     }
@@ -76,14 +76,14 @@ impl<T> RedisGILGuard<T> {
     }
 }
 
-impl<T: Default> Default for RedisGILGuard<T> {
+impl<T: Default> Default for ValkeyGILGuard<T> {
     fn default() -> Self {
         Self::new(T::default())
     }
 }
 
-unsafe impl<T> Sync for RedisGILGuard<T> {}
-unsafe impl<T> Send for RedisGILGuard<T> {}
+unsafe impl<T> Sync for ValkeyGILGuard<T> {}
+unsafe impl<T> Send for ValkeyGILGuard<T> {}
 
 pub struct ContextGuard {
     ctx: Context,
@@ -158,7 +158,7 @@ impl ThreadSafeContext<BlockedClient> {
     /// The Redis modules API does not require locking for `Reply` functions,
     /// so we pass through its functionality directly.
     #[allow(clippy::must_use_candidate)]
-    pub fn reply(&self, r: RedisResult) -> raw::Status {
+    pub fn reply(&self, r: ValkeyResult) -> raw::Status {
         let ctx = Context::new(self.ctx);
         ctx.reply(r)
     }

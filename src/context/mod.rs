@@ -10,14 +10,14 @@ use std::sync::atomic::{AtomicPtr, Ordering};
 use crate::key::{KeyFlags, RedisKey, RedisKeyWritable};
 use crate::logging::RedisLogLevel;
 use crate::raw::{ModuleOptions, Version};
-use crate::redisvalue::RedisValueKey;
+use crate::redisvalue::ValkeyValueKey;
 use crate::{
     add_info_begin_dict_field, add_info_end_dict_field, add_info_field_double,
     add_info_field_long_long, add_info_field_str, add_info_field_unsigned_long_long, raw, utils,
     Status,
 };
-use crate::{add_info_section, RedisResult};
-use crate::{RedisError, RedisString, RedisValue};
+use crate::{add_info_section, ValkeyResult};
+use crate::{ValkeyError, ValkeyString, ValkeyValue};
 use std::ops::Deref;
 
 use std::ffi::CStr;
@@ -215,10 +215,10 @@ impl DetachedContext {
         self.log(RedisLogLevel::Warning, message);
     }
 
-    pub fn set_context(&self, ctx: &Context) -> Result<(), RedisError> {
+    pub fn set_context(&self, ctx: &Context) -> Result<(), ValkeyError> {
         let c = self.ctx.load(Ordering::Relaxed);
         if !c.is_null() {
-            return Err(RedisError::Str("Detached context is already set"));
+            return Err(ValkeyError::Str("Detached context is already set"));
         }
         let ctx = unsafe { raw::RedisModule_GetDetachedThreadSafeContext.unwrap()(ctx.ctx) };
         self.ctx.store(ctx, Ordering::Relaxed);
@@ -294,15 +294,15 @@ impl<'a, T: AsRef<[u8]> + ?Sized> From<&'a [&T]> for StrCallArgs<'a> {
             is_owner: true,
             args: vals
                 .iter()
-                .map(|v| RedisString::create_from_slice(std::ptr::null_mut(), v.as_ref()).take())
+                .map(|v| ValkeyString::create_from_slice(std::ptr::null_mut(), v.as_ref()).take())
                 .collect(),
             phantom: std::marker::PhantomData,
         }
     }
 }
 
-impl<'a> From<&'a [&RedisString]> for StrCallArgs<'a> {
-    fn from(vals: &'a [&RedisString]) -> Self {
+impl<'a> From<&'a [&ValkeyString]> for StrCallArgs<'a> {
+    fn from(vals: &'a [&ValkeyString]) -> Self {
         StrCallArgs {
             is_owner: false,
             args: vals.iter().map(|v| v.inner).collect(),
@@ -420,7 +420,7 @@ impl Context {
         R::from(promise)
     }
 
-    pub fn call<'a, T: Into<StrCallArgs<'a>>>(&self, command: &str, args: T) -> RedisResult {
+    pub fn call<'a, T: Into<StrCallArgs<'a>>>(&self, command: &str, args: T) -> ValkeyResult {
         self.call_internal::<_, CallResult>(command, raw::FMT, args)
             .map_or_else(|e| Err(e.into()), |v| Ok((&v).into()))
     }
@@ -480,17 +480,17 @@ impl Context {
         unsafe { raw::RedisModule_ReplyWithError.unwrap()(self.ctx, msg.as_ptr()).into() }
     }
 
-    pub fn reply_with_key(&self, result: RedisValueKey) -> raw::Status {
+    pub fn reply_with_key(&self, result: ValkeyValueKey) -> raw::Status {
         match result {
-            RedisValueKey::Integer(i) => raw::reply_with_long_long(self.ctx, i),
-            RedisValueKey::String(s) => {
+            ValkeyValueKey::Integer(i) => raw::reply_with_long_long(self.ctx, i),
+            ValkeyValueKey::String(s) => {
                 raw::reply_with_string_buffer(self.ctx, s.as_ptr().cast::<c_char>(), s.len())
             }
-            RedisValueKey::BulkString(b) => {
+            ValkeyValueKey::BulkString(b) => {
                 raw::reply_with_string_buffer(self.ctx, b.as_ptr().cast::<c_char>(), b.len())
             }
-            RedisValueKey::BulkRedisString(s) => raw::reply_with_string(self.ctx, s.inner),
-            RedisValueKey::Bool(b) => raw::reply_with_bool(self.ctx, b.into()),
+            ValkeyValueKey::BulkValkeyString(s) => raw::reply_with_string(self.ctx, s.inner),
+            ValkeyValueKey::Bool(b) => raw::reply_with_bool(self.ctx, b.into()),
         }
     }
 
@@ -498,43 +498,43 @@ impl Context {
     ///
     /// Will panic if methods used are missing in redismodule.h
     #[allow(clippy::must_use_candidate)]
-    pub fn reply(&self, result: RedisResult) -> raw::Status {
+    pub fn reply(&self, result: ValkeyResult) -> raw::Status {
         match result {
-            Ok(RedisValue::Bool(v)) => raw::reply_with_bool(self.ctx, v.into()),
-            Ok(RedisValue::Integer(v)) => raw::reply_with_long_long(self.ctx, v),
-            Ok(RedisValue::Float(v)) => raw::reply_with_double(self.ctx, v),
-            Ok(RedisValue::SimpleStringStatic(s)) => {
+            Ok(ValkeyValue::Bool(v)) => raw::reply_with_bool(self.ctx, v.into()),
+            Ok(ValkeyValue::Integer(v)) => raw::reply_with_long_long(self.ctx, v),
+            Ok(ValkeyValue::Float(v)) => raw::reply_with_double(self.ctx, v),
+            Ok(ValkeyValue::SimpleStringStatic(s)) => {
                 let msg = CString::new(s).unwrap();
                 raw::reply_with_simple_string(self.ctx, msg.as_ptr())
             }
 
-            Ok(RedisValue::SimpleString(s)) => {
+            Ok(ValkeyValue::SimpleString(s)) => {
                 let msg = CString::new(s).unwrap();
                 raw::reply_with_simple_string(self.ctx, msg.as_ptr())
             }
 
-            Ok(RedisValue::BulkString(s)) => {
+            Ok(ValkeyValue::BulkString(s)) => {
                 raw::reply_with_string_buffer(self.ctx, s.as_ptr().cast::<c_char>(), s.len())
             }
 
-            Ok(RedisValue::BigNumber(s)) => {
+            Ok(ValkeyValue::BigNumber(s)) => {
                 raw::reply_with_big_number(self.ctx, s.as_ptr().cast::<c_char>(), s.len())
             }
 
-            Ok(RedisValue::VerbatimString((format, data))) => raw::reply_with_verbatim_string(
+            Ok(ValkeyValue::VerbatimString((format, data))) => raw::reply_with_verbatim_string(
                 self.ctx,
                 data.as_ptr().cast(),
                 data.len(),
                 format.0.as_ptr().cast(),
             ),
 
-            Ok(RedisValue::BulkRedisString(s)) => raw::reply_with_string(self.ctx, s.inner),
+            Ok(ValkeyValue::BulkValkeyString(s)) => raw::reply_with_string(self.ctx, s.inner),
 
-            Ok(RedisValue::StringBuffer(s)) => {
+            Ok(ValkeyValue::StringBuffer(s)) => {
                 raw::reply_with_string_buffer(self.ctx, s.as_ptr().cast::<c_char>(), s.len())
             }
 
-            Ok(RedisValue::Array(array)) => {
+            Ok(ValkeyValue::Array(array)) => {
                 raw::reply_with_array(self.ctx, array.len() as c_long);
 
                 for elem in array {
@@ -544,7 +544,7 @@ impl Context {
                 raw::Status::Ok
             }
 
-            Ok(RedisValue::Map(map)) => {
+            Ok(ValkeyValue::Map(map)) => {
                 raw::reply_with_map(self.ctx, map.len() as c_long);
 
                 for (key, value) in map {
@@ -555,7 +555,7 @@ impl Context {
                 raw::Status::Ok
             }
 
-            Ok(RedisValue::OrderedMap(map)) => {
+            Ok(ValkeyValue::OrderedMap(map)) => {
                 raw::reply_with_map(self.ctx, map.len() as c_long);
 
                 for (key, value) in map {
@@ -566,7 +566,7 @@ impl Context {
                 raw::Status::Ok
             }
 
-            Ok(RedisValue::Set(set)) => {
+            Ok(ValkeyValue::Set(set)) => {
                 raw::reply_with_set(self.ctx, set.len() as c_long);
                 set.into_iter().for_each(|e| {
                     self.reply_with_key(e);
@@ -575,7 +575,7 @@ impl Context {
                 raw::Status::Ok
             }
 
-            Ok(RedisValue::OrderedSet(set)) => {
+            Ok(ValkeyValue::OrderedSet(set)) => {
                 raw::reply_with_set(self.ctx, set.len() as c_long);
                 set.into_iter().for_each(|e| {
                     self.reply_with_key(e);
@@ -584,13 +584,13 @@ impl Context {
                 raw::Status::Ok
             }
 
-            Ok(RedisValue::Null) => raw::reply_with_null(self.ctx),
+            Ok(ValkeyValue::Null) => raw::reply_with_null(self.ctx),
 
-            Ok(RedisValue::NoReply) => raw::Status::Ok,
+            Ok(ValkeyValue::NoReply) => raw::Status::Ok,
 
-            Ok(RedisValue::StaticError(s)) => self.reply_error_string(s),
+            Ok(ValkeyValue::StaticError(s)) => self.reply_error_string(s),
 
-            Err(RedisError::WrongArity) => unsafe {
+            Err(ValkeyError::WrongArity) => unsafe {
                 if self.is_keys_position_request() {
                     // We can't return a result since we don't have a client
                     raw::Status::Err
@@ -599,35 +599,35 @@ impl Context {
                 }
             },
 
-            Err(RedisError::WrongType) => {
-                self.reply_error_string(RedisError::WrongType.to_string().as_str())
+            Err(ValkeyError::WrongType) => {
+                self.reply_error_string(ValkeyError::WrongType.to_string().as_str())
             }
 
-            Err(RedisError::String(s)) => self.reply_error_string(s.as_str()),
+            Err(ValkeyError::String(s)) => self.reply_error_string(s.as_str()),
 
-            Err(RedisError::Str(s)) => self.reply_error_string(s),
+            Err(ValkeyError::Str(s)) => self.reply_error_string(s),
         }
     }
 
     #[must_use]
-    pub fn open_key(&self, key: &RedisString) -> RedisKey {
+    pub fn open_key(&self, key: &ValkeyString) -> RedisKey {
         RedisKey::open(self.ctx, key)
     }
 
     #[must_use]
-    pub fn open_key_with_flags(&self, key: &RedisString, flags: KeyFlags) -> RedisKey {
+    pub fn open_key_with_flags(&self, key: &ValkeyString, flags: KeyFlags) -> RedisKey {
         RedisKey::open_with_flags(self.ctx, key, flags)
     }
 
     #[must_use]
-    pub fn open_key_writable(&self, key: &RedisString) -> RedisKeyWritable {
+    pub fn open_key_writable(&self, key: &ValkeyString) -> RedisKeyWritable {
         RedisKeyWritable::open(self.ctx, key)
     }
 
     #[must_use]
     pub fn open_key_writable_with_flags(
         &self,
-        key: &RedisString,
+        key: &ValkeyString,
         flags: KeyFlags,
     ) -> RedisKeyWritable {
         RedisKeyWritable::open_with_flags(self.ctx, key, flags)
@@ -643,8 +643,8 @@ impl Context {
     }
 
     #[must_use]
-    pub fn create_string<T: Into<Vec<u8>>>(&self, s: T) -> RedisString {
-        RedisString::create(NonNull::new(self.ctx), s)
+    pub fn create_string<T: Into<Vec<u8>>>(&self, s: T) -> ValkeyString {
+        ValkeyString::create(NonNull::new(self.ctx), s)
     }
 
     #[must_use]
@@ -671,16 +671,16 @@ impl Context {
         &self,
         event_type: raw::NotifyEvent,
         event: &str,
-        keyname: &RedisString,
+        keyname: &ValkeyString,
     ) -> raw::Status {
         unsafe { raw::notify_keyspace_event(self.ctx, event_type, event, keyname) }
     }
 
-    pub fn current_command_name(&self) -> Result<String, RedisError> {
+    pub fn current_command_name(&self) -> Result<String, ValkeyError> {
         unsafe {
             match raw::RedisModule_GetCurrentCommandName {
                 Some(cmd) => Ok(CStr::from_ptr(cmd(self.ctx)).to_str().unwrap().to_string()),
-                None => Err(RedisError::Str(
+                None => Err(ValkeyError::Str(
                     "API RedisModule_GetCurrentCommandName is not available",
                 )),
             }
@@ -689,17 +689,17 @@ impl Context {
 
     /// Returns the redis version either by calling `RedisModule_GetServerVersion` API,
     /// Or if it is not available, by calling "info server" API and parsing the reply
-    pub fn get_redis_version(&self) -> Result<Version, RedisError> {
+    pub fn get_redis_version(&self) -> Result<Version, ValkeyError> {
         self.get_redis_version_internal(false)
     }
 
     /// Returns the redis version by calling "info server" API and parsing the reply
-    pub fn get_redis_version_rm_call(&self) -> Result<Version, RedisError> {
+    pub fn get_redis_version_rm_call(&self) -> Result<Version, ValkeyError> {
         self.get_redis_version_internal(true)
     }
 
-    pub fn version_from_info(info: RedisValue) -> Result<Version, RedisError> {
-        if let RedisValue::SimpleString(info_str) = info {
+    pub fn version_from_info(info: ValkeyValue) -> Result<Version, ValkeyError> {
+        if let ValkeyValue::SimpleString(info_str) = info {
             if let Some(ver) = utils::get_regexp_captures(
                 info_str.as_str(),
                 r"(?m)\bredis_version:([0-9]+)\.([0-9]+)\.([0-9]+)\b",
@@ -711,11 +711,11 @@ impl Context {
                 });
             }
         }
-        Err(RedisError::Str("Error getting redis_version"))
+        Err(ValkeyError::Str("Error getting redis_version"))
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn get_redis_version_internal(&self, force_use_rm_call: bool) -> Result<Version, RedisError> {
+    fn get_redis_version_internal(&self, force_use_rm_call: bool) -> Result<Version, ValkeyError> {
         match unsafe { raw::RedisModule_GetServerVersion } {
             Some(api) if !force_use_rm_call => {
                 // Call existing API
@@ -726,7 +726,7 @@ impl Context {
                 if let Ok(info) = self.call("info", &["server"]) {
                     Self::version_from_info(info)
                 } else {
-                    Err(RedisError::Str("Error calling \"info server\""))
+                    Err(ValkeyError::Str("Error calling \"info server\""))
                 }
             }
         }
@@ -747,9 +747,9 @@ impl Context {
     }
 
     /// Return the current user name attached to the context
-    pub fn get_current_user(&self) -> RedisString {
+    pub fn get_current_user(&self) -> ValkeyString {
         let user = unsafe { raw::RedisModule_GetCurrentUserName.unwrap()(self.ctx) };
-        RedisString::from_redis_module_string(ptr::null_mut(), user)
+        ValkeyString::from_redis_module_string(ptr::null_mut(), user)
     }
 
     /// Attach the given user to the current context so each operation performed from
@@ -758,11 +758,11 @@ impl Context {
     /// can not outlive the current [Context].
     pub fn authenticate_user(
         &self,
-        user_name: &RedisString,
-    ) -> Result<ContextUserScope<'_>, RedisError> {
+        user_name: &ValkeyString,
+    ) -> Result<ContextUserScope<'_>, ValkeyError> {
         let user = unsafe { raw::RedisModule_GetModuleUserFromUserName.unwrap()(user_name.inner) };
         if user.is_null() {
-            return Err(RedisError::Str("User does not exists or disabled"));
+            return Err(ValkeyError::Str("User does not exists or disabled"));
         }
         unsafe { raw::RedisModule_SetContextUser.unwrap()(self.ctx, user) };
         Ok(ContextUserScope::new(self, user))
@@ -777,13 +777,13 @@ impl Context {
     /// if the validation failed.
     pub fn acl_check_key_permission(
         &self,
-        user_name: &RedisString,
-        key_name: &RedisString,
+        user_name: &ValkeyString,
+        key_name: &ValkeyString,
         permissions: &AclPermissions,
-    ) -> Result<(), RedisError> {
+    ) -> Result<(), ValkeyError> {
         let user = unsafe { raw::RedisModule_GetModuleUserFromUserName.unwrap()(user_name.inner) };
         if user.is_null() {
-            return Err(RedisError::Str("User does not exists or disabled"));
+            return Err(ValkeyError::Str("User does not exists or disabled"));
         }
         let acl_permission_result: raw::Status = unsafe {
             raw::RedisModule_ACLCheckKeyPermissions.unwrap()(
@@ -795,7 +795,8 @@ impl Context {
         .into();
         unsafe { raw::RedisModule_FreeModuleUser.unwrap()(user) };
         let acl_permission_result: Result<(), &str> = acl_permission_result.into();
-        acl_permission_result.map_err(|_e| RedisError::Str("User does not have permissions on key"))
+        acl_permission_result
+            .map_err(|_e| ValkeyError::Str("User does not have permissions on key"))
     }
 
     api!(
@@ -853,12 +854,12 @@ impl Context {
 
     /// Return [Ok(true)] is the current Redis deployment is enterprise, otherwise [Ok(false)].
     /// Return error in case it was not possible to determind the deployment.
-    fn is_enterprise_internal(&self) -> Result<bool, RedisError> {
+    fn is_enterprise_internal(&self) -> Result<bool, ValkeyError> {
         let info_res = self.call("info", &["server"])?;
         let info = match &info_res {
-            RedisValue::BulkRedisString(res) => res.try_as_str()?,
-            RedisValue::SimpleString(res) => res.as_str(),
-            _ => return Err(RedisError::Str("Mismatch call reply type")),
+            ValkeyValue::BulkValkeyString(res) => res.try_as_str()?,
+            ValkeyValue::SimpleString(res) => res.as_str(),
+            _ => return Err(ValkeyError::Str("Mismatch call reply type")),
         };
         Ok(info.contains("rlec_version:"))
     }
@@ -1014,9 +1015,9 @@ impl<'a> InfoContextBuilderDictionaryBuilder<'a> {
         mut self,
         name: &str,
         value: F,
-    ) -> RedisResult<Self> {
+    ) -> ValkeyResult<Self> {
         if self.fields.iter().any(|k| k.0 .0 == name) {
-            return Err(RedisError::String(format!(
+            return Err(ValkeyError::String(format!(
                 "Found duplicate key '{name}' in the info dictionary '{}'",
                 self.name
             )));
@@ -1027,7 +1028,7 @@ impl<'a> InfoContextBuilderDictionaryBuilder<'a> {
     }
 
     /// Builds the dictionary with the fields provided.
-    pub fn build_dictionary(self) -> RedisResult<InfoContextBuilderSectionBuilder<'a>> {
+    pub fn build_dictionary(self) -> ValkeyResult<InfoContextBuilderSectionBuilder<'a>> {
         let name = self.name;
         let name_ref = name.clone();
         self.info_section_builder.field(
@@ -1057,9 +1058,9 @@ impl<'a> InfoContextBuilderSectionBuilder<'a> {
         mut self,
         name: &str,
         value: F,
-    ) -> RedisResult<Self> {
+    ) -> ValkeyResult<Self> {
         if self.fields.iter().any(|(k, _)| k == name) {
-            return Err(RedisError::String(format!(
+            return Err(ValkeyError::String(format!(
                 "Found duplicate key '{name}' in the info section '{}'",
                 self.name
             )));
@@ -1078,14 +1079,14 @@ impl<'a> InfoContextBuilderSectionBuilder<'a> {
     }
 
     /// Builds the section with the fields provided.
-    pub fn build_section(mut self) -> RedisResult<InfoContextBuilder<'a>> {
+    pub fn build_section(mut self) -> ValkeyResult<InfoContextBuilder<'a>> {
         if self
             .info_builder
             .sections
             .iter()
             .any(|(k, _)| k == &self.name)
         {
-            return Err(RedisError::String(format!(
+            return Err(ValkeyError::String(format!(
                 "Found duplicate section in the Info reply: {}",
                 self.name
             )));
@@ -1185,7 +1186,7 @@ impl<'a> InfoContextBuilder<'a> {
         &self,
         key: &str,
         value: &InfoContextBuilderFieldBottomLevelValue,
-    ) -> RedisResult<()> {
+    ) -> ValkeyResult<()> {
         use InfoContextBuilderFieldBottomLevelValue as BottomLevel;
 
         match value {
@@ -1200,13 +1201,13 @@ impl<'a> InfoContextBuilder<'a> {
     }
     /// Adds fields. Make sure that the corresponding section/dictionary
     /// have been added before calling this method.
-    fn add_top_level_fields(&self, fields: &InfoContextFieldTopLevelData) -> RedisResult<()> {
+    fn add_top_level_fields(&self, fields: &InfoContextFieldTopLevelData) -> ValkeyResult<()> {
         use InfoContextBuilderFieldTopLevelValue as TopLevel;
 
         fields.iter().try_for_each(|(key, value)| match value {
             TopLevel::Value(bottom_level) => self.add_bottom_level_field(key, bottom_level),
             TopLevel::Dictionary { name, fields } => {
-                std::convert::Into::<RedisResult<()>>::into(add_info_begin_dict_field(
+                std::convert::Into::<ValkeyResult<()>>::into(add_info_begin_dict_field(
                     self.context.ctx,
                     name,
                 ))?;
@@ -1218,10 +1219,10 @@ impl<'a> InfoContextBuilder<'a> {
         })
     }
 
-    fn finalise_data(&self) -> RedisResult<()> {
+    fn finalise_data(&self) -> ValkeyResult<()> {
         self.sections
             .iter()
-            .try_for_each(|(section_name, section_fields)| -> RedisResult<()> {
+            .try_for_each(|(section_name, section_fields)| -> ValkeyResult<()> {
                 if add_info_section(self.context.ctx, Some(section_name)) == Status::Ok {
                     self.add_top_level_fields(section_fields)
                 } else {
@@ -1232,7 +1233,7 @@ impl<'a> InfoContextBuilder<'a> {
     }
 
     /// Sends the info accumulated so far to the [`InfoContext`].
-    pub fn build_info(self) -> RedisResult<&'a InfoContext> {
+    pub fn build_info(self) -> ValkeyResult<&'a InfoContext> {
         self.finalise_data().map(|_| self.context)
     }
 
@@ -1278,7 +1279,7 @@ impl InfoContext {
     }
 
     /// Returns a build result for the passed [`OneInfoSectionData`].
-    pub fn build_one_section<T: Into<OneInfoSectionData>>(&self, data: T) -> RedisResult<()> {
+    pub fn build_one_section<T: Into<OneInfoSectionData>>(&self, data: T) -> ValkeyResult<()> {
         self.builder()
             .add_section_unchecked(data.into())
             .build_info()?;

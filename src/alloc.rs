@@ -23,9 +23,9 @@ const REDIS_ALLOCATOR_NOT_AVAILABLE_MESSAGE: &str =
 /// and deallocation tasks to the Redis server when available, otherwise
 /// it panics.
 #[derive(Copy, Clone)]
-pub struct RedisAlloc;
+pub struct ValkeyAlloc;
 
-unsafe impl GlobalAlloc for RedisAlloc {
+unsafe impl GlobalAlloc for ValkeyAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         /*
          * To make sure the memory allocation by Redis is aligned to the according to the layout,

@@ -76,7 +76,7 @@ mod redis_value;
 /// }
 /// )]
 /// fn test_command(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-///     Ok(RedisValue::SimpleStringStatic("OK"))
+///     Ok(ValkeyValue::SimpleStringStatic("OK"))
 /// }
 /// ```
 ///
@@ -102,7 +102,7 @@ pub fn role_changed_event_handler(_attr: TokenStream, item: TokenStream) -> Toke
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::ROLE_CHANGED_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::ROLE_CHANGED_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
@@ -124,7 +124,7 @@ pub fn loading_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStre
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::LOADING_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::LOADING_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
@@ -146,7 +146,7 @@ pub fn flush_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::FLUSH_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::FLUSH_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
@@ -168,7 +168,7 @@ pub fn module_changed_event_handler(_attr: TokenStream, item: TokenStream) -> To
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::MODULE_CHANGED_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::MODULE_CHANGED_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
@@ -191,7 +191,7 @@ pub fn config_changed_event_handler(_attr: TokenStream, item: TokenStream) -> To
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::CONFIG_CHANGED_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::CONFIG_CHANGED_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
@@ -213,33 +213,33 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::CRON_SERVER_EVENTS_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::CRON_SERVER_EVENTS_LIST)]
         #ast
     };
     gen.into()
 }
 
-/// The macro auto generate a [From] implementation that can convert the struct into [RedisValue].
+/// The macro auto generate a [From] implementation that can convert the struct into [ValkeyValue].
 ///
 /// Example:
 ///
 /// ```rust,no_run,ignore
-/// #[derive(RedisValue)]
-/// struct RedisValueDeriveInner {
+/// #[derive(ValkeyValue)]
+/// struct ValkeyValueDeriveInner {
 ///     i: i64,
 /// }
 ///
-/// #[derive(RedisValue)]
-/// struct RedisValueDerive {
+/// #[derive(ValkeyValue)]
+/// struct ValkeyValueDerive {
 ///     i: i64,
 ///     f: f64,
 ///     s: String,
 ///     u: usize,
 ///     v: Vec<i64>,
-///     v2: Vec<RedisValueDeriveInner>,
+///     v2: Vec<ValkeyValueDeriveInner>,
 ///     hash_map: HashMap<String, String>,
 ///     hash_set: HashSet<String>,
-///     ordered_map: BTreeMap<String, RedisValueDeriveInner>,
+///     ordered_map: BTreeMap<String, ValkeyValueDeriveInner>,
 ///     ordered_set: BTreeSet<String>,
 /// }
 ///
@@ -258,28 +258,28 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///     }
 /// )]
 /// fn redis_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-///     Ok(RedisValueDerive {
+///     Ok(ValkeyValueDerive {
 ///         i: 10,
 ///         f: 1.1,
 ///         s: "s".to_owned(),
 ///         u: 20,
 ///         v: vec![1, 2, 3],
 ///         v2: vec![
-///             RedisValueDeriveInner { i: 1 },
-///             RedisValueDeriveInner { i: 2 },
+///             ValkeyValueDeriveInner { i: 1 },
+///             ValkeyValueDeriveInner { i: 2 },
 ///         ],
 ///         hash_map: HashMap::from([("key".to_owned(), "val`".to_owned())]),
 ///         hash_set: HashSet::from(["key".to_owned()]),
-///         ordered_map: BTreeMap::from([("key".to_owned(), RedisValueDeriveInner { i: 10 })]),
+///         ordered_map: BTreeMap::from([("key".to_owned(), ValkeyValueDeriveInner { i: 10 })]),
 ///         ordered_set: BTreeSet::from(["key".to_owned()]),
 ///     }
 ///     .into())
 /// }
 /// ```
 ///
-/// The [From] implementation generates a [RedisValue::OrderMap] such that the fields names
+/// The [From] implementation generates a [ValkeyValue::OrderMap] such that the fields names
 /// are the map keys and the values are the result of running [Into] function on the field
-/// value and convert it into a [RedisValue].
+/// value and convert it into a [ValkeyValue].
 ///
 /// The code above will generate the following reply (in resp3):
 ///
@@ -315,16 +315,16 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// Example:
 ///
 /// ```rust,no_run,ignore
-/// #[derive(RedisValue)]
-/// struct RedisValueDeriveInner {
+/// #[derive(ValkeyValue)]
+/// struct ValkeyValueDeriveInner {
 ///     i2: i64,
 /// }
 ///
-/// #[derive(RedisValue)]
-/// struct RedisValueDerive {
+/// #[derive(ValkeyValue)]
+/// struct ValkeyValueDerive {
 ///     i1: i64,
-///     #[RedisValueAttr{flatten: true}]
-///     inner: RedisValueDeriveInner
+///     #[ValkeyValueAttr{flatten: true}]
+///     inner: ValkeyValueDeriveInner
 /// }
 ///
 /// #[command(
@@ -342,9 +342,9 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///     }
 /// )]
 /// fn redis_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-///     Ok(RedisValueDerive {
+///     Ok(ValkeyValueDerive {
 ///         i1: 10,
-///         inner: RedisValueDeriveInner{ i2: 10 },
+///         inner: ValkeyValueDeriveInner{ i2: 10 },
 ///     }
 ///     .into())
 /// }
@@ -358,7 +358,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// 2# "i2" => 10
 /// ```
 ///
-#[proc_macro_derive(RedisValue, attributes(RedisValueAttr))]
+#[proc_macro_derive(ValkeyValue, attributes(ValkeyValueAttr))]
 pub fn redis_value(item: TokenStream) -> TokenStream {
     redis_value::redis_value(item)
 }
@@ -392,7 +392,7 @@ pub fn info_command_handler(_attr: TokenStream, item: TokenStream) -> TokenStrea
         Err(e) => return e.to_compile_error().into(),
     };
     let gen = quote! {
-        #[linkme::distributed_slice(redis_module::server_events::INFO_COMMAND_HANDLER_LIST)]
+        #[linkme::distributed_slice(valkey_module::server_events::INFO_COMMAND_HANDLER_LIST)]
         #ast
     };
     gen.into()
@@ -400,7 +400,7 @@ pub fn info_command_handler(_attr: TokenStream, item: TokenStream) -> TokenStrea
 
 /// Implements a corresponding [`From`] for this struct, to convert
 /// objects of this struct to an information object to be sent to the
-/// [`redis_module::InfoContext`] as a reply.
+/// [`valkey_module::InfoContext`] as a reply.
 ///
 /// Example:
 ///
@@ -443,9 +443,9 @@ pub fn info_command_handler(_attr: TokenStream, item: TokenStream) -> TokenStrea
 /// [`std::collections::HashMap`].
 /// 3. In dictionaries, the value type can be anything that can be
 /// converted into an object of type
-/// [`redis_module::InfoContextBuilderFieldBottomLevelValue`], for
+/// [`valkey_module::InfoContextBuilderFieldBottomLevelValue`], for
 /// example, a [`std::string::String`] or [`u64`]. Please, refer to
-/// [`redis_module::InfoContextBuilderFieldBottomLevelValue`] for more
+/// [`valkey_module::InfoContextBuilderFieldBottomLevelValue`] for more
 /// information.
 #[proc_macro_derive(InfoSection)]
 pub fn info_section(item: TokenStream) -> TokenStream {

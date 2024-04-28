@@ -12,7 +12,7 @@ use std::os::raw::{c_char, c_double, c_int, c_long, c_longlong, c_void};
 use std::ptr;
 use std::slice;
 
-use crate::RedisResult;
+use crate::ValkeyResult;
 use bitflags::bitflags;
 use enum_primitive_derive::Primitive;
 use libc::size_t;
@@ -20,8 +20,8 @@ use num_traits::FromPrimitive;
 
 use crate::error::Error;
 pub use crate::redisraw::bindings::*;
-use crate::{context::StrCallArgs, Context, RedisString};
-use crate::{RedisBuffer, RedisError};
+use crate::{context::StrCallArgs, Context, ValkeyString};
+use crate::{RedisBuffer, ValkeyError};
 
 const GENERIC_ERROR_MESSAGE: &str = "Generic error.";
 
@@ -98,11 +98,11 @@ pub enum Status {
     Err = REDISMODULE_ERR,
 }
 
-impl From<Status> for RedisResult<()> {
+impl From<Status> for ValkeyResult<()> {
     fn from(value: Status) -> Self {
         match value {
             Status::Ok => Ok(()),
-            Status::Err => Err(RedisError::Str(GENERIC_ERROR_MESSAGE)),
+            Status::Err => Err(ValkeyError::Str(GENERIC_ERROR_MESSAGE)),
         }
     }
 }
@@ -500,7 +500,7 @@ pub fn hash_get_multi<T>(
     key: *mut RedisModuleKey,
     fields: &[T],
     values: &mut [*mut RedisModuleString],
-) -> Result<(), RedisError>
+) -> Result<(), ValkeyError>
 where
     T: Into<Vec<u8>> + Clone,
 {
@@ -579,7 +579,7 @@ where
 
     match res {
         Status::Ok => Ok(()),
-        Status::Err => Err(RedisError::Str("ERR key is not a hash value")),
+        Status::Err => Err(ValkeyError::Str("ERR key is not a hash value")),
     }
 }
 
@@ -680,7 +680,7 @@ where
 {
     let res = f(rdb);
     if is_io_error(rdb) {
-        Err(RedisError::short_read().into())
+        Err(ValkeyError::short_read().into())
     } else {
         Ok(res)
     }
@@ -697,9 +697,9 @@ pub fn load_signed(rdb: *mut RedisModuleIO) -> Result<i64, Error> {
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn load_string(rdb: *mut RedisModuleIO) -> Result<RedisString, Error> {
+pub fn load_string(rdb: *mut RedisModuleIO) -> Result<ValkeyString, Error> {
     let p = unsafe { load(rdb, |rdb| RedisModule_LoadString.unwrap()(rdb))? };
-    Ok(RedisString::from_redis_module_string(ptr::null_mut(), p))
+    Ok(ValkeyString::from_redis_module_string(ptr::null_mut(), p))
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -753,7 +753,7 @@ pub fn save_string(rdb: *mut RedisModuleIO, buf: &str) {
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 /// Save the `RedisString` into the RDB
-pub fn save_redis_string(rdb: *mut RedisModuleIO, s: &RedisString) {
+pub fn save_redis_string(rdb: *mut RedisModuleIO, s: &ValkeyString) {
     unsafe { RedisModule_SaveString.unwrap()(rdb, s.inner) };
 }
 
@@ -825,7 +825,7 @@ pub fn add_info_section(ctx: *mut RedisModuleInfoCtx, name: Option<&str>) -> Sta
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn add_info_field_str(ctx: *mut RedisModuleInfoCtx, name: &str, content: &str) -> Status {
     let name = CString::new(name).unwrap();
-    let content = RedisString::create(None, content);
+    let content = ValkeyString::create(None, content);
     unsafe { RedisModule_InfoAddFieldString.unwrap()(ctx, name.as_ptr(), content.inner).into() }
 }
 
@@ -894,7 +894,7 @@ pub unsafe fn notify_keyspace_event(
     ctx: *mut RedisModuleCtx,
     event_type: NotifyEvent,
     event: &str,
-    keyname: &RedisString,
+    keyname: &ValkeyString,
 ) -> Status {
     let event = CString::new(event).unwrap();
     RedisModule_NotifyKeyspaceEvent.unwrap()(ctx, event_type.bits(), event.as_ptr(), keyname.inner)

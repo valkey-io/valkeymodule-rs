@@ -1,8 +1,8 @@
-use redis_module::{logging::RedisLogLevel, redis_module, Context, RedisString, Status};
+use valkey_module::{logging::RedisLogLevel, valkey_module, Context, Status, ValkeyString};
 
 static mut GLOBAL_STATE: Option<String> = None;
 
-fn init(ctx: &Context, args: &[RedisString]) -> Status {
+fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
     let (before, after) = unsafe {
         let before = GLOBAL_STATE.clone();
         GLOBAL_STATE.replace(format!("Args passed: {}", args.join(", ")));
@@ -33,10 +33,10 @@ fn deinit(ctx: &Context) -> Status {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "load_unload",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     init: init,
     deinit: deinit,

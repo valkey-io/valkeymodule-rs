@@ -1,7 +1,8 @@
-use redis_module::{
-    key::KeyFlags, redis_module, Context, NextArg, RedisError, RedisResult, RedisString, RedisValue,
-};
 use redis_module_macros::command;
+use valkey_module::{
+    key::KeyFlags, valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString,
+    ValkeyValue,
+};
 
 #[command(
     {
@@ -18,15 +19,15 @@ use redis_module_macros::command;
 
     }
 )]
-fn read(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn read(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 2 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
     let mut args = args.into_iter().skip(1);
     let key_name = args.next_arg()?;
     let _ = ctx.open_key_with_flags(&key_name, KeyFlags::NOEFFECTS);
-    Ok(RedisValue::SimpleStringStatic("OK"))
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
 #[command(
@@ -44,23 +45,23 @@ fn read(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 
     }
 )]
-fn write(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn write(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 2 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
     let mut args = args.into_iter().skip(1);
     let key_name = args.next_arg()?;
     let _ = ctx.open_key_writable_with_flags(&key_name, KeyFlags::NOEFFECTS);
-    Ok(RedisValue::SimpleStringStatic("OK"))
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "open_key_with_flags",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [],
 }

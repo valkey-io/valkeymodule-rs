@@ -1,10 +1,10 @@
-use redis_module::{
-    redis_module, Context, RedisResult, RedisString, RedisValue, ThreadSafeContext,
-};
 use std::thread;
 use std::time::Duration;
+use valkey_module::{
+    valkey_module, Context, ThreadSafeContext, ValkeyResult, ValkeyString, ValkeyValue,
+};
 
-fn block(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+fn block(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     let blocked_client = ctx.block_client();
 
     thread::spawn(move || {
@@ -14,15 +14,15 @@ fn block(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
     });
 
     // We will reply later, from the thread
-    Ok(RedisValue::NoReply)
+    Ok(ValkeyValue::NoReply)
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "block",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["block", block, "", 0, 0, 0],

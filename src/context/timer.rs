@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use crate::raw;
 use crate::raw::RedisModuleTimerID;
-use crate::{Context, RedisError};
+use crate::{Context, ValkeyError};
 
 // We use `repr(C)` since we access the underlying data field directly.
 // The order matters: the data field must come first.
@@ -57,14 +57,14 @@ impl Context {
     /// This function has no way to know what the original type of the data was, so the
     /// same data type that was used for `create_timer` needs to be passed here to ensure
     /// their types are identical.
-    pub fn stop_timer<T>(&self, timer_id: RedisModuleTimerID) -> Result<T, RedisError> {
+    pub fn stop_timer<T>(&self, timer_id: RedisModuleTimerID) -> Result<T, ValkeyError> {
         let mut data: *mut c_void = std::ptr::null_mut();
 
         let status: raw::Status =
             unsafe { raw::RedisModule_StopTimer.unwrap()(self.ctx, timer_id, &mut data) }.into();
 
         if status != raw::Status::Ok {
-            return Err(RedisError::Str(
+            return Err(ValkeyError::Str(
                 "RedisModule_StopTimer failed, timer may not exist",
             ));
         }
@@ -82,7 +82,7 @@ impl Context {
     pub fn get_timer_info<T>(
         &self,
         timer_id: RedisModuleTimerID,
-    ) -> Result<(Duration, &T), RedisError> {
+    ) -> Result<(Duration, &T), ValkeyError> {
         let mut remaining: u64 = 0;
         let mut data: *mut c_void = std::ptr::null_mut();
 
@@ -92,7 +92,7 @@ impl Context {
         .into();
 
         if status != raw::Status::Ok {
-            return Err(RedisError::Str(
+            return Err(ValkeyError::Str(
                 "RedisModule_GetTimerInfo failed, timer may not exist",
             ));
         }
