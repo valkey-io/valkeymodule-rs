@@ -93,7 +93,7 @@ pub fn log_warning<T: AsRef<str>>(message: T) {
 pub mod standard_log_implementation {
     use std::sync::atomic::Ordering;
 
-    use crate::RedisError;
+    use crate::ValkeyError;
 
     use super::*;
     use log::{Metadata, Record, SetLoggerError};
@@ -143,13 +143,13 @@ pub mod standard_log_implementation {
     /// [raw::Export_RedisModule_Init] function when loading the
     /// module).
     #[allow(dead_code)]
-    pub fn setup() -> Result<(), RedisError> {
+    pub fn setup() -> Result<(), ValkeyError> {
         let pointer = crate::MODULE_CONTEXT.ctx.load(Ordering::Relaxed);
         if pointer.is_null() {
-            return Err(RedisError::Str(NOT_INITIALISED_MESSAGE));
+            return Err(ValkeyError::Str(NOT_INITIALISED_MESSAGE));
         }
         setup_for_context(pointer)
-            .map_err(|e| RedisError::String(format!("Couldn't set up the logger: {e}")))
+            .map_err(|e| ValkeyError::String(format!("Couldn't set up the logger: {e}")))
     }
 
     /// The same as [setup] but sets the custom module context.

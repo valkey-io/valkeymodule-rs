@@ -1,7 +1,7 @@
 use crate::raw;
 use crate::Context;
-use crate::RedisError;
 use crate::Status;
+use crate::ValkeyError;
 use bitflags::bitflags;
 use libc::c_char;
 use linkme::distributed_slice;
@@ -72,7 +72,7 @@ bitflags! {
 }
 
 impl TryFrom<&str> for KeySpecFlags {
-    type Error = RedisError;
+    type Error = ValkeyError;
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value.to_lowercase().as_str() {
             "read_only" => Ok(KeySpecFlags::READ_ONLY),
@@ -86,7 +86,7 @@ impl TryFrom<&str> for KeySpecFlags {
             "not_key" => Ok(KeySpecFlags::NOT_KEY),
             "incomplete" => Ok(KeySpecFlags::INCOMPLETE),
             "variable_flags" => Ok(KeySpecFlags::VARIABLE_FLAGS),
-            _ => Err(RedisError::String(format!(
+            _ => Err(ValkeyError::String(format!(
                 "Value {value} is not a valid key spec flag."
             ))),
         }
@@ -354,7 +354,7 @@ impl CommandInfo {
 }
 
 #[distributed_slice()]
-pub static COMMANDS_LIST: [fn() -> Result<CommandInfo, RedisError>] = [..];
+pub static COMMANDS_LIST: [fn() -> Result<CommandInfo, ValkeyError>] = [..];
 
 pub fn get_redis_key_spec(key_spec: Vec<KeySpec>) -> Vec<raw::RedisModuleCommandKeySpec> {
     let mut redis_key_spec: Vec<raw::RedisModuleCommandKeySpec> =
@@ -370,7 +370,7 @@ api! {[
         RedisModule_SetCommandInfo,
     ],
     /// Register all the commands located on `COMMNADS_LIST`.
-    fn register_commands_internal(ctx: &Context) -> Result<(), RedisError> {
+    fn register_commands_internal(ctx: &Context) -> Result<(), ValkeyError> {
         let is_enterprise = ctx.is_enterprise();
         COMMANDS_LIST.iter().try_for_each(|command| {
             let command_info = command()?;
@@ -379,7 +379,7 @@ api! {[
             if is_enterprise {
                 flags = format!("{flags} {}", command_info.enterprise_flags.as_deref().unwrap_or("")).trim().to_owned();
             }
-            let flags = CString::new(flags).map_err(|e| RedisError::String(e.to_string()))?;
+            let flags = CString::new(flags).map_err(|e| ValkeyError::String(e.to_string()))?;
 
             if unsafe {
                 RedisModule_CreateCommand(
@@ -393,7 +393,7 @@ api! {[
                 )
             } == raw::Status::Err as i32
             {
-                return Err(RedisError::String(format!(
+                return Err(ValkeyError::String(format!(
                     "Failed register command {}.",
                     command_info.name
                 )));
@@ -403,7 +403,7 @@ api! {[
             let command = unsafe { RedisModule_GetCommand(ctx.ctx, name.as_ptr()) };
 
             if command.is_null() {
-                return Err(RedisError::String(format!(
+                return Err(ValkeyError::String(format!(
                     "Failed finding command {} after registration.",
                     command_info.name
                 )));
@@ -445,7 +445,7 @@ api! {[
             };
 
             if unsafe { RedisModule_SetCommandInfo(command, &mut redis_command_info as *mut raw::RedisModuleCommandInfo) } == raw::Status::Err as i32 {
-                return Err(RedisError::String(format!(
+                return Err(ValkeyError::String(format!(
                     "Failed setting info for command {}.",
                     command_info.name
                 )));

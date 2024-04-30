@@ -7,23 +7,23 @@ use syn::{parse_macro_input, Data, DataStruct, DeriveInput, Fields};
 /// supported by the [`crate::InfoSection`].
 pub fn is_supported_map(type_string: &str) -> bool {
     /// A list of supported maps which can be converted to a dictionary for
-    /// the [`redis_module::InfoContext`].
+    /// the [`valkey_module::InfoContext`].
     const ALL: [&str; 2] = ["BTreeMap", "HashMap"];
 
     ALL.iter().any(|m| type_string.contains(&m.to_lowercase()))
 }
 
 /// Generate a [`From`] implementation for this struct so that it is
-/// possible to generate a [`redis_module::InfoContext`] information
+/// possible to generate a [`valkey_module::InfoContext`] information
 /// from it.
 ///
 /// A struct is compatible to be used with [`crate::InfoSection`] when
 /// it has fields, whose types are convertible to
-/// [`redis_module::InfoContextBuilderFieldTopLevelValue`] and (for
+/// [`valkey_module::InfoContextBuilderFieldTopLevelValue`] and (for
 /// the dictionaries) if it has fields which are compatible maps of
 /// objects, where a key is a [`String`] and a value is any type
 /// convertible to
-/// [`redis_module::InfoContextBuilderFieldBottomLevelValue`].
+/// [`valkey_module::InfoContextBuilderFieldBottomLevelValue`].
 fn struct_info_section(struct_name: Ident, struct_data: DataStruct) -> TokenStream {
     let fields = match struct_data.fields {
         Fields::Named(f) => f,
@@ -63,23 +63,23 @@ fn struct_info_section(struct_name: Ident, struct_data: DataStruct) -> TokenStre
         .collect();
 
     quote! {
-        impl From<#struct_name> for redis_module::OneInfoSectionData {
-            fn from(val: #struct_name) -> redis_module::OneInfoSectionData {
+        impl From<#struct_name> for valkey_module::OneInfoSectionData {
+            fn from(val: #struct_name) -> valkey_module::OneInfoSectionData {
                 let section_name = stringify!(#struct_name).to_owned();
 
                 let fields = vec![
                     // The section's key => value pairs.
                     #((
                         #key_fields_names.to_owned(),
-                        redis_module::InfoContextBuilderFieldTopLevelValue::from(val.#section_key_fields)
+                        valkey_module::InfoContextBuilderFieldTopLevelValue::from(val.#section_key_fields)
                     ), )*
 
                     // The dictionaries within this section.
                     #((
                         #dictionary_fields_names.to_owned(),
-                        redis_module::InfoContextBuilderFieldTopLevelValue::Dictionary {
+                        valkey_module::InfoContextBuilderFieldTopLevelValue::Dictionary {
                             name: #dictionary_fields_names.to_owned(),
-                            fields: redis_module::InfoContextFieldBottomLevelData(
+                            fields: valkey_module::InfoContextFieldBottomLevelData(
                                 val.#section_dictionary_fields
                                 .into_iter()
                                 .map(|d| d.into())

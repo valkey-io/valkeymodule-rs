@@ -1,29 +1,29 @@
-use redis_module::{
-    redis_module, AclPermissions, Context, NextArg, RedisError, RedisResult, RedisString,
-    RedisValue,
+use valkey_module::{
+    valkey_module, AclPermissions, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString,
+    ValkeyValue,
 };
 
-fn verify_key_access_for_user(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn verify_key_access_for_user(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let user = args.next_arg()?;
     let key = args.next_arg()?;
     let res = ctx.acl_check_key_permission(&user, &key, &AclPermissions::all());
     if let Err(err) = res {
-        return Err(RedisError::String(format!("Err {err}")));
+        return Err(ValkeyError::String(format!("Err {err}")));
     }
-    Ok(RedisValue::SimpleStringStatic("OK"))
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 
-fn get_current_user(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
-    Ok(RedisValue::BulkRedisString(ctx.get_current_user()))
+fn get_current_user(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::BulkValkeyString(ctx.get_current_user()))
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "acl",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["verify_key_access_for_user", verify_key_access_for_user, "", 0, 0, 0],

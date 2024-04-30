@@ -1,27 +1,27 @@
-use redis_module::{redis_module, Context, RedisError, RedisResult, RedisString};
-use redis_module::{InfoContext, Status};
+use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
+use valkey_module::{InfoContext, Status};
 
-fn test_helper_version(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+fn test_helper_version(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     let ver = ctx.get_redis_version()?;
     let response: Vec<i64> = vec![ver.major.into(), ver.minor.into(), ver.patch.into()];
 
     Ok(response.into())
 }
 
-fn test_helper_version_rm_call(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+fn test_helper_version_rm_call(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     let ver = ctx.get_redis_version_rm_call()?;
     let response: Vec<i64> = vec![ver.major.into(), ver.minor.into(), ver.patch.into()];
 
     Ok(response.into())
 }
 
-fn test_helper_command_name(ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+fn test_helper_command_name(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ctx.current_command_name()?.into())
 }
 
-fn test_helper_err(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn test_helper_err(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 1 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
     let msg = args.get(1).unwrap();
@@ -38,10 +38,10 @@ fn add_info(ctx: &InfoContext, _for_crash_report: bool) {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "test_helper",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     info: add_info,
     commands: [

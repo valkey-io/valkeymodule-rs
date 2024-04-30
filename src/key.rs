@@ -11,14 +11,14 @@ use std::os::raw::c_int;
 
 use raw::KeyType;
 
-use crate::native_types::RedisType;
+use crate::native_types::ValkeyType;
 use crate::raw;
 use crate::redismodule::REDIS_OK;
 pub use crate::redisraw::bindings::*;
 use crate::stream::StreamIterator;
-use crate::RedisError;
-use crate::RedisResult;
-use crate::RedisString;
+use crate::ValkeyError;
+use crate::ValkeyResult;
+use crate::ValkeyString;
 use bitflags::bitflags;
 
 /// `RedisKey` is an abstraction over a Redis key that allows readonly
@@ -63,14 +63,14 @@ impl RedisKey {
         res
     }
 
-    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &RedisString) -> Self {
+    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &ValkeyString) -> Self {
         let key_inner = raw::open_key(ctx, key.inner, to_raw_mode(KeyMode::Read));
         Self { ctx, key_inner }
     }
 
     pub(crate) fn open_with_flags(
         ctx: *mut raw::RedisModuleCtx,
-        key: &RedisString,
+        key: &ValkeyString,
         flags: KeyFlags,
     ) -> Self {
         let key_inner =
@@ -88,7 +88,7 @@ impl RedisKey {
     /// # Panics
     ///
     /// Will panic if `RedisModule_ModuleTypeGetValue` is missing in redismodule.h
-    pub fn get_value<T>(&self, redis_type: &RedisType) -> Result<Option<&T>, RedisError> {
+    pub fn get_value<T>(&self, redis_type: &ValkeyType) -> Result<Option<&T>, ValkeyError> {
         verify_type(self.key_inner, redis_type)?;
 
         let value =
@@ -118,14 +118,14 @@ impl RedisKey {
         self.key_inner == null_key
     }
 
-    pub fn read(&self) -> Result<Option<&[u8]>, RedisError> {
+    pub fn read(&self) -> Result<Option<&[u8]>, ValkeyError> {
         if self.is_null() {
             Ok(None)
         } else {
             let mut length: size_t = 0;
             let dma = raw::string_dma(self.key_inner, &mut length, raw::KeyMode::READ);
             if dma.is_null() {
-                Err(RedisError::Str("Could not read key"))
+                Err(ValkeyError::Str("Could not read key"))
             } else {
                 Ok(Some(unsafe {
                     std::slice::from_raw_parts(dma.cast::<u8>(), length)
@@ -134,7 +134,7 @@ impl RedisKey {
         }
     }
 
-    pub fn hash_get(&self, field: &str) -> Result<Option<RedisString>, RedisError> {
+    pub fn hash_get(&self, field: &str) -> Result<Option<ValkeyString>, ValkeyError> {
         let val = if self.is_null() {
             None
         } else {
@@ -150,10 +150,10 @@ impl RedisKey {
     pub fn hash_get_multi<'a, A, B>(
         &self,
         fields: &'a [A],
-    ) -> Result<Option<HMGetResult<'a, A, B>>, RedisError>
+    ) -> Result<Option<HMGetResult<'a, A, B>>, ValkeyError>
     where
         A: Into<Vec<u8>> + Clone,
-        RedisString: Into<B>,
+        ValkeyString: Into<B>,
     {
         let val = if self.is_null() {
             None
@@ -167,7 +167,7 @@ impl RedisKey {
         Ok(val)
     }
 
-    pub fn get_stream_iterator(&self, reverse: bool) -> Result<StreamIterator, RedisError> {
+    pub fn get_stream_iterator(&self, reverse: bool) -> Result<StreamIterator, ValkeyError> {
         StreamIterator::new(self, None, None, false, reverse)
     }
 
@@ -177,7 +177,7 @@ impl RedisKey {
         to: Option<raw::RedisModuleStreamID>,
         exclusive: bool,
         reverse: bool,
-    ) -> Result<StreamIterator, RedisError> {
+    ) -> Result<StreamIterator, ValkeyError> {
         StreamIterator::new(self, from, to, exclusive, reverse)
     }
 }
@@ -199,14 +199,14 @@ pub struct RedisKeyWritable {
 }
 
 impl RedisKeyWritable {
-    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &RedisString) -> Self {
+    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &ValkeyString) -> Self {
         let key_inner = raw::open_key(ctx, key.inner, to_raw_mode(KeyMode::ReadWrite));
         Self { ctx, key_inner }
     }
 
     pub(crate) fn open_with_flags(
         ctx: *mut raw::RedisModuleCtx,
-        key: &RedisString,
+        key: &ValkeyString,
         flags: KeyFlags,
     ) -> Self {
         let key_inner = raw::open_key_with_flags(
@@ -243,12 +243,12 @@ impl RedisKeyWritable {
         self.key_type() == KeyType::Empty
     }
 
-    pub fn as_string_dma(&self) -> Result<StringDMA, RedisError> {
+    pub fn as_string_dma(&self) -> Result<StringDMA, ValkeyError> {
         StringDMA::new(self)
     }
 
     #[allow(clippy::must_use_candidate)]
-    pub fn hash_set(&self, field: &str, value: RedisString) -> raw::Status {
+    pub fn hash_set(&self, field: &str, value: ValkeyString) -> raw::Status {
         raw::hash_set(self.key_inner, field, value.inner)
     }
 
@@ -257,7 +257,7 @@ impl RedisKeyWritable {
         raw::hash_del(self.key_inner, field)
     }
 
-    pub fn hash_get(&self, field: &str) -> Result<Option<RedisString>, RedisError> {
+    pub fn hash_get(&self, field: &str) -> Result<Option<ValkeyString>, ValkeyError> {
         Ok(hash_mget_key(self.ctx, self.key_inner, &[field])?
             .pop()
             .expect("hash_mget_key should return vector of same length as input"))
@@ -267,10 +267,10 @@ impl RedisKeyWritable {
     pub fn hash_get_multi<'a, A, B>(
         &self,
         fields: &'a [A],
-    ) -> Result<HMGetResult<'a, A, B>, RedisError>
+    ) -> Result<HMGetResult<'a, A, B>, ValkeyError>
     where
         A: Into<Vec<u8>> + Clone,
-        RedisString: Into<B>,
+        ValkeyString: Into<B>,
     {
         Ok(HMGetResult {
             fields,
@@ -281,13 +281,13 @@ impl RedisKeyWritable {
 
     // `list_push_head` inserts the specified element at the head of the list stored at this key.
     #[allow(clippy::must_use_candidate)]
-    pub fn list_push_head(&self, element: RedisString) -> raw::Status {
+    pub fn list_push_head(&self, element: ValkeyString) -> raw::Status {
         raw::list_push(self.key_inner, raw::Where::ListHead, element.inner)
     }
 
     // `list_push_tail` inserts the specified element at the tail of the list stored at this key.
     #[allow(clippy::must_use_candidate)]
-    pub fn list_push_tail(&self, element: RedisString) -> raw::Status {
+    pub fn list_push_tail(&self, element: ValkeyString) -> raw::Status {
         raw::list_push(self.key_inner, raw::Where::ListTail, element.inner)
     }
 
@@ -296,14 +296,14 @@ impl RedisKeyWritable {
     //     1. The list is empty.
     //     2. The key is not a list.
     #[allow(clippy::must_use_candidate)]
-    pub fn list_pop_head(&self) -> Option<RedisString> {
+    pub fn list_pop_head(&self) -> Option<ValkeyString> {
         let ptr = raw::list_pop(self.key_inner, raw::Where::ListHead);
 
         if ptr.is_null() {
             return None;
         }
 
-        Some(RedisString::new(NonNull::new(self.ctx), ptr))
+        Some(ValkeyString::new(NonNull::new(self.ctx), ptr))
     }
 
     //  `list_pop_head` pops and returns the last element of the list.
@@ -311,21 +311,21 @@ impl RedisKeyWritable {
     //     1. The list is empty.
     //     2. The key is not a list.
     #[must_use]
-    pub fn list_pop_tail(&self) -> Option<RedisString> {
+    pub fn list_pop_tail(&self) -> Option<ValkeyString> {
         let ptr = raw::list_pop(self.key_inner, raw::Where::ListTail);
 
         if ptr.is_null() {
             return None;
         }
 
-        Some(RedisString::new(NonNull::new(self.ctx), ptr))
+        Some(ValkeyString::new(NonNull::new(self.ctx), ptr))
     }
 
-    pub fn set_expire(&self, expire: Duration) -> RedisResult {
+    pub fn set_expire(&self, expire: Duration) -> ValkeyResult {
         let exp_millis = expire.as_millis();
 
         let exp_time = i64::try_from(exp_millis).map_err(|_| {
-            RedisError::String(format!("Error expire duration {exp_millis} is not allowed"))
+            ValkeyError::String(format!("Error expire duration {exp_millis} is not allowed"))
         })?;
 
         match raw::set_expire(self.key_inner, exp_time) {
@@ -333,33 +333,33 @@ impl RedisKeyWritable {
 
             // Error may occur if the key wasn't open for writing or is an
             // empty key.
-            raw::Status::Err => Err(RedisError::Str("Error while setting key expire")),
+            raw::Status::Err => Err(ValkeyError::Str("Error while setting key expire")),
         }
     }
 
     /// Remove expiration from a key if it exists.
-    pub fn remove_expire(&self) -> RedisResult {
+    pub fn remove_expire(&self) -> ValkeyResult {
         match raw::set_expire(self.key_inner, REDISMODULE_NO_EXPIRE.into()) {
             raw::Status::Ok => REDIS_OK,
 
             // Error may occur if the key wasn't open for writing or is an
             // empty key.
-            raw::Status::Err => Err(RedisError::Str("Error while removing key expire")),
+            raw::Status::Err => Err(ValkeyError::Str("Error while removing key expire")),
         }
     }
 
-    pub fn write(&self, val: &str) -> RedisResult {
-        let val_str = RedisString::create(NonNull::new(self.ctx), val);
+    pub fn write(&self, val: &str) -> ValkeyResult {
+        let val_str = ValkeyString::create(NonNull::new(self.ctx), val);
         match raw::string_set(self.key_inner, val_str.inner) {
             raw::Status::Ok => REDIS_OK,
-            raw::Status::Err => Err(RedisError::Str("Error while setting key")),
+            raw::Status::Err => Err(ValkeyError::Str("Error while setting key")),
         }
     }
 
     /// # Panics
     ///
     /// Will panic if `RedisModule_DeleteKey` is missing in redismodule.h
-    pub fn delete(&self) -> RedisResult {
+    pub fn delete(&self) -> ValkeyResult {
         unsafe { raw::RedisModule_DeleteKey.unwrap()(self.key_inner) };
         REDIS_OK
     }
@@ -367,7 +367,7 @@ impl RedisKeyWritable {
     /// # Panics
     ///
     /// Will panic if `RedisModule_UnlinkKey` is missing in redismodule.h
-    pub fn unlink(&self) -> RedisResult {
+    pub fn unlink(&self) -> ValkeyResult {
         unsafe { raw::RedisModule_UnlinkKey.unwrap()(self.key_inner) };
         REDIS_OK
     }
@@ -396,8 +396,8 @@ impl RedisKeyWritable {
     #[allow(clippy::needless_lifetimes)]
     pub fn get_value<'a, 'b, T>(
         &'a self,
-        redis_type: &RedisType,
-    ) -> Result<Option<&'b mut T>, RedisError> {
+        redis_type: &ValkeyType,
+    ) -> Result<Option<&'b mut T>, ValkeyError> {
         verify_type(self.key_inner, redis_type)?;
         let value =
             unsafe { raw::RedisModule_ModuleTypeGetValue.unwrap()(self.key_inner).cast::<T>() };
@@ -413,7 +413,7 @@ impl RedisKeyWritable {
     /// # Panics
     ///
     /// Will panic if `RedisModule_ModuleTypeSetValue` is missing in redismodule.h
-    pub fn set_value<T>(&self, redis_type: &RedisType, value: T) -> Result<(), RedisError> {
+    pub fn set_value<T>(&self, redis_type: &ValkeyType, value: T) -> Result<(), ValkeyError> {
         verify_type(self.key_inner, redis_type)?;
         let value = Box::into_raw(Box::new(value)).cast::<c_void>();
         let status: raw::Status = unsafe {
@@ -432,7 +432,7 @@ impl RedisKeyWritable {
         &self,
         mut id: raw::RedisModuleStreamID,
         approx: bool,
-    ) -> Result<usize, RedisError> {
+    ) -> Result<usize, ValkeyError> {
         let flags = if approx {
             raw::REDISMODULE_STREAM_TRIM_APPROX
         } else {
@@ -442,7 +442,7 @@ impl RedisKeyWritable {
             raw::RedisModule_StreamTrimByID.unwrap()(self.key_inner, flags as i32, &mut id)
         };
         if res <= 0 {
-            Err(RedisError::Str("Failed trimming the stream"))
+            Err(ValkeyError::Str("Failed trimming the stream"))
         } else {
             Ok(res as usize)
         }
@@ -454,27 +454,27 @@ impl RedisKeyWritable {
 pub struct HMGetResult<'a, A, B>
 where
     A: Into<Vec<u8>> + Clone,
-    RedisString: Into<B>,
+    ValkeyString: Into<B>,
 {
     fields: &'a [A],
-    values: Vec<Option<RedisString>>,
+    values: Vec<Option<ValkeyString>>,
     phantom: std::marker::PhantomData<B>,
 }
 
 pub struct HMGetIter<'a, A, B>
 where
     A: Into<Vec<u8>>,
-    RedisString: Into<B>,
+    ValkeyString: Into<B>,
 {
     fields_iter: std::slice::Iter<'a, A>,
-    values_iter: std::vec::IntoIter<Option<RedisString>>,
+    values_iter: std::vec::IntoIter<Option<ValkeyString>>,
     phantom: std::marker::PhantomData<B>,
 }
 
 impl<'a, A, B> Iterator for HMGetIter<'a, A, B>
 where
     A: Into<Vec<u8>> + Clone,
-    RedisString: Into<B>,
+    ValkeyString: Into<B>,
 {
     type Item = (A, B);
 
@@ -500,7 +500,7 @@ where
 impl<'a, A, B> IntoIterator for HMGetResult<'a, A, B>
 where
     A: Into<Vec<u8>> + Clone,
-    RedisString: Into<B>,
+    ValkeyString: Into<B>,
 {
     type Item = (A, B);
     type IntoIter = HMGetIter<'a, A, B>;
@@ -516,7 +516,7 @@ where
     ///
     /// ```
     /// use redis_module::key::HMGetResult;
-    /// use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue};
+    /// use redis_module::{Context, RedisError, RedisResult, RedisString, ValkeyValue};
     ///
     /// fn call_hash(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
     ///     let key_name = RedisString::create(None, "config");
@@ -525,15 +525,15 @@ where
     ///         .open_key(&key_name)
     ///         .hash_get_multi(fields)?
     ///         .ok_or(RedisError::Str("ERR key not found"))?;
-    ///     let response: Vec<RedisValue> = hm.into_iter().map(|(_, v)| v.into()).collect();
-    ///     Ok(RedisValue::Array(response))
+    ///     let response: Vec<ValkeyValue> = hm.into_iter().map(|(_, v)| v.into()).collect();
+    ///     Ok(ValkeyValue::Array(response))
     /// }
     /// ```
     ///
     /// Get a [`Vec`] of only the field values from the results:
     ///
     /// ```
-    /// use redis_module::{Context, RedisError, RedisResult, RedisString, RedisValue};
+    /// use redis_module::{Context, RedisError, RedisResult, RedisString, ValkeyValue};
     /// use redis_module::key::HMGetResult;
     ///
     /// fn call_hash(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
@@ -543,8 +543,8 @@ where
     ///          .open_key(&key_name)
     ///          .hash_get_multi(fields)?
     ///          .ok_or(RedisError::Str("ERR key not found"))?;
-    ///     let response: Vec<RedisValue> = hm.into_iter().map(|(_, v)| RedisValue::BulkRedisString(v)).collect();
-    ///     Ok(RedisValue::Array(response))
+    ///     let response: Vec<ValkeyValue> = hm.into_iter().map(|(_, v)| ValkeyValue::BulkValkeyString(v)).collect();
+    ///     Ok(ValkeyValue::Array(response))
     /// }
     /// ```
     ///
@@ -579,32 +579,32 @@ impl<'a> DerefMut for StringDMA<'a> {
 }
 
 impl<'a> StringDMA<'a> {
-    fn new(key: &'a RedisKeyWritable) -> Result<StringDMA<'a>, RedisError> {
+    fn new(key: &'a RedisKeyWritable) -> Result<StringDMA<'a>, ValkeyError> {
         let mut length: size_t = 0;
         let dma = raw::string_dma(key.key_inner, &mut length, raw::KeyMode::WRITE);
         if dma.is_null() {
-            Err(RedisError::Str("Could not read key"))
+            Err(ValkeyError::Str("Could not read key"))
         } else {
             let buffer = unsafe { std::slice::from_raw_parts_mut(dma.cast::<u8>(), length) };
             Ok(StringDMA { key, buffer })
         }
     }
 
-    pub fn write(&mut self, data: &[u8]) -> Result<&mut Self, RedisError> {
+    pub fn write(&mut self, data: &[u8]) -> Result<&mut Self, ValkeyError> {
         if self.buffer.len() != data.len() {
             if raw::Status::Ok == raw::string_truncate(self.key.key_inner, data.len()) {
                 let mut length: size_t = 0;
                 let dma = raw::string_dma(self.key.key_inner, &mut length, raw::KeyMode::WRITE);
                 self.buffer = unsafe { std::slice::from_raw_parts_mut(dma.cast::<u8>(), length) };
             } else {
-                return Err(RedisError::Str("Failed to truncate string"));
+                return Err(ValkeyError::Str("Failed to truncate string"));
             }
         }
         self.buffer[..data.len()].copy_from_slice(data);
         Ok(self)
     }
 
-    pub fn append(&mut self, data: &[u8]) -> Result<&mut Self, RedisError> {
+    pub fn append(&mut self, data: &[u8]) -> Result<&mut Self, ValkeyError> {
         let current_len = self.buffer.len();
         let new_len = current_len + data.len();
         if raw::Status::Ok == raw::string_truncate(self.key.key_inner, new_len) {
@@ -612,7 +612,7 @@ impl<'a> StringDMA<'a> {
             let dma = raw::string_dma(self.key.key_inner, &mut length, raw::KeyMode::WRITE);
             self.buffer = unsafe { std::slice::from_raw_parts_mut(dma.cast::<u8>(), length) };
         } else {
-            return Err(RedisError::Str("Failed to truncate string"));
+            return Err(ValkeyError::Str("Failed to truncate string"));
         }
         self.buffer[current_len..new_len].copy_from_slice(data);
         Ok(self)
@@ -632,7 +632,7 @@ fn hash_mget_key<T>(
     ctx: *mut raw::RedisModuleCtx,
     key: *mut raw::RedisModuleKey,
     fields: &[T],
-) -> Result<Vec<Option<RedisString>>, RedisError>
+) -> Result<Vec<Option<ValkeyString>>, ValkeyError>
 where
     T: Into<Vec<u8>> + Clone,
 {
@@ -648,7 +648,7 @@ where
             if ptr.is_null() {
                 None
             } else {
-                Some(RedisString::from_redis_module_string(ctx, *ptr))
+                Some(ValkeyString::from_redis_module_string(ctx, *ptr))
             }
         }));
     }
@@ -667,7 +667,7 @@ fn to_raw_mode(mode: KeyMode) -> raw::KeyMode {
 ///
 /// Will panic if `RedisModule_KeyType` or `RedisModule_ModuleTypeGetType` are missing in redismodule.h
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn verify_type(key_inner: *mut raw::RedisModuleKey, redis_type: &RedisType) -> RedisResult {
+pub fn verify_type(key_inner: *mut raw::RedisModuleKey, redis_type: &ValkeyType) -> ValkeyResult {
     let key_type: KeyType = unsafe { raw::RedisModule_KeyType.unwrap()(key_inner) }.into();
 
     if key_type != KeyType::Empty {
@@ -675,7 +675,7 @@ pub fn verify_type(key_inner: *mut raw::RedisModuleKey, redis_type: &RedisType) 
         let raw_type = unsafe { raw::RedisModule_ModuleTypeGetType.unwrap()(key_inner) };
 
         if raw_type != *redis_type.raw_type.borrow() {
-            return Err(RedisError::Str("Existing key has wrong Redis type"));
+            return Err(ValkeyError::Str("Existing key has wrong Redis type"));
         }
     }
 

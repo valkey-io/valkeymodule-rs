@@ -1,15 +1,15 @@
 use crate::key::RedisKey;
 use crate::raw;
-use crate::RedisError;
-use crate::RedisString;
 use crate::Status;
+use crate::ValkeyError;
+use crate::ValkeyString;
 use std::os::raw::c_long;
 use std::ptr;
 
 #[derive(Debug)]
 pub struct StreamRecord {
     pub id: raw::RedisModuleStreamID,
-    pub fields: Vec<(RedisString, RedisString)>,
+    pub fields: Vec<(ValkeyString, ValkeyString)>,
 }
 
 #[derive(Debug)]
@@ -24,7 +24,7 @@ impl<'key> StreamIterator<'key> {
         mut to: Option<raw::RedisModuleStreamID>,
         exclusive: bool,
         reverse: bool,
-    ) -> Result<StreamIterator, RedisError> {
+    ) -> Result<StreamIterator, ValkeyError> {
         let mut flags = if exclusive {
             raw::REDISMODULE_STREAM_ITERATOR_EXCLUSIVE as i32
         } else {
@@ -48,7 +48,7 @@ impl<'key> StreamIterator<'key> {
         if Status::Ok == res.into() {
             Ok(StreamIterator { key })
         } else {
-            Err(RedisError::Str("Failed creating stream iterator"))
+            Err(ValkeyError::Str("Failed creating stream iterator"))
         }
     }
 }
@@ -85,8 +85,8 @@ impl<'key> Iterator for StreamIterator<'key> {
             }
         {
             fields.push((
-                RedisString::from_redis_module_string(ptr::null_mut(), field_name),
-                RedisString::from_redis_module_string(ptr::null_mut(), field_val),
+                ValkeyString::from_redis_module_string(ptr::null_mut(), field_name),
+                ValkeyString::from_redis_module_string(ptr::null_mut(), field_val),
             ));
         }
         Some(StreamRecord { id, fields })

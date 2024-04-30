@@ -9,7 +9,7 @@ use std::{
 
 use libc::c_void;
 
-use crate::{deallocate_pointer, raw::*, Context, RedisError, RedisLockIndicator};
+use crate::{deallocate_pointer, raw::*, Context, RedisLockIndicator, ValkeyError};
 
 pub struct StringCallReply<'root> {
     reply: NonNull<RedisModuleCallReply>,
@@ -548,18 +548,18 @@ const VERBATIM_FORMAT_LENGTH: usize = 3;
 pub struct VerbatimStringFormat(pub [c_char; VERBATIM_FORMAT_LENGTH]);
 
 impl TryFrom<&str> for VerbatimStringFormat {
-    type Error = RedisError;
+    type Error = ValkeyError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         if value.len() != 3 {
-            return Err(RedisError::String(format!(
+            return Err(ValkeyError::String(format!(
                 "Verbatim format length must be {VERBATIM_FORMAT_LENGTH}."
             )));
         }
         let mut res = VerbatimStringFormat::default();
         value.chars().take(3).enumerate().try_for_each(|(i, c)| {
             if c as u32 >= 127 {
-                return Err(RedisError::String(
+                return Err(ValkeyError::String(
                     "Verbatim format must contains only ASCI values.".to_owned(),
                 ));
             }

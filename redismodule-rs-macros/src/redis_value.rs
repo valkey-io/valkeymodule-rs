@@ -9,7 +9,7 @@ use syn::{
     parse_macro_input, Data, DataEnum, DataStruct, DeriveInput, Fields,
 };
 
-/// Generate [From] implementation for [RedisValue] for Enum.
+/// Generate [From] implementation for [ValkeyValue] for Enum.
 /// The generated code will simply check the Enum current type (using
 /// a match statement) and will perform [Into] and the matched variant.
 fn enum_redis_value(struct_name: Ident, enum_data: DataEnum) -> TokenStream {
@@ -20,8 +20,8 @@ fn enum_redis_value(struct_name: Ident, enum_data: DataEnum) -> TokenStream {
         .collect::<Vec<_>>();
 
     let res = quote! {
-        impl From<#struct_name> for redis_module::redisvalue::RedisValue {
-            fn from(val: #struct_name) -> redis_module::redisvalue::RedisValue {
+        impl From<#struct_name> for valkey_module::redisvalue::ValkeyValue {
+            fn from(val: #struct_name) -> valkey_module::redisvalue::ValkeyValue {
                 match val {
                     #(
                         #struct_name::#variants(v) => v.into(),
@@ -45,15 +45,15 @@ impl Parse for FieldAttr {
     }
 }
 
-/// Generate [From] implementation for [RedisValue] for a struct.
-/// The generated code will create a [RedisValue::Map] element such that
+/// Generate [From] implementation for [ValkeyValue] for a struct.
+/// The generated code will create a [ValkeyValue::Map] element such that
 /// the keys are the fields names and the value are the result of
-/// running [Into] on each field value to convert it to [RedisValue].
+/// running [Into] on each field value to convert it to [ValkeyValue].
 fn struct_redis_value(struct_name: Ident, struct_data: DataStruct) -> TokenStream {
     let fields = match struct_data.fields {
         Fields::Named(f) => f,
         _ => {
-            return quote! {compile_error!("RedisValue derive can only be apply on struct with named fields.")}.into()
+            return quote! {compile_error!("ValkeyValue derive can only be apply on struct with named fields.")}.into()
         }
     };
 
@@ -101,27 +101,27 @@ fn struct_redis_value(struct_name: Ident, struct_data: DataStruct) -> TokenStrea
     let fields_names: Vec<_> = fields.iter().map(|v| v.to_string()).collect();
 
     let res = quote! {
-        impl From<#struct_name> for redis_module::redisvalue::RedisValue {
-            fn from(val: #struct_name) -> redis_module::redisvalue::RedisValue {
-                let mut fields: std::collections::BTreeMap<redis_module::redisvalue::RedisValueKey, redis_module::redisvalue::RedisValue> = std::collections::BTreeMap::from([
+        impl From<#struct_name> for valkey_module::redisvalue::ValkeyValue {
+            fn from(val: #struct_name) -> valkey_module::redisvalue::ValkeyValue {
+                let mut fields: std::collections::BTreeMap<valkey_module::redisvalue::ValkeyValueKey, valkey_module::redisvalue::ValkeyValue> = std::collections::BTreeMap::from([
                     #((
-                        redis_module::redisvalue::RedisValueKey::String(#fields_names.to_owned()),
+                        valkey_module::redisvalue::ValkeyValueKey::String(#fields_names.to_owned()),
                         val.#fields.into()
                     ), )*
                 ]);
                 #(
-                    let flatten_field: std::collections::BTreeMap<redis_module::redisvalue::RedisValueKey, redis_module::redisvalue::RedisValue> = val.#flattem_fields.into();
+                    let flatten_field: std::collections::BTreeMap<valkey_module::redisvalue::ValkeyValueKey, valkey_module::redisvalue::ValkeyValue> = val.#flattem_fields.into();
                     fields.extend(flatten_field.into_iter());
                 )*
-                redis_module::redisvalue::RedisValue::OrderedMap(fields)
+                valkey_module::redisvalue::ValkeyValue::OrderedMap(fields)
             }
         }
 
-        impl From<#struct_name> for std::collections::BTreeMap<redis_module::redisvalue::RedisValueKey, redis_module::redisvalue::RedisValue> {
-            fn from(val: #struct_name) -> std::collections::BTreeMap<redis_module::redisvalue::RedisValueKey, redis_module::redisvalue::RedisValue> {
+        impl From<#struct_name> for std::collections::BTreeMap<valkey_module::redisvalue::ValkeyValueKey, valkey_module::redisvalue::ValkeyValue> {
+            fn from(val: #struct_name) -> std::collections::BTreeMap<valkey_module::redisvalue::ValkeyValueKey, valkey_module::redisvalue::ValkeyValue> {
                 std::collections::BTreeMap::from([
                     #((
-                        redis_module::redisvalue::RedisValueKey::String(#fields_names.to_owned()),
+                        valkey_module::redisvalue::ValkeyValueKey::String(#fields_names.to_owned()),
                         val.#fields.into()
                     ), )*
                 ])
@@ -131,7 +131,7 @@ fn struct_redis_value(struct_name: Ident, struct_data: DataStruct) -> TokenStrea
     res.into()
 }
 
-/// Implementation for [RedisValue] derive proc macro.
+/// Implementation for [ValkeyValue] derive proc macro.
 /// Runs the relevant code generation base on the element
 /// the proc macro was used on. Currently supports Enums and
 /// structs.
@@ -142,7 +142,7 @@ pub fn redis_value(item: TokenStream) -> TokenStream {
         Data::Struct(s) => struct_redis_value(struct_name, s),
         Data::Enum(e) => enum_redis_value(struct_name, e),
         _ => {
-            quote! {compile_error!("RedisValue derive can only be apply on struct.")}.into()
+            quote! {compile_error!("ValkeyValue derive can only be apply on struct.")}.into()
         }
     }
 }

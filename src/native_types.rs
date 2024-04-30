@@ -4,7 +4,7 @@ use std::ptr;
 
 use crate::raw;
 
-pub struct RedisType {
+pub struct ValkeyType {
     name: &'static str,
     version: i32,
     type_methods: raw::RedisModuleTypeMethods,
@@ -13,9 +13,9 @@ pub struct RedisType {
 
 // We want to be able to create static instances of this type,
 // which means we need to implement Sync.
-unsafe impl Sync for RedisType {}
+unsafe impl Sync for ValkeyType {}
 
-impl RedisType {
+impl ValkeyType {
     #[must_use]
     pub const fn new(
         name: &'static str,

@@ -2,7 +2,7 @@ use std::ffi::CString;
 use std::ptr::NonNull;
 
 use crate::Context;
-use crate::{raw, RedisString};
+use crate::{raw, ValkeyString};
 
 pub struct ServerInfo {
     ctx: *mut raw::RedisModuleCtx,
@@ -16,7 +16,7 @@ impl Drop for ServerInfo {
 }
 
 impl ServerInfo {
-    pub fn field(&self, field: &str) -> Option<RedisString> {
+    pub fn field(&self, field: &str) -> Option<ValkeyString> {
         let field = CString::new(field).unwrap();
         let value = unsafe {
             raw::RedisModule_ServerInfoGetField.unwrap()(self.ctx, self.inner, field.as_ptr())
@@ -24,7 +24,7 @@ impl ServerInfo {
         if value.is_null() {
             None
         } else {
-            Some(RedisString::new(NonNull::new(self.ctx), value))
+            Some(ValkeyString::new(NonNull::new(self.ctx), value))
         }
     }
 }

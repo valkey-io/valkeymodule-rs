@@ -1,6 +1,6 @@
-use crate::context::thread_safe::{RedisGILGuard, RedisLockIndicator};
-use crate::{raw, CallOptionResp, CallOptionsBuilder, CallResult, RedisValue};
-use crate::{Context, RedisError, RedisString};
+use crate::context::thread_safe::{RedisLockIndicator, ValkeyGILGuard};
+use crate::{raw, CallOptionResp, CallOptionsBuilder, CallResult, ValkeyValue};
+use crate::{Context, ValkeyError, ValkeyString};
 use bitflags::bitflags;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
@@ -49,12 +49,12 @@ macro_rules! enum_configuration {
         }
 
         impl std::convert::TryFrom<i32> for $name {
-            type Error = $crate::RedisError;
+            type Error = $crate::ValkeyError;
 
             fn try_from(v: i32) -> Result<Self, Self::Error> {
                 match v {
                     $(x if x == $name::$vname as i32 => Ok($name::$vname),)*
-                    _ => Err($crate::RedisError::Str("Value is not supported")),
+                    _ => Err($crate::ValkeyError::Str("Value is not supported")),
                 }
             }
         }
@@ -98,19 +98,19 @@ unsafe impl RedisLockIndicator for ConfigurationContext {}
 
 pub trait ConfigurationValue<T>: Sync + Send {
     fn get(&self, ctx: &ConfigurationContext) -> T;
-    fn set(&self, ctx: &ConfigurationContext, val: T) -> Result<(), RedisError>;
+    fn set(&self, ctx: &ConfigurationContext, val: T) -> Result<(), ValkeyError>;
 }
 
-pub trait EnumConfigurationValue: TryFrom<i32, Error = RedisError> + Into<i32> + Clone {
+pub trait EnumConfigurationValue: TryFrom<i32, Error = ValkeyError> + Into<i32> + Clone {
     fn get_options(&self) -> (Vec<String>, Vec<i32>);
 }
 
-impl<T: Clone> ConfigurationValue<T> for RedisGILGuard<T> {
+impl<T: Clone> ConfigurationValue<T> for ValkeyGILGuard<T> {
     fn get(&self, ctx: &ConfigurationContext) -> T {
         let value = self.lock(ctx);
         value.clone()
     }
-    fn set(&self, ctx: &ConfigurationContext, val: T) -> Result<(), RedisError> {
+    fn set(&self, ctx: &ConfigurationContext, val: T) -> Result<(), ValkeyError> {
         let mut value = self.lock(ctx);
         *value = val;
         Ok(())
@@ -122,7 +122,7 @@ impl<T: Clone + Send> ConfigurationValue<T> for Mutex<T> {
         let value = self.lock().unwrap();
         value.clone()
     }
-    fn set(&self, _ctx: &ConfigurationContext, val: T) -> Result<(), RedisError> {
+    fn set(&self, _ctx: &ConfigurationContext, val: T) -> Result<(), ValkeyError> {
         let mut value = self.lock().unwrap();
         *value = val;
         Ok(())
@@ -133,30 +133,30 @@ impl ConfigurationValue<i64> for AtomicI64 {
     fn get(&self, _ctx: &ConfigurationContext) -> i64 {
         self.load(Ordering::Relaxed)
     }
-    fn set(&self, _ctx: &ConfigurationContext, val: i64) -> Result<(), RedisError> {
+    fn set(&self, _ctx: &ConfigurationContext, val: i64) -> Result<(), ValkeyError> {
         self.store(val, Ordering::Relaxed);
         Ok(())
     }
 }
 
-impl ConfigurationValue<RedisString> for RedisGILGuard<String> {
-    fn get(&self, ctx: &ConfigurationContext) -> RedisString {
+impl ConfigurationValue<ValkeyString> for ValkeyGILGuard<String> {
+    fn get(&self, ctx: &ConfigurationContext) -> ValkeyString {
         let value = self.lock(ctx);
-        RedisString::create(None, value.as_str())
+        ValkeyString::create(None, value.as_str())
     }
-    fn set(&self, ctx: &ConfigurationContext, val: RedisString) -> Result<(), RedisError> {
+    fn set(&self, ctx: &ConfigurationContext, val: ValkeyString) -> Result<(), ValkeyError> {
         let mut value = self.lock(ctx);
         *value = val.try_as_str()?.to_string();
         Ok(())
     }
 }
 
-impl ConfigurationValue<RedisString> for Mutex<String> {
-    fn get(&self, _ctx: &ConfigurationContext) -> RedisString {
+impl ConfigurationValue<ValkeyString> for Mutex<String> {
+    fn get(&self, _ctx: &ConfigurationContext) -> ValkeyString {
         let value = self.lock().unwrap();
-        RedisString::create(None, value.as_str())
+        ValkeyString::create(None, value.as_str())
     }
-    fn set(&self, _ctx: &ConfigurationContext, val: RedisString) -> Result<(), RedisError> {
+    fn set(&self, _ctx: &ConfigurationContext, val: ValkeyString) -> Result<(), ValkeyError> {
         let mut value = self.lock().unwrap();
         *value = val.try_as_str()?.to_string();
         Ok(())
@@ -167,7 +167,7 @@ impl ConfigurationValue<bool> for AtomicBool {
     fn get(&self, _ctx: &ConfigurationContext) -> bool {
         self.load(Ordering::Relaxed)
     }
-    fn set(&self, _ctx: &ConfigurationContext, val: bool) -> Result<(), RedisError> {
+    fn set(&self, _ctx: &ConfigurationContext, val: bool) -> Result<(), ValkeyError> {
         self.store(val, Ordering::Relaxed);
         Ok(())
     }
@@ -186,7 +186,7 @@ impl<G, T: ConfigurationValue<G> + 'static> ConfigrationPrivateData<G, T> {
         // we know the GIL is held so it is safe to use Context::dummy().
         let configuration_ctx = ConfigurationContext::new();
         if let Err(e) = self.variable.set(&configuration_ctx, val) {
-            let error_msg = RedisString::create(None, e.to_string().as_str());
+            let error_msg = ValkeyString::create(None, e.to_string().as_str());
             unsafe { *err = error_msg.take() };
             return raw::REDISMODULE_ERR as i32;
         }
@@ -256,40 +256,40 @@ pub fn register_i64_configuration<T: ConfigurationValue<i64>>(
     }
 }
 
-fn find_config_value<'a>(args: &'a [RedisString], name: &str) -> Option<&'a RedisString> {
+fn find_config_value<'a>(args: &'a [ValkeyString], name: &str) -> Option<&'a ValkeyString> {
     args.iter()
         .skip_while(|item| !item.as_slice().eq(name.as_bytes()))
         .nth(1)
 }
 
 pub fn get_i64_default_config_value(
-    args: &[RedisString],
+    args: &[ValkeyString],
     name: &str,
     default: i64,
-) -> Result<i64, RedisError> {
+) -> Result<i64, ValkeyError> {
     find_config_value(args, name).map_or(Ok(default), |arg| {
         arg.try_as_str()?
             .parse::<i64>()
-            .map_err(|e| RedisError::String(e.to_string()))
+            .map_err(|e| ValkeyError::String(e.to_string()))
     })
 }
 
-extern "C" fn string_configuration_set<T: ConfigurationValue<RedisString> + 'static>(
+extern "C" fn string_configuration_set<T: ConfigurationValue<ValkeyString> + 'static>(
     name: *const c_char,
     val: *mut raw::RedisModuleString,
     privdata: *mut c_void,
     err: *mut *mut raw::RedisModuleString,
 ) -> c_int {
-    let new_val = RedisString::new(None, val);
-    let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<RedisString, T>) };
+    let new_val = ValkeyString::new(None, val);
+    let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<ValkeyString, T>) };
     private_data.set_val(name, new_val, err)
 }
 
-extern "C" fn string_configuration_get<T: ConfigurationValue<RedisString> + 'static>(
+extern "C" fn string_configuration_get<T: ConfigurationValue<ValkeyString> + 'static>(
     _name: *const c_char,
     privdata: *mut c_void,
 ) -> *mut raw::RedisModuleString {
-    let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<RedisString, T>) };
+    let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<ValkeyString, T>) };
     // we know the GIL is held so it is safe to use Context::dummy().
     private_data
         .variable
@@ -297,7 +297,7 @@ extern "C" fn string_configuration_get<T: ConfigurationValue<RedisString> + 'sta
         .take()
 }
 
-pub fn register_string_configuration<T: ConfigurationValue<RedisString>>(
+pub fn register_string_configuration<T: ConfigurationValue<ValkeyString>>(
     ctx: &Context,
     name: &str,
     variable: &'static T,
@@ -310,7 +310,7 @@ pub fn register_string_configuration<T: ConfigurationValue<RedisString>>(
     let config_private_data = ConfigrationPrivateData {
         variable,
         on_changed,
-        phantom: PhantomData::<RedisString>,
+        phantom: PhantomData::<ValkeyString>,
     };
     unsafe {
         raw::RedisModule_RegisterStringConfig.unwrap()(
@@ -327,10 +327,10 @@ pub fn register_string_configuration<T: ConfigurationValue<RedisString>>(
 }
 
 pub fn get_string_default_config_value<'a>(
-    args: &'a [RedisString],
+    args: &'a [ValkeyString],
     name: &str,
     default: &'a str,
-) -> Result<&'a str, RedisError> {
+) -> Result<&'a str, ValkeyError> {
     find_config_value(args, name).map_or(Ok(default), |arg| arg.try_as_str())
 }
 
@@ -381,10 +381,10 @@ pub fn register_bool_configuration<T: ConfigurationValue<bool>>(
 }
 
 pub fn get_bool_default_config_value(
-    args: &[RedisString],
+    args: &[ValkeyString],
     name: &str,
     default: bool,
-) -> Result<bool, RedisError> {
+) -> Result<bool, ValkeyError> {
     find_config_value(args, name).map_or(Ok(default), |arg| Ok(arg.try_as_str()? == "yes"))
 }
 
@@ -402,7 +402,7 @@ extern "C" fn enum_configuration_set<
     match val {
         Ok(val) => private_data.set_val(name, val, err),
         Err(e) => {
-            let error_msg = RedisString::create(None, e.to_string().as_str());
+            let error_msg = ValkeyString::create(None, e.to_string().as_str());
             unsafe { *err = error_msg.take() };
             raw::REDISMODULE_ERR as i32
         }
@@ -462,17 +462,17 @@ pub fn register_enum_configuration<G: EnumConfigurationValue, T: ConfigurationVa
 }
 
 pub fn get_enum_default_config_value<G: EnumConfigurationValue>(
-    args: &[RedisString],
+    args: &[ValkeyString],
     name: &str,
     default: G,
-) -> Result<G, RedisError> {
+) -> Result<G, ValkeyError> {
     find_config_value(args, name).map_or(Ok(default.clone()), |arg| {
         let (names, vals) = default.get_options();
         let (index, _name) = names
             .into_iter()
             .enumerate()
             .find(|(_index, item)| item.as_bytes().eq(arg.as_slice()))
-            .ok_or(RedisError::String(format!(
+            .ok_or(ValkeyError::String(format!(
                 "Enum '{}' not exists",
                 arg.to_string_lossy()
             )))?;
@@ -482,9 +482,9 @@ pub fn get_enum_default_config_value<G: EnumConfigurationValue>(
 
 pub fn module_config_get(
     ctx: &Context,
-    args: Vec<RedisString>,
+    args: Vec<ValkeyString>,
     name: &str,
-) -> Result<RedisValue, RedisError> {
+) -> Result<ValkeyValue, ValkeyError> {
     let mut args: Vec<String> = args
         .into_iter()
         .skip(1)
@@ -503,7 +503,7 @@ pub fn module_config_get(
             .as_slice(),
     );
     let res = res.map_err(|e| {
-        RedisError::String(
+        ValkeyError::String(
             e.to_utf8_string()
                 .unwrap_or("Failed converting error to utf8".into()),
         )
@@ -513,9 +513,9 @@ pub fn module_config_get(
 
 pub fn module_config_set(
     ctx: &Context,
-    args: Vec<RedisString>,
+    args: Vec<ValkeyString>,
     name: &str,
-) -> Result<RedisValue, RedisError> {
+) -> Result<ValkeyValue, ValkeyError> {
     let mut args: Vec<String> = args
         .into_iter()
         .skip(1)
@@ -541,7 +541,7 @@ pub fn module_config_set(
             .as_slice(),
     );
     let res = res.map_err(|e| {
-        RedisError::String(
+        ValkeyError::String(
             e.to_utf8_string()
                 .unwrap_or("Failed converting error to utf8".into()),
         )

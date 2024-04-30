@@ -1,48 +1,48 @@
-use redis_module::{
-    redis_module, BlockedClient, CallOptionResp, CallOptionsBuilder, CallReply, CallResult,
-    Context, FutureCallReply, PromiseCallReply, RedisError, RedisResult, RedisString, RedisValue,
-    ThreadSafeContext,
+use valkey_module::{
+    valkey_module, BlockedClient, CallOptionResp, CallOptionsBuilder, CallReply, CallResult,
+    Context, FutureCallReply, PromiseCallReply, ThreadSafeContext, ValkeyError, ValkeyResult,
+    ValkeyString, ValkeyValue,
 };
 
 use std::thread;
 
-fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
+fn call_test(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     let res: String = ctx.call("ECHO", &["TEST"])?.try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str("Failed calling 'ECHO TEST'"));
+        return Err(ValkeyError::Str("Failed calling 'ECHO TEST'"));
     }
 
     let res: String = ctx.call("ECHO", vec!["TEST"].as_slice())?.try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' dynamic str vec",
         ));
     }
 
     let res: String = ctx.call("ECHO", &[b"TEST"])?.try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' with static [u8]",
         ));
     }
 
     let res: String = ctx.call("ECHO", vec![b"TEST"].as_slice())?.try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' dynamic &[u8] vec",
         ));
     }
 
     let res: String = ctx.call("ECHO", &[&"TEST".to_string()])?.try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str("Failed calling 'ECHO TEST' with String"));
+        return Err(ValkeyError::Str("Failed calling 'ECHO TEST' with String"));
     }
 
     let res: String = ctx
         .call("ECHO", vec![&"TEST".to_string()].as_slice())?
         .try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' dynamic &[u8] vec",
         ));
     }
@@ -51,7 +51,7 @@ fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
         .call("ECHO", &[&ctx.create_string("TEST")])?
         .try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' with RedisString",
         ));
     }
@@ -60,7 +60,7 @@ fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
         .call("ECHO", vec![&ctx.create_string("TEST")].as_slice())?
         .try_into()?;
     if "TEST" != &res {
-        return Err(RedisError::Str(
+        return Err(ValkeyError::Str(
             "Failed calling 'ECHO TEST' with dynamic array of RedisString",
         ));
     }
@@ -70,12 +70,12 @@ fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
     if let Err(err) = res {
         let error_msg = err.to_utf8_string().unwrap();
         if !error_msg.contains("not allow") {
-            return Err(RedisError::String(format!(
+            return Err(ValkeyError::String(format!(
                 "Failed to verify error messages, expected error message to contain 'not allow', error message: '{error_msg}'",
             )));
         }
     } else {
-        return Err(RedisError::Str("Failed to set script mode on call_ext"));
+        return Err(ValkeyError::Str("Failed to set script mode on call_ext"));
     }
 
     // test resp3 on call_ext
@@ -85,10 +85,10 @@ fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
         .errors_as_replies()
         .build();
     ctx.call_ext::<_, CallResult>("HSET", &call_options, &["x", "foo", "bar"])
-        .map_err(|e| -> RedisError { e.into() })?;
+        .map_err(|e| -> ValkeyError { e.into() })?;
     let res: CallReply = ctx
         .call_ext::<_, CallResult>("HGETALL", &call_options, &["x"])
-        .map_err(|e| -> RedisError { e.into() })?;
+        .map_err(|e| -> ValkeyError { e.into() })?;
     if let CallReply::Map(map) = res {
         let res = map.iter().fold(Vec::new(), |mut vec, (key, val)| {
             if let CallReply::String(key) = key.unwrap() {
@@ -100,12 +100,12 @@ fn call_test(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
             vec
         });
         if res != vec!["foo".to_string(), "bar".to_string()] {
-            return Err(RedisError::String(
+            return Err(ValkeyError::String(
                 "Reply of hgetall does not match expected value".into(),
             ));
         }
     } else {
-        return Err(RedisError::String(
+        return Err(ValkeyError::String(
             "Did not get a set type on hgetall".into(),
         ));
     }
@@ -126,22 +126,22 @@ fn call_blocking_handle_future(ctx: &Context, f: FutureCallReply, blocked_client
     future_handler.dispose(ctx);
 }
 
-fn call_blocking(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
+fn call_blocking(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     let res = call_blocking_internal(ctx);
     match res {
         PromiseCallReply::Resolved(r) => r.map_or_else(|e| Err(e.into()), |v| Ok((&v).into())),
         PromiseCallReply::Future(f) => {
             let blocked_client = ctx.block_client();
             call_blocking_handle_future(ctx, f, blocked_client);
-            Ok(RedisValue::NoReply)
+            Ok(ValkeyValue::NoReply)
         }
     }
 }
 
-fn call_blocking_from_detach_ctx(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
+fn call_blocking_from_detach_ctx(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     let blocked_client = ctx.block_client();
     thread::spawn(move || {
-        let ctx_guard = redis_module::MODULE_CONTEXT.lock();
+        let ctx_guard = valkey_module::MODULE_CONTEXT.lock();
         let res = call_blocking_internal(&ctx_guard);
         match res {
             PromiseCallReply::Resolved(r) => {
@@ -153,15 +153,15 @@ fn call_blocking_from_detach_ctx(ctx: &Context, _: Vec<RedisString>) -> RedisRes
             }
         }
     });
-    Ok(RedisValue::NoReply)
+    Ok(ValkeyValue::NoReply)
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "call",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["call.test", call_test, "", 0, 0, 0],

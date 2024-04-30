@@ -1,7 +1,7 @@
 use std::ffi::CStr;
 
-use crate::{context::Context, RedisError};
-use crate::{raw, InfoContext, RedisResult};
+use crate::{context::Context, ValkeyError};
+use crate::{raw, InfoContext, ValkeyResult};
 use linkme::distributed_slice;
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -58,7 +58,7 @@ pub static CONFIG_CHANGED_SERVER_EVENTS_LIST: [fn(&Context, &[&str])] = [..];
 pub static CRON_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
 
 #[distributed_slice()]
-pub static INFO_COMMAND_HANDLER_LIST: [fn(&InfoContext, bool) -> RedisResult<()>] = [..];
+pub static INFO_COMMAND_HANDLER_LIST: [fn(&InfoContext, bool) -> ValkeyResult<()>] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -180,7 +180,7 @@ fn register_single_server_event_type<T>(
     callbacks: &[fn(&Context, T)],
     server_event: u64,
     inner_callback: raw::RedisModuleEventCallback,
-) -> Result<(), RedisError> {
+) -> Result<(), ValkeyError> {
     if !callbacks.is_empty() {
         let res = unsafe {
             raw::RedisModule_SubscribeToServerEvent.unwrap()(
@@ -193,14 +193,14 @@ fn register_single_server_event_type<T>(
             )
         };
         if res != raw::REDISMODULE_OK as i32 {
-            return Err(RedisError::Str("Failed subscribing to server event"));
+            return Err(ValkeyError::Str("Failed subscribing to server event"));
         }
     }
 
     Ok(())
 }
 
-pub fn register_server_events(ctx: &Context) -> Result<(), RedisError> {
+pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
     register_single_server_event_type(
         ctx,
         &ROLE_CHANGED_SERVER_EVENTS_LIST,

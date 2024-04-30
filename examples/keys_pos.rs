@@ -1,9 +1,9 @@
-use redis_module::{redis_module, Context, RedisError, RedisResult, RedisString, RedisValue};
+use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue};
 
-fn keys_pos(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn keys_pos(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     // Number of args (excluding command name) must be even
     if (args.len() - 1) % 2 != 0 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
     if ctx.is_keys_position_request() {
@@ -12,7 +12,7 @@ fn keys_pos(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
                 ctx.key_at_pos(i as i32);
             }
         }
-        return Ok(RedisValue::NoReply);
+        return Ok(ValkeyValue::NoReply);
     }
 
     let reply: Vec<_> = args.iter().skip(1).step_by(2).collect();
@@ -22,10 +22,10 @@ fn keys_pos(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "keys_pos",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["keys_pos", keys_pos, "getkeys-api", 1, 1, 1],

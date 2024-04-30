@@ -1,10 +1,10 @@
-use redis_module::{
-    redis_module, Context, NextArg, RedisError, RedisResult, RedisString, RedisValue,
+use valkey_module::{
+    valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
 };
 
-fn info_cmd(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn info_cmd(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 3 {
-        return Err(RedisError::WrongArity);
+        return Err(ValkeyError::WrongArity);
     }
 
     let mut args = args.into_iter().skip(1);
@@ -15,15 +15,15 @@ fn info_cmd(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     let server_info = ctx.server_info(section);
     Ok(server_info
         .field(field)
-        .map_or(RedisValue::Null, RedisValue::BulkRedisString))
+        .map_or(ValkeyValue::Null, ValkeyValue::BulkValkeyString))
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "info",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["infoex", info_cmd, "", 0, 0, 0],

@@ -310,7 +310,7 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
         .map(|v| {
             let flags: Vec<&'static str> = v.flags.iter().map(|v| v.into()).collect();
             quote! {
-                vec![#(redis_module::commands::KeySpecFlags::try_from(#flags)?, )*]
+                vec![#(valkey_module::commands::KeySpecFlags::try_from(#flags)?, )*]
             }
         })
         .collect();
@@ -322,14 +322,14 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
             BeginSearch::Index(i) => {
                 let i = i.index;
                 quote! {
-                    redis_module::commands::BeginSearch::new_index(#i)
+                    valkey_module::commands::BeginSearch::new_index(#i)
                 }
             }
             BeginSearch::Keyword(begin_search_keyword) => {
                 let k = begin_search_keyword.keyword.as_str();
                 let i = begin_search_keyword.startfrom;
                 quote! {
-                    redis_module::commands::BeginSearch::new_keyword(#k.to_owned(), #i)
+                    valkey_module::commands::BeginSearch::new_keyword(#k.to_owned(), #i)
                 }
             }
         })
@@ -344,7 +344,7 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
                 let firstkey = find_keys_num.first_key;
                 let keystep = find_keys_num.key_step;
                 quote! {
-                    redis_module::commands::FindKeys::new_keys_num(#keynumidx, #firstkey, #keystep)
+                    valkey_module::commands::FindKeys::new_keys_num(#keynumidx, #firstkey, #keystep)
                 }
             }
             FindKeys::Range(find_keys_range) => {
@@ -352,7 +352,7 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
                 let steps = find_keys_range.steps;
                 let limit = find_keys_range.limit;
                 quote! {
-                    redis_module::commands::FindKeys::new_range(#last_key, #steps, #limit)
+                    valkey_module::commands::FindKeys::new_range(#last_key, #steps, #limit)
                 }
             }
         })
@@ -362,22 +362,22 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
         #func
 
         extern "C" fn #c_function_name(
-            ctx: *mut redis_module::raw::RedisModuleCtx,
-            argv: *mut *mut redis_module::raw::RedisModuleString,
+            ctx: *mut valkey_module::raw::RedisModuleCtx,
+            argv: *mut *mut valkey_module::raw::RedisModuleString,
             argc: i32,
         ) -> i32 {
-            let context = redis_module::Context::new(ctx);
+            let context = valkey_module::Context::new(ctx);
 
-            let args = redis_module::decode_args(ctx, argv, argc);
+            let args = valkey_module::decode_args(ctx, argv, argc);
             let response = #original_function_name(&context, args);
             context.reply(response.map(|v| v.into())) as i32
         }
 
-        #[linkme::distributed_slice(redis_module::commands::COMMANDS_LIST)]
-        fn #get_command_info_function_name() -> Result<redis_module::commands::CommandInfo, redis_module::RedisError> {
+        #[linkme::distributed_slice(valkey_module::commands::COMMANDS_LIST)]
+        fn #get_command_info_function_name() -> Result<valkey_module::commands::CommandInfo, valkey_module::ValkeyError> {
             let key_spec = vec![
                 #(
-                    redis_module::commands::KeySpec::new(
+                    valkey_module::commands::KeySpec::new(
                         #key_spec_notes,
                         #key_spec_flags.into(),
                         #key_spec_begin_search,
@@ -385,7 +385,7 @@ pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream
                     ),
                 )*
             ];
-            Ok(redis_module::commands::CommandInfo::new(
+            Ok(valkey_module::commands::CommandInfo::new(
                 #name_literal.to_owned(),
                 Some(#flags_literal.to_owned()),
                 Some(#enterprise_flags_literal.to_owned()),

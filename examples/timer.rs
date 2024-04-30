@@ -1,5 +1,5 @@
-use redis_module::{redis_module, Context, NextArg, RedisResult, RedisString};
 use std::time::Duration;
+use valkey_module::{valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
 fn callback(ctx: &Context, data: String) {
     ctx.log_debug(format!("[callback]: {}", data).as_str());
@@ -7,7 +7,7 @@ fn callback(ctx: &Context, data: String) {
 
 type MyData = String;
 
-fn timer_create(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn timer_create(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let duration = args.next_i64()?;
     let data: MyData = args.next_string()?;
@@ -17,7 +17,7 @@ fn timer_create(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     return Ok(format!("{}", timer_id).into());
 }
 
-fn timer_info(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn timer_info(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let timer_id = args.next_u64()?;
 
@@ -27,7 +27,7 @@ fn timer_info(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     Ok(reply.into())
 }
 
-fn timer_stop(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn timer_stop(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let timer_id = args.next_u64()?;
 
@@ -39,10 +39,10 @@ fn timer_stop(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "timer",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["timer.create", timer_create, "", 0, 0, 0],

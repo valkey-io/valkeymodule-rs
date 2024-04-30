@@ -4,10 +4,10 @@ use std::sync::{
 };
 
 use lazy_static::lazy_static;
-use redis_module::{
+use valkey_module::{
     configuration::{ConfigurationContext, ConfigurationFlags},
-    enum_configuration, redis_module, ConfigurationValue, Context, RedisGILGuard, RedisResult,
-    RedisString, RedisValue,
+    enum_configuration, valkey_module, ConfigurationValue, Context, ValkeyGILGuard, ValkeyResult,
+    ValkeyString, ValkeyValue,
 };
 
 enum_configuration! {
@@ -18,17 +18,17 @@ enum_configuration! {
 }
 
 lazy_static! {
-    static ref NUM_OF_CONFIGURATION_CHANGES: RedisGILGuard<i64> = RedisGILGuard::default();
-    static ref CONFIGURATION_I64: RedisGILGuard<i64> = RedisGILGuard::default();
+    static ref NUM_OF_CONFIGURATION_CHANGES: ValkeyGILGuard<i64> = ValkeyGILGuard::default();
+    static ref CONFIGURATION_I64: ValkeyGILGuard<i64> = ValkeyGILGuard::default();
     static ref CONFIGURATION_ATOMIC_I64: AtomicI64 = AtomicI64::new(1);
-    static ref CONFIGURATION_REDIS_STRING: RedisGILGuard<RedisString> =
-        RedisGILGuard::new(RedisString::create(None, "default"));
-    static ref CONFIGURATION_STRING: RedisGILGuard<String> = RedisGILGuard::new("default".into());
+    static ref CONFIGURATION_REDIS_STRING: ValkeyGILGuard<ValkeyString> =
+        ValkeyGILGuard::new(ValkeyString::create(None, "default"));
+    static ref CONFIGURATION_STRING: ValkeyGILGuard<String> = ValkeyGILGuard::new("default".into());
     static ref CONFIGURATION_MUTEX_STRING: Mutex<String> = Mutex::new("default".into());
     static ref CONFIGURATION_ATOMIC_BOOL: AtomicBool = AtomicBool::default();
-    static ref CONFIGURATION_BOOL: RedisGILGuard<bool> = RedisGILGuard::default();
-    static ref CONFIGURATION_ENUM: RedisGILGuard<EnumConfiguration> =
-        RedisGILGuard::new(EnumConfiguration::Val1);
+    static ref CONFIGURATION_BOOL: ValkeyGILGuard<bool> = ValkeyGILGuard::default();
+    static ref CONFIGURATION_ENUM: ValkeyGILGuard<EnumConfiguration> =
+        ValkeyGILGuard::new(EnumConfiguration::Val1);
     static ref CONFIGURATION_MUTEX_ENUM: Mutex<EnumConfiguration> =
         Mutex::new(EnumConfiguration::Val1);
 }
@@ -42,17 +42,17 @@ fn on_configuration_changed<G, T: ConfigurationValue<G>>(
     *val += 1
 }
 
-fn num_changes(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
+fn num_changes(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     let val = NUM_OF_CONFIGURATION_CHANGES.lock(ctx);
-    Ok(RedisValue::Integer(*val))
+    Ok(ValkeyValue::Integer(*val))
 }
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "configuration",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [],
     commands: [
         ["configuration.num_changes", num_changes, "", 0, 0, 0],

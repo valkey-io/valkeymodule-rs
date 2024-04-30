@@ -1,6 +1,6 @@
 [package]
 name = "redis-module-macros-internals"
-version = "99.99.99"
+version = "2.0.7"
 authors = ["Meir Shpilraien <meir@redis.com>"]
 edition = "2021"
 description = "A macros crate for redismodule-rs"

@@ -1,13 +1,13 @@
-use redis_module::native_types::RedisType;
-use redis_module::{raw, redis_module, Context, NextArg, RedisResult, RedisString};
 use std::os::raw::c_void;
+use valkey_module::native_types::ValkeyType;
+use valkey_module::{raw, valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
 #[derive(Debug)]
 struct MyType {
     data: String,
 }
 
-static MY_REDIS_TYPE: RedisType = RedisType::new(
+static MY_REDIS_TYPE: ValkeyType = ValkeyType::new(
     "mytype123",
     0,
     raw::RedisModuleTypeMethods {
@@ -43,7 +43,7 @@ unsafe extern "C" fn free(value: *mut c_void) {
     drop(Box::from_raw(value.cast::<MyType>()));
 }
 
-fn alloc_set(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn alloc_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let key = args.next_arg()?;
     let size = args.next_i64()?;
@@ -64,7 +64,7 @@ fn alloc_set(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
     Ok(size.into())
 }
 
-fn alloc_get(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
+fn alloc_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let key = args.next_arg()?;
 
@@ -80,10 +80,10 @@ fn alloc_get(ctx: &Context, args: Vec<RedisString>) -> RedisResult {
 
 //////////////////////////////////////////////////////
 
-redis_module! {
+valkey_module! {
     name: "alloc",
     version: 1,
-    allocator: (redis_module::alloc::RedisAlloc, redis_module::alloc::RedisAlloc),
+    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
         MY_REDIS_TYPE,
     ],

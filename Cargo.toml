@@ -1,14 +1,14 @@
 [package]
-name = "redis-module"
-version = "99.99.99"
-authors = ["Gavrie Philipson <gavrie@redis.com>", "Guy Korland <guy.korland@redis.com>"]
+name = "valkey-module"
+version = "0.1.0"
+authors = ["Dmitry Polyakovsky <dmitry.polyakovsky@oracle.com>"]
 edition = "2021"
 build = "build.rs"
-description = "A toolkit for building Redis modules in Rust"
+description = "A toolkit for building valkey modules in Rust"
 license = "BSD-3-Clause"
-repository = "https://github.com/RedisLabsModules/redismodule-rs"
+repository = "https://github.com/valkey-io/valkeymodule-rs"
 readme = "README.md"
-keywords = ["redis", "plugin"]
+keywords = ["valkey", "plugin"]
 categories = ["database", "api-bindings"]
 
 [[example]]
@@ -132,7 +132,7 @@ linkme = "0.3"
 serde = { version = "1", features = ["derive"] }
 nix = "0.26"
 cfg-if = "1"
-redis-module-macros-internals = { path = "./redismodule-rs-macros-internals" }
+redis-module-macros-internals = { path = "./redismodule-rs-macros-internals", version = "2.0.7"}
 log = "0.4"
 
 [dev-dependencies]
@@ -140,7 +140,7 @@ anyhow = "1"
 redis = "0.23"
 lazy_static = "1"
 redis-module-macros = { path = "./redismodule-rs-macros"}
-redis-module = { path = "./", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
+valkey-module = { path = "./", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
 
 [build-dependencies]
 bindgen = "0.66"

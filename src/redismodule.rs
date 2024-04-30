@@ -14,84 +14,84 @@ use std::{fmt, ptr};
 use serde::de::{Error, SeqAccess};
 
 pub use crate::raw;
-pub use crate::rediserror::RedisError;
-pub use crate::redisvalue::RedisValue;
+pub use crate::rediserror::ValkeyError;
+pub use crate::redisvalue::ValkeyValue;
 use crate::Context;
 
 /// A short-hand type that stores a [std::result::Result] with custom
 /// type and [RedisError].
-pub type RedisResult<T = RedisValue> = Result<T, RedisError>;
-/// A [RedisResult] with [RedisValue].
-pub type RedisValueResult = RedisResult<RedisValue>;
+pub type ValkeyResult<T = ValkeyValue> = Result<T, ValkeyError>;
+/// A [RedisResult] with [ValkeyValue].
+pub type ValkeyValueResult = ValkeyResult<ValkeyValue>;
 
-impl From<RedisValue> for RedisValueResult {
-    fn from(v: RedisValue) -> Self {
+impl From<ValkeyValue> for ValkeyValueResult {
+    fn from(v: ValkeyValue) -> Self {
         Ok(v)
     }
 }
 
-impl From<RedisError> for RedisValueResult {
-    fn from(v: RedisError) -> Self {
+impl From<ValkeyError> for ValkeyValueResult {
+    fn from(v: ValkeyError) -> Self {
         Err(v)
     }
 }
 
-pub const REDIS_OK: RedisValueResult = Ok(RedisValue::SimpleStringStatic("OK"));
+pub const REDIS_OK: ValkeyValueResult = Ok(ValkeyValue::SimpleStringStatic("OK"));
 pub const TYPE_METHOD_VERSION: u64 = raw::REDISMODULE_TYPE_METHOD_VERSION as u64;
 
 pub trait NextArg {
-    fn next_arg(&mut self) -> Result<RedisString, RedisError>;
-    fn next_string(&mut self) -> Result<String, RedisError>;
-    fn next_str<'a>(&mut self) -> Result<&'a str, RedisError>;
-    fn next_i64(&mut self) -> Result<i64, RedisError>;
-    fn next_u64(&mut self) -> Result<u64, RedisError>;
-    fn next_f64(&mut self) -> Result<f64, RedisError>;
-    fn done(&mut self) -> Result<(), RedisError>;
+    fn next_arg(&mut self) -> Result<ValkeyString, ValkeyError>;
+    fn next_string(&mut self) -> Result<String, ValkeyError>;
+    fn next_str<'a>(&mut self) -> Result<&'a str, ValkeyError>;
+    fn next_i64(&mut self) -> Result<i64, ValkeyError>;
+    fn next_u64(&mut self) -> Result<u64, ValkeyError>;
+    fn next_f64(&mut self) -> Result<f64, ValkeyError>;
+    fn done(&mut self) -> Result<(), ValkeyError>;
 }
 
 impl<T> NextArg for T
 where
-    T: Iterator<Item = RedisString>,
+    T: Iterator<Item = ValkeyString>,
 {
     #[inline]
-    fn next_arg(&mut self) -> Result<RedisString, RedisError> {
-        self.next().ok_or(RedisError::WrongArity)
+    fn next_arg(&mut self) -> Result<ValkeyString, ValkeyError> {
+        self.next().ok_or(ValkeyError::WrongArity)
     }
 
     #[inline]
-    fn next_string(&mut self) -> Result<String, RedisError> {
+    fn next_string(&mut self) -> Result<String, ValkeyError> {
         self.next()
-            .map_or(Err(RedisError::WrongArity), |v| Ok(v.to_string_lossy()))
+            .map_or(Err(ValkeyError::WrongArity), |v| Ok(v.to_string_lossy()))
     }
 
     #[inline]
-    fn next_str<'a>(&mut self) -> Result<&'a str, RedisError> {
+    fn next_str<'a>(&mut self) -> Result<&'a str, ValkeyError> {
         self.next()
-            .map_or(Err(RedisError::WrongArity), |v| v.try_as_str())
+            .map_or(Err(ValkeyError::WrongArity), |v| v.try_as_str())
     }
 
     #[inline]
-    fn next_i64(&mut self) -> Result<i64, RedisError> {
+    fn next_i64(&mut self) -> Result<i64, ValkeyError> {
         self.next()
-            .map_or(Err(RedisError::WrongArity), |v| v.parse_integer())
+            .map_or(Err(ValkeyError::WrongArity), |v| v.parse_integer())
     }
 
     #[inline]
-    fn next_u64(&mut self) -> Result<u64, RedisError> {
+    fn next_u64(&mut self) -> Result<u64, ValkeyError> {
         self.next()
-            .map_or(Err(RedisError::WrongArity), |v| v.parse_unsigned_integer())
+            .map_or(Err(ValkeyError::WrongArity), |v| v.parse_unsigned_integer())
     }
 
     #[inline]
-    fn next_f64(&mut self) -> Result<f64, RedisError> {
+    fn next_f64(&mut self) -> Result<f64, ValkeyError> {
         self.next()
-            .map_or(Err(RedisError::WrongArity), |v| v.parse_float())
+            .map_or(Err(ValkeyError::WrongArity), |v| v.parse_float())
     }
 
     /// Return an error if there are any more arguments
     #[inline]
-    fn done(&mut self) -> Result<(), RedisError> {
-        self.next().map_or(Ok(()), |_| Err(RedisError::WrongArity))
+    fn done(&mut self) -> Result<(), ValkeyError> {
+        self.next().map_or(Ok(()), |_| Err(ValkeyError::WrongArity))
     }
 }
 
@@ -100,25 +100,25 @@ pub fn decode_args(
     ctx: *mut raw::RedisModuleCtx,
     argv: *mut *mut raw::RedisModuleString,
     argc: c_int,
-) -> Vec<RedisString> {
+) -> Vec<ValkeyString> {
     if argv.is_null() {
         return Vec::new();
     }
     unsafe { slice::from_raw_parts(argv, argc as usize) }
         .iter()
-        .map(|&arg| RedisString::new(NonNull::new(ctx), arg))
+        .map(|&arg| ValkeyString::new(NonNull::new(ctx), arg))
         .collect()
 }
 
 ///////////////////////////////////////////////////
 
 #[derive(Debug)]
-pub struct RedisString {
+pub struct ValkeyString {
     ctx: *mut raw::RedisModuleCtx,
     pub inner: *mut raw::RedisModuleString,
 }
 
-impl RedisString {
+impl ValkeyString {
     pub(crate) fn take(mut self) -> *mut raw::RedisModuleString {
         let inner = self.inner;
         self.inner = std::ptr::null_mut();
@@ -201,8 +201,8 @@ impl RedisString {
         len == 0
     }
 
-    pub fn try_as_str<'a>(&self) -> Result<&'a str, RedisError> {
-        Self::from_ptr(self.inner).map_err(|_| RedisError::Str("Couldn't parse as UTF-8 string"))
+    pub fn try_as_str<'a>(&self) -> Result<&'a str, ValkeyError> {
+        Self::from_ptr(self.inner).map_err(|_| ValkeyError::Str("Couldn't parse as UTF-8 string"))
     }
 
     #[must_use]
@@ -230,25 +230,25 @@ impl RedisString {
         String::from_utf8_lossy(self.as_slice()).into_owned()
     }
 
-    pub fn parse_unsigned_integer(&self) -> Result<u64, RedisError> {
+    pub fn parse_unsigned_integer(&self) -> Result<u64, ValkeyError> {
         let val = self.parse_integer()?;
         u64::try_from(val)
-            .map_err(|_| RedisError::Str("Couldn't parse negative number as unsigned integer"))
+            .map_err(|_| ValkeyError::Str("Couldn't parse negative number as unsigned integer"))
     }
 
-    pub fn parse_integer(&self) -> Result<i64, RedisError> {
+    pub fn parse_integer(&self) -> Result<i64, ValkeyError> {
         let mut val: i64 = 0;
         match raw::string_to_longlong(self.inner, &mut val) {
             raw::Status::Ok => Ok(val),
-            raw::Status::Err => Err(RedisError::Str("Couldn't parse as integer")),
+            raw::Status::Err => Err(ValkeyError::Str("Couldn't parse as integer")),
         }
     }
 
-    pub fn parse_float(&self) -> Result<f64, RedisError> {
+    pub fn parse_float(&self) -> Result<f64, ValkeyError> {
         let mut val: f64 = 0.0;
         match raw::string_to_double(self.inner, &mut val) {
             raw::Status::Ok => Ok(val),
-            raw::Status::Err => Err(RedisError::Str("Couldn't parse as float")),
+            raw::Status::Err => Err(ValkeyError::Str("Couldn't parse as float")),
         }
     }
 
@@ -259,7 +259,7 @@ impl RedisString {
     // pub fn as_bytes(&self) -> &[u8] {}
 }
 
-impl Drop for RedisString {
+impl Drop for ValkeyString {
     fn drop(&mut self) {
         if !self.inner.is_null() {
             unsafe {
@@ -269,46 +269,46 @@ impl Drop for RedisString {
     }
 }
 
-impl PartialEq for RedisString {
+impl PartialEq for ValkeyString {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other).is_eq()
     }
 }
 
-impl Eq for RedisString {}
+impl Eq for ValkeyString {}
 
-impl PartialOrd for RedisString {
+impl PartialOrd for ValkeyString {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl Ord for RedisString {
+impl Ord for ValkeyString {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         raw::string_compare(self.inner, other.inner)
     }
 }
 
-impl core::hash::Hash for RedisString {
+impl core::hash::Hash for ValkeyString {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.as_slice().hash(state);
     }
 }
 
-impl Display for RedisString {
+impl Display for ValkeyString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.to_string_lossy())
     }
 }
 
-impl Borrow<str> for RedisString {
+impl Borrow<str> for ValkeyString {
     fn borrow(&self) -> &str {
         // RedisString might not be UTF-8 safe
         self.try_as_str().unwrap_or("<Invalid UTF-8 data>")
     }
 }
 
-impl Clone for RedisString {
+impl Clone for ValkeyString {
     fn clone(&self) -> Self {
         let inner =
             // Redis allows us to create RedisModuleString with NULL context
@@ -320,13 +320,13 @@ impl Clone for RedisString {
     }
 }
 
-impl From<RedisString> for String {
-    fn from(rs: RedisString) -> Self {
+impl From<ValkeyString> for String {
+    fn from(rs: ValkeyString) -> Self {
         rs.to_string_lossy()
     }
 }
 
-impl Deref for RedisString {
+impl Deref for ValkeyString {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -334,13 +334,13 @@ impl Deref for RedisString {
     }
 }
 
-impl From<RedisString> for Vec<u8> {
-    fn from(rs: RedisString) -> Self {
+impl From<ValkeyString> for Vec<u8> {
+    fn from(rs: ValkeyString) -> Self {
         rs.as_slice().to_vec()
     }
 }
 
-impl serde::Serialize for RedisString {
+impl serde::Serialize for ValkeyString {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -352,7 +352,7 @@ impl serde::Serialize for RedisString {
 struct RedisStringVisitor;
 
 impl<'de> serde::de::Visitor<'de> for RedisStringVisitor {
-    type Value = RedisString;
+    type Value = ValkeyString;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("A bytes buffer")
@@ -362,7 +362,7 @@ impl<'de> serde::de::Visitor<'de> for RedisStringVisitor {
     where
         E: Error,
     {
-        Ok(RedisString::create(None, v))
+        Ok(ValkeyString::create(None, v))
     }
 
     fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error>
@@ -378,12 +378,12 @@ impl<'de> serde::de::Visitor<'de> for RedisStringVisitor {
             v.push(elem);
         }
 
-        Ok(RedisString::create(None, v.as_slice()))
+        Ok(ValkeyString::create(None, v.as_slice()))
     }
 }
 
-impl<'de> serde::Deserialize<'de> for RedisString {
-    fn deserialize<D>(deserializer: D) -> Result<RedisString, D::Error>
+impl<'de> serde::Deserialize<'de> for ValkeyString {
+    fn deserialize<D>(deserializer: D) -> Result<ValkeyString, D::Error>
     where
         D: serde::Deserializer<'de>,
     {

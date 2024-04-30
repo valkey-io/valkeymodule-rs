@@ -79,7 +79,7 @@ fn test_helper_version() -> Result<()> {
 
 #[test]
 fn test_command_name() -> Result<()> {
-    use redis_module::RedisValue;
+    use valkey_module::ValkeyValue;
 
     let port: u16 = 6482;
     let _guards = vec![start_redis_server_with_module("test_helper", port)
@@ -96,7 +96,7 @@ fn test_command_name() -> Result<()> {
         .query(&mut con)
         .with_context(|| "failed to run test_helper.name")?;
 
-    if let Ok(ver) = redis_module::Context::version_from_info(RedisValue::SimpleString(info)) {
+    if let Ok(ver) = valkey_module::Context::version_from_info(ValkeyValue::SimpleString(info)) {
         if ver.major > 6
             || (ver.major == 6 && ver.minor > 2)
             || (ver.major == 6 && ver.minor == 2 && ver.patch >= 5)

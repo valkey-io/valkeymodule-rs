@@ -8,26 +8,26 @@ extern crate redis_module;
 
 use redis_module::raw;
 use redis_module::Context;
-use redis_module::{Command, RedisResult, RedisValue, RedisError};
+use redis_module::{Command, ValkeyResult, ValkeyValue, RedisError};
 
 const MODULE_NAME: &str = "hello";
 const MODULE_VERSION: u32 = 1;
 
 
-fn hello_mul(_: &Context, args: Vec<String>) -> RedisResult {
+fn hello_mul(_: &Context, args: Vec<String>) -> ValkeyResult {
     if args.len() != 3 {
         return Err(RedisError::WrongArity);
     }
 
-    // TODO: Write generic RedisValue::parse method
-    if let RedisValue::Integer(m1) = parse_integer(&args[1])? {
-        if let RedisValue::Integer(m2) = parse_integer(&args[2])? {
+    // TODO: Write generic ValkeyValue::parse method
+    if let ValkeyValue::Integer(m1) = parse_integer(&args[1])? {
+        if let ValkeyValue::Integer(m2) = parse_integer(&args[2])? {
             let result = m1 * m2;
 
-            return Ok(RedisValue::Array(
+            return Ok(ValkeyValue::Array(
                 vec![m1, m2, result]
                     .into_iter()
-                    .map(|v| RedisValue::Integer(v))
+                    .map(|v| ValkeyValue::Integer(v))
                     .collect()));
         }
     }
@@ -87,6 +87,6 @@ pub extern "C" fn RedisModule_OnLoad(
 fn parse_integer(arg: &str) -> RedisResult {
     arg.parse::<i64>()
         .map_err(|_| RedisError::String("Couldn't parse as integer"))
-        .map(|v| RedisValue::Integer(v))
+        .map(|v| ValkeyValue::Integer(v))
     //Error::generic(format!("Couldn't parse as integer: {}", arg).as_str()))
 }

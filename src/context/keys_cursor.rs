@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::key::RedisKey;
 use crate::raw;
-use crate::redismodule::RedisString;
+use crate::redismodule::ValkeyString;
 use std::ffi::c_void;
 use std::ptr::NonNull;
 
@@ -9,14 +9,14 @@ pub struct KeysCursor {
     inner_cursor: *mut raw::RedisModuleScanCursor,
 }
 
-extern "C" fn scan_callback<C: FnMut(&Context, RedisString, Option<&RedisKey>)>(
+extern "C" fn scan_callback<C: FnMut(&Context, ValkeyString, Option<&RedisKey>)>(
     ctx: *mut raw::RedisModuleCtx,
     key_name: *mut raw::RedisModuleString,
     key: *mut raw::RedisModuleKey,
     private_data: *mut ::std::os::raw::c_void,
 ) {
     let context = Context::new(ctx);
-    let key_name = RedisString::new(NonNull::new(ctx), key_name);
+    let key_name = ValkeyString::new(NonNull::new(ctx), key_name);
     let redis_key = if key.is_null() {
         None
     } else {
@@ -35,7 +35,7 @@ impl KeysCursor {
         Self { inner_cursor }
     }
 
-    pub fn scan<F: FnMut(&Context, RedisString, Option<&RedisKey>)>(
+    pub fn scan<F: FnMut(&Context, ValkeyString, Option<&RedisKey>)>(
         &self,
         ctx: &Context,
         callback: &F,
