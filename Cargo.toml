@@ -137,7 +137,7 @@ log = "0.4"
 
 [dev-dependencies]
 anyhow = "1"
-redis = "0.23"
+redis = "0.25"
 lazy_static = "1"
 redis-module-macros = { path = "./redismodule-rs-macros"}
 valkey-module = { path = "./", default-features = false, features = ["min-redis-compatibility-version-7-2"] }
