@@ -6,9 +6,9 @@ use std::env;
 use std::path::PathBuf;
 
 #[derive(Debug)]
-struct RedisModuleCallback;
+struct ValkeyModuleCallback;
 
-impl ParseCallbacks for RedisModuleCallback {
+impl ParseCallbacks for ValkeyModuleCallback {
     fn int_macro(&self, name: &str, _value: i64) -> Option<IntKind> {
         if name.starts_with("REDISMODULE_SUBEVENT_") || name.starts_with("REDISMODULE_EVENT_") {
             Some(IntKind::U64)
@@ -34,10 +34,10 @@ impl ParseCallbacks for RedisModuleCallback {
 }
 
 fn main() {
-    // Build a Redis pseudo-library so that we have symbols that we can link
+    // Build a Valkey pseudo-library so that we have symbols that we can link
     // against while building Rust code.
     //
-    // include/redismodule.h is vendored in from the Redis project and
+    // include/redismodule.h is vendored in from the Valkey project and
     // src/redismodule.c is a stub that includes it and plays a few other
     // tricks that we need to complete the build.
 
@@ -59,7 +59,7 @@ fn main() {
         .allowlist_var("(REDIS|Redis).*")
         .blocklist_type("__darwin_.*")
         .allowlist_type("RedisModule.*")
-        .parse_callbacks(Box::new(RedisModuleCallback))
+        .parse_callbacks(Box::new(ValkeyModuleCallback))
         .size_t_is_usize(true)
         .generate()
         .expect("error generating bindings");

@@ -1,4 +1,4 @@
-use valkey_module::{logging::RedisLogLevel, valkey_module, Context, Status, ValkeyString};
+use valkey_module::{logging::ValkeyLogLevel, valkey_module, Context, Status, ValkeyString};
 
 static mut GLOBAL_STATE: Option<String> = None;
 
@@ -10,7 +10,7 @@ fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
         (before, after)
     };
     ctx.log(
-        RedisLogLevel::Warning,
+        ValkeyLogLevel::Warning,
         &format!("Update global state on LOAD. BEFORE: {before:?}, AFTER: {after:?}",),
     );
 
@@ -24,7 +24,7 @@ fn deinit(ctx: &Context) -> Status {
         (before, after)
     };
     ctx.log(
-        RedisLogLevel::Warning,
+        ValkeyLogLevel::Warning,
         &format!("Update global state on UNLOAD. BEFORE: {before:?}, AFTER: {after:?}"),
     );
 

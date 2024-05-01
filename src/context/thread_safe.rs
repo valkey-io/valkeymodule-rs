@@ -6,12 +6,12 @@ use std::ptr;
 use crate::context::blocked::BlockedClient;
 use crate::{raw, Context, ValkeyResult};
 
-pub struct RedisGILGuardScope<'ctx, 'mutex, T, G: RedisLockIndicator> {
+pub struct ValkeyGILGuardScope<'ctx, 'mutex, T, G: ValkeyLockIndicator> {
     _context: &'ctx G,
     mutex: &'mutex ValkeyGILGuard<T>,
 }
 
-impl<'ctx, 'mutex, T, G: RedisLockIndicator> Deref for RedisGILGuardScope<'ctx, 'mutex, T, G> {
+impl<'ctx, 'mutex, T, G: ValkeyLockIndicator> Deref for ValkeyGILGuardScope<'ctx, 'mutex, T, G> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -19,14 +19,14 @@ impl<'ctx, 'mutex, T, G: RedisLockIndicator> Deref for RedisGILGuardScope<'ctx, 
     }
 }
 
-impl<'ctx, 'mutex, T, G: RedisLockIndicator> DerefMut for RedisGILGuardScope<'ctx, 'mutex, T, G> {
+impl<'ctx, 'mutex, T, G: ValkeyLockIndicator> DerefMut for ValkeyGILGuardScope<'ctx, 'mutex, T, G> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         unsafe { &mut *self.mutex.obj.get() }
     }
 }
 
 /// Whenever the user gets a reference to a struct that
-/// implements this trait, it can assume that the Redis GIL
+/// implements this trait, it can assume that the Valkey GIL
 /// is held. Any struct that implements this trait can be
 /// used to retrieve objects which are GIL protected (see
 /// [RedisGILGuard] for more information)
@@ -39,20 +39,20 @@ impl<'ctx, 'mutex, T, G: RedisLockIndicator> DerefMut for RedisGILGuardScope<'ct
 /// # Safety
 ///
 /// In general this trait should not be implemented by the
-/// user, the crate knows when the Redis GIL is held and will
+/// user, the crate knows when the Valkey GIL is held and will
 /// make sure to implement this trait correctly on different
 /// struct (such as [Context], [ConfigurationContext], [ContextGuard]).
 /// User might also decide to implement this trait but he should
 /// carefully consider that because it is easy to make mistakes,
 /// this is why the trait is marked as unsafe.
-pub unsafe trait RedisLockIndicator {}
+pub unsafe trait ValkeyLockIndicator {}
 
 /// This struct allows to guard some data and makes sure
-/// the data is only access when the Redis GIL is locked.
+/// the data is only access when the Valkey GIL is locked.
 /// From example, assuming you module want to save some
 /// statistics inside some global variable, but without the
 /// need to protect this variable with some mutex (because
-/// we know this variable is protected by Redis lock).
+/// we know this variable is protected by Valkey lock).
 /// For example, look at examples/threads.rs
 pub struct ValkeyGILGuard<T> {
     obj: UnsafeCell<T>,
@@ -65,11 +65,11 @@ impl<T> ValkeyGILGuard<T> {
         }
     }
 
-    pub fn lock<'mutex, 'ctx, G: RedisLockIndicator>(
+    pub fn lock<'mutex, 'ctx, G: ValkeyLockIndicator>(
         &'mutex self,
         context: &'ctx G,
-    ) -> RedisGILGuardScope<'ctx, 'mutex, T, G> {
-        RedisGILGuardScope {
+    ) -> ValkeyGILGuardScope<'ctx, 'mutex, T, G> {
+        ValkeyGILGuardScope {
             _context: context,
             mutex: self,
         }
@@ -89,7 +89,7 @@ pub struct ContextGuard {
     ctx: Context,
 }
 
-unsafe impl RedisLockIndicator for ContextGuard {}
+unsafe impl ValkeyLockIndicator for ContextGuard {}
 
 impl Drop for ContextGuard {
     fn drop(&mut self) {
@@ -155,7 +155,7 @@ impl ThreadSafeContext<BlockedClient> {
         }
     }
 
-    /// The Redis modules API does not require locking for `Reply` functions,
+    /// The Valkey modules API does not require locking for `Reply` functions,
     /// so we pass through its functionality directly.
     #[allow(clippy::must_use_candidate)]
     pub fn reply(&self, r: ValkeyResult) -> raw::Status {

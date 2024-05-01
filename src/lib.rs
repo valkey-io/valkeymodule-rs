@@ -21,7 +21,7 @@ mod utils;
 
 pub use crate::context::blocked::BlockedClient;
 pub use crate::context::thread_safe::{
-    ContextGuard, DetachedFromClient, RedisLockIndicator, ThreadSafeContext, ValkeyGILGuard,
+    ContextGuard, DetachedFromClient, ThreadSafeContext, ValkeyGILGuard, ValkeyLockIndicator,
 };
 pub use crate::raw::NotifyEvent;
 
@@ -51,7 +51,7 @@ pub use crate::redismodule::*;
 use backtrace::Backtrace;
 use context::server_events::INFO_COMMAND_HANDLER_LIST;
 
-/// The detached Redis module context (the context of this module). It
+/// The detached Valkey module context (the context of this module). It
 /// is only set to a proper value after the module is initialised via the
 /// provided [redis_module] macro.
 /// See [DetachedContext].
@@ -59,9 +59,9 @@ pub static MODULE_CONTEXT: DetachedContext = DetachedContext::new();
 
 #[deprecated(
     since = "2.1.0",
-    note = "Please use the redis_module::logging::RedisLogLevel directly instead."
+    note = "Please use the valkey_module::logging::ValkeyLogLevel directly instead."
 )]
-pub type LogLevel = logging::RedisLogLevel;
+pub type LogLevel = logging::ValkeyLogLevel;
 
 fn add_trace_info(ctx: &InfoContext) -> ValkeyResult<()> {
     const SECTION_NAME: &str = "trace";

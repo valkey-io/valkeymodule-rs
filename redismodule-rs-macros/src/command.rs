@@ -10,7 +10,7 @@ use syn::{
 };
 
 #[derive(Debug, Deserialize)]
-pub enum RedisCommandFlags {
+pub enum ValkeyCommandFlags {
     /// The command may modify the data set (it may also read from it).
     Write,
 
@@ -82,29 +82,29 @@ pub enum RedisCommandFlags {
     GetchannelsApi,
 }
 
-impl From<&RedisCommandFlags> for &'static str {
-    fn from(value: &RedisCommandFlags) -> Self {
+impl From<&ValkeyCommandFlags> for &'static str {
+    fn from(value: &ValkeyCommandFlags) -> Self {
         match value {
-            RedisCommandFlags::Write => "write",
-            RedisCommandFlags::ReadOnly => "readonly",
-            RedisCommandFlags::Admin => "admin",
-            RedisCommandFlags::DenyOOM => "deny-oom",
-            RedisCommandFlags::DenyScript => "deny-script",
-            RedisCommandFlags::AllowLoading => "allow-loading",
-            RedisCommandFlags::PubSub => "pubsub",
-            RedisCommandFlags::Random => "random",
-            RedisCommandFlags::AllowStale => "allow-stale",
-            RedisCommandFlags::NoMonitor => "no-monitor",
-            RedisCommandFlags::NoSlowlog => "no-slowlog",
-            RedisCommandFlags::Fast => "fast",
-            RedisCommandFlags::GetkeysApi => "getkeys-api",
-            RedisCommandFlags::NoCluster => "no-cluster",
-            RedisCommandFlags::NoAuth => "no-auth",
-            RedisCommandFlags::MayReplicate => "may-replicate",
-            RedisCommandFlags::NoMandatoryKeys => "no-mandatory-keys",
-            RedisCommandFlags::Blocking => "blocking",
-            RedisCommandFlags::AllowBusy => "allow-busy",
-            RedisCommandFlags::GetchannelsApi => "getchannels-api",
+            ValkeyCommandFlags::Write => "write",
+            ValkeyCommandFlags::ReadOnly => "readonly",
+            ValkeyCommandFlags::Admin => "admin",
+            ValkeyCommandFlags::DenyOOM => "deny-oom",
+            ValkeyCommandFlags::DenyScript => "deny-script",
+            ValkeyCommandFlags::AllowLoading => "allow-loading",
+            ValkeyCommandFlags::PubSub => "pubsub",
+            ValkeyCommandFlags::Random => "random",
+            ValkeyCommandFlags::AllowStale => "allow-stale",
+            ValkeyCommandFlags::NoMonitor => "no-monitor",
+            ValkeyCommandFlags::NoSlowlog => "no-slowlog",
+            ValkeyCommandFlags::Fast => "fast",
+            ValkeyCommandFlags::GetkeysApi => "getkeys-api",
+            ValkeyCommandFlags::NoCluster => "no-cluster",
+            ValkeyCommandFlags::NoAuth => "no-auth",
+            ValkeyCommandFlags::MayReplicate => "may-replicate",
+            ValkeyCommandFlags::NoMandatoryKeys => "no-mandatory-keys",
+            ValkeyCommandFlags::Blocking => "blocking",
+            ValkeyCommandFlags::AllowBusy => "allow-busy",
+            ValkeyCommandFlags::GetchannelsApi => "getchannels-api",
         }
     }
 }
@@ -125,7 +125,7 @@ impl From<&RedisEnterpriseCommandFlags> for &'static str {
 }
 
 #[derive(Debug, Deserialize)]
-pub enum RedisCommandKeySpecFlags {
+pub enum ValkeyCommandKeySpecFlags {
     /// Read-Only. Reads the value of the key, but doesn't necessarily return it.
     ReadOnly,
 
@@ -160,20 +160,20 @@ pub enum RedisCommandKeySpecFlags {
     VariableFlags,
 }
 
-impl From<&RedisCommandKeySpecFlags> for &'static str {
-    fn from(value: &RedisCommandKeySpecFlags) -> Self {
+impl From<&ValkeyCommandKeySpecFlags> for &'static str {
+    fn from(value: &ValkeyCommandKeySpecFlags) -> Self {
         match value {
-            RedisCommandKeySpecFlags::ReadOnly => "READ_ONLY",
-            RedisCommandKeySpecFlags::ReadWrite => "READ_WRITE",
-            RedisCommandKeySpecFlags::Overwrite => "OVERWRITE",
-            RedisCommandKeySpecFlags::Remove => "REMOVE",
-            RedisCommandKeySpecFlags::Access => "ACCESS",
-            RedisCommandKeySpecFlags::Update => "UPDATE",
-            RedisCommandKeySpecFlags::Insert => "INSERT",
-            RedisCommandKeySpecFlags::Delete => "DELETE",
-            RedisCommandKeySpecFlags::NotKey => "NOT_KEY",
-            RedisCommandKeySpecFlags::Incomplete => "INCOMPLETE",
-            RedisCommandKeySpecFlags::VariableFlags => "VARIABLE_FLAGS",
+            ValkeyCommandKeySpecFlags::ReadOnly => "READ_ONLY",
+            ValkeyCommandKeySpecFlags::ReadWrite => "READ_WRITE",
+            ValkeyCommandKeySpecFlags::Overwrite => "OVERWRITE",
+            ValkeyCommandKeySpecFlags::Remove => "REMOVE",
+            ValkeyCommandKeySpecFlags::Access => "ACCESS",
+            ValkeyCommandKeySpecFlags::Update => "UPDATE",
+            ValkeyCommandKeySpecFlags::Insert => "INSERT",
+            ValkeyCommandKeySpecFlags::Delete => "DELETE",
+            ValkeyCommandKeySpecFlags::NotKey => "NOT_KEY",
+            ValkeyCommandKeySpecFlags::Incomplete => "INCOMPLETE",
+            ValkeyCommandKeySpecFlags::VariableFlags => "VARIABLE_FLAGS",
         }
     }
 }
@@ -218,7 +218,7 @@ pub enum BeginSearch {
 #[derive(Debug, Deserialize)]
 pub struct KeySpecArg {
     notes: Option<String>,
-    flags: Vec<RedisCommandKeySpecFlags>,
+    flags: Vec<ValkeyCommandKeySpecFlags>,
     begin_search: BeginSearch,
     find_keys: FindKeys,
 }
@@ -226,7 +226,7 @@ pub struct KeySpecArg {
 #[derive(Debug, Deserialize)]
 struct Args {
     name: Option<String>,
-    flags: Vec<RedisCommandFlags>,
+    flags: Vec<ValkeyCommandFlags>,
     enterprise_flags: Option<Vec<RedisEnterpriseCommandFlags>>,
     summary: Option<String>,
     complexity: Option<String>,

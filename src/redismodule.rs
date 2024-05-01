@@ -36,7 +36,7 @@ impl From<ValkeyError> for ValkeyValueResult {
     }
 }
 
-pub const REDIS_OK: ValkeyValueResult = Ok(ValkeyValue::SimpleStringStatic("OK"));
+pub const VALKEY_OK: ValkeyValueResult = Ok(ValkeyValue::SimpleStringStatic("OK"));
 pub const TYPE_METHOD_VERSION: u64 = raw::REDISMODULE_TYPE_METHOD_VERSION as u64;
 
 pub trait NextArg {
@@ -135,11 +135,11 @@ impl ValkeyString {
     }
 
     /// In general, [RedisModuleString] is none atomic ref counted object.
-    /// So it is not safe to clone it if Redis GIL is not held.
-    /// [Self::safe_clone] gets a context reference which indicates that Redis GIL is held.
+    /// So it is not safe to clone it if Valkey GIL is not held.
+    /// [Self::safe_clone] gets a context reference which indicates that Valkey GIL is held.
     pub fn safe_clone(&self, _ctx: &Context) -> Self {
         // RedisString are *not* atomic ref counted, so we must get a lock indicator to clone them.
-        // Alos notice that Redis allows us to create RedisModuleString with NULL context
+        // Alos notice that Valkey allows us to create RedisModuleString with NULL context
         // so we use [std::ptr::null_mut()] instead of the curren RedisString context.
         // We do this because we can not promise the new RedisString will not outlive the current
         // context and we want them to be independent.
@@ -252,7 +252,7 @@ impl ValkeyString {
         }
     }
 
-    // TODO: Redis allows storing and retrieving any arbitrary bytes.
+    // TODO: Valkey allows storing and retrieving any arbitrary bytes.
     // However rust's String and str can only store valid UTF-8.
     // Implement these to allow non-utf8 bytes to be consumed:
     // pub fn into_bytes(self) -> Vec<u8> {}
@@ -311,7 +311,7 @@ impl Borrow<str> for ValkeyString {
 impl Clone for ValkeyString {
     fn clone(&self) -> Self {
         let inner =
-            // Redis allows us to create RedisModuleString with NULL context
+            // Valkey allows us to create RedisModuleString with NULL context
             // so we use [std::ptr::null_mut()] instead of the curren RedisString context.
             // We do this because we can not promise the new RedisString will not outlive the current
             // context and we want them to be independent.

@@ -9,7 +9,7 @@ use std::{
 
 use libc::c_void;
 
-use crate::{deallocate_pointer, raw::*, Context, RedisLockIndicator, ValkeyError};
+use crate::{deallocate_pointer, raw::*, Context, ValkeyError, ValkeyLockIndicator};
 
 pub struct StringCallReply<'root> {
     reply: NonNull<RedisModuleCallReply>,
@@ -737,9 +737,9 @@ where
     /// Dispose the future, handler. This function must be called in order to
     /// release the [FutureHandler]. The reason we must have a dispose function
     /// and we can not use the Drop is that [FutureHandler] must be released
-    /// when the Redis GIL is held. This is also why this function also gets a
+    /// when the Valkey GIL is held. This is also why this function also gets a
     /// lock indicator.
-    pub fn dispose<LockIndicator: RedisLockIndicator>(mut self, _lock_indicator: &LockIndicator) {
+    pub fn dispose<LockIndicator: ValkeyLockIndicator>(mut self, _lock_indicator: &LockIndicator) {
         free_call_reply(self.reply.as_ptr());
         self.reply_freed = true;
     }
@@ -748,7 +748,7 @@ where
     /// success and [Status::Err] on failure. In case of success it is promised
     /// that the unblock handler will not be called.
     /// The function also dispose the [FutureHandler].
-    pub fn abort_and_dispose<LockIndicator: RedisLockIndicator>(
+    pub fn abort_and_dispose<LockIndicator: ValkeyLockIndicator>(
         self,
         lock_indicator: &LockIndicator,
     ) -> Status {
@@ -781,7 +781,7 @@ impl<C: FnOnce(&Context, CallResult<'static>)> Drop for FutureHandler<C> {
 /// the module invoke a blocking command using [call_blocking].
 /// This struct can be used to set unblock handler. Notice that the
 /// struct can not outlive the `ctx lifetime, This is because
-/// the future handler must be set before the Redis GIL will
+/// the future handler must be set before the Valkey GIL will
 /// be released.
 pub struct FutureCallReply<'ctx> {
     _ctx: &'ctx Context,

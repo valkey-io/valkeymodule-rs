@@ -13,7 +13,7 @@ use raw::KeyType;
 
 use crate::native_types::ValkeyType;
 use crate::raw;
-use crate::redismodule::REDIS_OK;
+use crate::redismodule::VALKEY_OK;
 pub use crate::redisraw::bindings::*;
 use crate::stream::StreamIterator;
 use crate::ValkeyError;
@@ -21,11 +21,11 @@ use crate::ValkeyResult;
 use crate::ValkeyString;
 use bitflags::bitflags;
 
-/// `RedisKey` is an abstraction over a Redis key that allows readonly
+/// `ValkeyKey` is an abstraction over a Valkey key that allows readonly
 /// operations.
 ///
 /// Its primary function is to ensure the proper deallocation of resources when
-/// it goes out of scope. Redis normally requires that keys be managed manually
+/// it goes out of scope. Valkey normally requires that keys be managed manually
 /// by explicitly freeing them when you're done. This can be a risky prospect,
 /// especially with mechanics like Rust's `?` operator, so we ensure fault-free
 /// operation through the use of the Drop trait.
@@ -51,12 +51,12 @@ bitflags! {
 }
 
 #[derive(Debug)]
-pub struct RedisKey {
+pub struct ValkeyKey {
     pub(crate) ctx: *mut raw::RedisModuleCtx,
     pub(crate) key_inner: *mut raw::RedisModuleKey,
 }
 
-impl RedisKey {
+impl ValkeyKey {
     pub(crate) fn take(mut self) -> *mut raw::RedisModuleKey {
         let res = self.key_inner;
         self.key_inner = std::ptr::null_mut();
@@ -111,7 +111,7 @@ impl RedisKey {
         unsafe { raw::RedisModule_KeyType.unwrap()(self.key_inner) }.into()
     }
 
-    /// Detects whether the key pointer given to us by Redis is null.
+    /// Detects whether the key pointer given to us by Valkey is null.
     #[must_use]
     pub fn is_null(&self) -> bool {
         let null_key: *mut raw::RedisModuleKey = ptr::null_mut();
@@ -182,8 +182,8 @@ impl RedisKey {
     }
 }
 
-impl Drop for RedisKey {
-    // Frees resources appropriately as a RedisKey goes out of scope.
+impl Drop for ValkeyKey {
+    // Frees resources appropriately as a ValkeyKey goes out of scope.
     fn drop(&mut self) {
         if !self.key_inner.is_null() {
             raw::close_key(self.key_inner);
@@ -191,14 +191,14 @@ impl Drop for RedisKey {
     }
 }
 
-/// `RedisKeyWritable` is an abstraction over a Redis key that allows read and
+/// `ValkeyKeyWritable` is an abstraction over a Valkey key that allows read and
 /// write operations.
-pub struct RedisKeyWritable {
+pub struct ValkeyKeyWritable {
     ctx: *mut raw::RedisModuleCtx,
     key_inner: *mut raw::RedisModuleKey,
 }
 
-impl RedisKeyWritable {
+impl ValkeyKeyWritable {
     pub fn open(ctx: *mut raw::RedisModuleCtx, key: &ValkeyString) -> Self {
         let key_inner = raw::open_key(ctx, key.inner, to_raw_mode(KeyMode::ReadWrite));
         Self { ctx, key_inner }
@@ -223,16 +223,16 @@ impl RedisKeyWritable {
     /// # Note
     ///
     /// An empty key can be reliably detected by looking for a null
-    /// as the key is opened [RedisKeyWritable::open] in read mode,
-    /// but when asking for a write, Redis returns a non-null pointer
+    /// as the key is opened [ValkeyKeyWritable::open] in read mode,
+    /// but when asking for a write, Valkey returns a non-null pointer
     /// to allow to write to even an empty key. In that case, the key's
     /// value should be checked manually instead:
     ///
     /// ```
-    /// use redis_module::key::RedisKeyWritable;
-    /// use redis_module::RedisError;
+    /// use valkey_module::key::ValkeyKeyWritable;
+    /// use valkey_module::ValkeyError;
     ///
-    /// fn is_empty_old(key: &RedisKeyWritable) -> Result<bool, RedisError> {
+    /// fn is_empty_old(key: &ValkeyKeyWritable) -> Result<bool, ValkeyError> {
     ///     let mut s = key.as_string_dma()?;
     ///     let is_empty = s.write(b"new value")?.is_empty();
     ///     Ok(is_empty)
@@ -329,7 +329,7 @@ impl RedisKeyWritable {
         })?;
 
         match raw::set_expire(self.key_inner, exp_time) {
-            raw::Status::Ok => REDIS_OK,
+            raw::Status::Ok => VALKEY_OK,
 
             // Error may occur if the key wasn't open for writing or is an
             // empty key.
@@ -340,7 +340,7 @@ impl RedisKeyWritable {
     /// Remove expiration from a key if it exists.
     pub fn remove_expire(&self) -> ValkeyResult {
         match raw::set_expire(self.key_inner, REDISMODULE_NO_EXPIRE.into()) {
-            raw::Status::Ok => REDIS_OK,
+            raw::Status::Ok => VALKEY_OK,
 
             // Error may occur if the key wasn't open for writing or is an
             // empty key.
@@ -351,7 +351,7 @@ impl RedisKeyWritable {
     pub fn write(&self, val: &str) -> ValkeyResult {
         let val_str = ValkeyString::create(NonNull::new(self.ctx), val);
         match raw::string_set(self.key_inner, val_str.inner) {
-            raw::Status::Ok => REDIS_OK,
+            raw::Status::Ok => VALKEY_OK,
             raw::Status::Err => Err(ValkeyError::Str("Error while setting key")),
         }
     }
@@ -361,7 +361,7 @@ impl RedisKeyWritable {
     /// Will panic if `RedisModule_DeleteKey` is missing in redismodule.h
     pub fn delete(&self) -> ValkeyResult {
         unsafe { raw::RedisModule_DeleteKey.unwrap()(self.key_inner) };
-        REDIS_OK
+        VALKEY_OK
     }
 
     /// # Panics
@@ -369,7 +369,7 @@ impl RedisKeyWritable {
     /// Will panic if `RedisModule_UnlinkKey` is missing in redismodule.h
     pub fn unlink(&self) -> ValkeyResult {
         unsafe { raw::RedisModule_UnlinkKey.unwrap()(self.key_inner) };
-        REDIS_OK
+        VALKEY_OK
     }
 
     /// # Panics
@@ -507,7 +507,7 @@ where
 
     /// Provides an iterator over the multi-get results in the form of (field-name, field-value)
     /// pairs. The type of field-name elements is the same as that passed to the original multi-
-    /// get call, while the field-value elements may be of any type for which a `RedisString` `Into`
+    /// get call, while the field-value elements may be of any type for which a `ValkeyString` `Into`
     /// conversion is implemented.
     ///
     /// # Examples
@@ -515,16 +515,16 @@ where
     /// Get a [`HashMap`] from the results:
     ///
     /// ```
-    /// use redis_module::key::HMGetResult;
-    /// use redis_module::{Context, RedisError, RedisResult, RedisString, ValkeyValue};
+    /// use valkey_module::key::HMGetResult;
+    /// use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue};
     ///
-    /// fn call_hash(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
-    ///     let key_name = RedisString::create(None, "config");
+    /// fn call_hash(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
+    ///     let key_name = ValkeyString::create(None, "config");
     ///     let fields = &["username", "password", "email"];
-    ///     let hm: HMGetResult<'_, &str, RedisString> = ctx
+    ///     let hm: HMGetResult<'_, &str, ValkeyString> = ctx
     ///         .open_key(&key_name)
     ///         .hash_get_multi(fields)?
-    ///         .ok_or(RedisError::Str("ERR key not found"))?;
+    ///         .ok_or(ValkeyError::Str("ERR key not found"))?;
     ///     let response: Vec<ValkeyValue> = hm.into_iter().map(|(_, v)| v.into()).collect();
     ///     Ok(ValkeyValue::Array(response))
     /// }
@@ -533,16 +533,16 @@ where
     /// Get a [`Vec`] of only the field values from the results:
     ///
     /// ```
-    /// use redis_module::{Context, RedisError, RedisResult, RedisString, ValkeyValue};
-    /// use redis_module::key::HMGetResult;
+    /// use valkey_module::{Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue};
+    /// use valkey_module::key::HMGetResult;
     ///
-    /// fn call_hash(ctx: &Context, _: Vec<RedisString>) -> RedisResult {
-    ///     let key_name = RedisString::create(None, "config");
+    /// fn call_hash(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
+    ///     let key_name = ValkeyString::create(None, "config");
     ///     let fields = &["username", "password", "email"];
-    ///     let hm: HMGetResult<'_, &str, RedisString> = ctx
+    ///     let hm: HMGetResult<'_, &str, ValkeyString> = ctx
     ///          .open_key(&key_name)
     ///          .hash_get_multi(fields)?
-    ///          .ok_or(RedisError::Str("ERR key not found"))?;
+    ///          .ok_or(ValkeyError::Str("ERR key not found"))?;
     ///     let response: Vec<ValkeyValue> = hm.into_iter().map(|(_, v)| ValkeyValue::BulkValkeyString(v)).collect();
     ///     Ok(ValkeyValue::Array(response))
     /// }
@@ -560,7 +560,7 @@ where
 }
 
 pub struct StringDMA<'a> {
-    key: &'a RedisKeyWritable,
+    key: &'a ValkeyKeyWritable,
     buffer: &'a mut [u8],
 }
 
@@ -579,7 +579,7 @@ impl<'a> DerefMut for StringDMA<'a> {
 }
 
 impl<'a> StringDMA<'a> {
-    fn new(key: &'a RedisKeyWritable) -> Result<StringDMA<'a>, ValkeyError> {
+    fn new(key: &'a ValkeyKeyWritable) -> Result<StringDMA<'a>, ValkeyError> {
         let mut length: size_t = 0;
         let dma = raw::string_dma(key.key_inner, &mut length, raw::KeyMode::WRITE);
         if dma.is_null() {
@@ -619,8 +619,8 @@ impl<'a> StringDMA<'a> {
     }
 }
 
-impl Drop for RedisKeyWritable {
-    // Frees resources appropriately as a RedisKey goes out of scope.
+impl Drop for ValkeyKeyWritable {
+    // Frees resources appropriately as a ValkeyKey goes out of scope.
     fn drop(&mut self) {
         raw::close_key(self.key_inner);
     }
@@ -675,9 +675,9 @@ pub fn verify_type(key_inner: *mut raw::RedisModuleKey, redis_type: &ValkeyType)
         let raw_type = unsafe { raw::RedisModule_ModuleTypeGetType.unwrap()(key_inner) };
 
         if raw_type != *redis_type.raw_type.borrow() {
-            return Err(ValkeyError::Str("Existing key has wrong Redis type"));
+            return Err(ValkeyError::Str("Existing key has wrong Valkey type"));
         }
     }
 
-    REDIS_OK
+    VALKEY_OK
 }

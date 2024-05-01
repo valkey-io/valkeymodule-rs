@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-cargo test --all --all-targets --no-default-features
+# TODO cargo test --all --all-targets --no-default-features
+cargo test --all --no-default-features

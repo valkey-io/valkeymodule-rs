@@ -97,10 +97,10 @@ impl Context {
             ));
         }
 
-        // Cast the *mut c_void supplied by the Redis API to a raw pointer of our custom type.
+        // Cast the *mut c_void supplied by the Valkey API to a raw pointer of our custom type.
         let data = data.cast::<T>();
 
-        // Dereference the raw pointer (we know this is safe, since Redis should return our
+        // Dereference the raw pointer (we know this is safe, since Valkey should return our
         // original pointer which we know to be good) and turn it into a safe reference
         let data = unsafe { &*data };
 
@@ -109,7 +109,7 @@ impl Context {
 }
 
 fn take_data<T>(data: *mut c_void) -> T {
-    // Cast the *mut c_void supplied by the Redis API to a raw pointer of our custom type.
+    // Cast the *mut c_void supplied by the Valkey API to a raw pointer of our custom type.
     let data = data.cast::<T>();
 
     // Take back ownership of the original boxed data, so we can unbox it safely.
