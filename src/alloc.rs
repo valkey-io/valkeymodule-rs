@@ -16,11 +16,11 @@ fn allocation_free_panic(message: &'static str) -> ! {
     std::process::abort();
 }
 
-const REDIS_ALLOCATOR_NOT_AVAILABLE_MESSAGE: &str =
-    "Critical error: the Redis Allocator isn't available.\n";
+const VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE: &str =
+    "Critical error: the Valkey Allocator isn't available.\n";
 
-/// Defines the Redis allocator. This allocator delegates the allocation
-/// and deallocation tasks to the Redis server when available, otherwise
+/// Defines the Valkey allocator. This allocator delegates the allocation
+/// and deallocation tasks to the Valkey server when available, otherwise
 /// it panics.
 #[derive(Copy, Clone)]
 pub struct ValkeyAlloc;
@@ -28,7 +28,7 @@ pub struct ValkeyAlloc;
 unsafe impl GlobalAlloc for ValkeyAlloc {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         /*
-         * To make sure the memory allocation by Redis is aligned to the according to the layout,
+         * To make sure the memory allocation by Valkey is aligned to the according to the layout,
          * we need to align the size of the allocation to the layout.
          *
          * "Memory is conceptually broken into equal-sized chunks,
@@ -42,14 +42,14 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
 
         match raw::RedisModule_Alloc {
             Some(alloc) => alloc(size).cast(),
-            None => allocation_free_panic(REDIS_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
+            None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
         }
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
         match raw::RedisModule_Free {
             Some(f) => f(ptr.cast()),
-            None => allocation_free_panic(REDIS_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
+            None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
         };
     }
 }

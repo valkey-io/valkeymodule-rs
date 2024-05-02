@@ -6,7 +6,7 @@ mod command;
 mod info_section;
 mod redis_value;
 
-/// This proc macro allow to specify that the follow function is a Redis command.
+/// This proc macro allow to specify that the follow function is a Valkey command.
 /// The macro accept the following arguments that discribe the command properties:
 /// * name (optional) - The command name. in case not given, the function name will be taken.
 /// * flags - An array of [`command::RedisCommandFlags`].
@@ -31,12 +31,12 @@ mod redis_value;
 ///       * NotKey - The key is not actually a key, but should be routed in cluster mode as if it was a key.
 ///       * Incomplete - The keyspec might not point out all the keys it should cover.
 ///       * VariableFlags - Some keys might have different flags depending on arguments.
-///    * begin_search - Represents how Redis should start looking for keys.
+///    * begin_search - Represents how Valkey should start looking for keys.
 ///      There are 2 possible options:
 ///       * Index - start looking for keys from a given position.
 ///       * Keyword - Search for a specific keyward and start looking for keys from this keyword
-///    * FindKeys - After Redis finds the location from where it needs to start looking for keys,
-///      Redis will start finding keys base on the information in this struct.
+///    * FindKeys - After Valkey finds the location from where it needs to start looking for keys,
+///      Valkey will start finding keys base on the information in this struct.
 ///      There are 2 possible options:
 ///       * Range - An object of three element `last_key`, `steps`, `limit`.
 ///          * last_key - Index of the last key relative to the result of the
@@ -80,7 +80,7 @@ mod redis_value;
 /// }
 /// ```
 ///
-/// **Notice**, by default Redis does not validate the command spec. User should validate the command keys on the module command code. The command spec is used for validation on cluster so Redis can raise a cross slot error when needed.
+/// **Notice**, by default Valkey does not validate the command spec. User should validate the command keys on the module command code. The command spec is used for validation on cluster so Valkey can raise a cross slot error when needed.
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
     command::redis_command(attr, item)
@@ -197,7 +197,7 @@ pub fn config_changed_event_handler(_attr: TokenStream, item: TokenStream) -> To
     gen.into()
 }
 
-/// Proc macro which is set on a function that need to be called on Redis cron.
+/// Proc macro which is set on a function that need to be called on Valkey cron.
 /// The function must accept a [Context] and [u64] that represent the cron hz.
 ///
 /// Example:

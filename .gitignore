@@ -12,7 +12,7 @@ src/redisraw/bindings.rs
 # VS Code
 .vscode
 
-# Redis database
+# Valkey database
 dump.rdb
 
 # Debugger-related files:

@@ -7,8 +7,8 @@ use std::os::raw::{c_char, c_int, c_long, c_longlong};
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-use crate::key::{KeyFlags, RedisKey, RedisKeyWritable};
-use crate::logging::RedisLogLevel;
+use crate::key::{KeyFlags, ValkeyKey, ValkeyKeyWritable};
+use crate::logging::ValkeyLogLevel;
 use crate::raw::{ModuleOptions, Version};
 use crate::redisvalue::ValkeyValueKey;
 use crate::{
@@ -23,7 +23,7 @@ use std::ops::Deref;
 use std::ffi::CStr;
 
 use self::call_reply::{create_promise_call_reply, CallResult, PromiseCallReply};
-use self::thread_safe::RedisLockIndicator;
+use self::thread_safe::ValkeyLockIndicator;
 
 mod timer;
 
@@ -81,7 +81,7 @@ impl CallOptionsBuilder {
     }
 
     /// Enable this option will run RM_Call is script mode.
-    /// This mean that Redis will enable the following protections:
+    /// This mean that Valkey will enable the following protections:
     /// 1. Not allow running dangerous commands like 'shutdown'
     /// 2. Not allow running write commands on OOM or if there are not enough good replica's connected
     pub fn script_mode(mut self) -> CallOptionsBuilder {
@@ -144,7 +144,7 @@ impl CallOptionsBuilder {
     }
 }
 
-/// This struct allows logging when the Redis GIL is not acquired.
+/// This struct allows logging when the Valkey GIL is not acquired.
 /// It is implemented `Send` and `Sync` so it can safely be used
 /// from within different threads.
 pub struct DetachedContext {
@@ -165,17 +165,17 @@ impl Default for DetachedContext {
     }
 }
 
-/// This object is returned after locking Redis from [DetachedContext].
-/// On dispose, Redis will be unlocked.
+/// This object is returned after locking Valkey from [DetachedContext].
+/// On dispose, Valkey will be unlocked.
 /// This object implements [Deref] for [Context] so it can be used
-/// just like any Redis [Context] for command invocation.
+/// just like any Valkey [Context] for command invocation.
 /// **This object should not be used to return replies** because there is
 /// no real client behind this context to return replies to.
 pub struct DetachedContextGuard {
     pub(crate) ctx: Context,
 }
 
-unsafe impl RedisLockIndicator for DetachedContextGuard {}
+unsafe impl ValkeyLockIndicator for DetachedContextGuard {}
 
 impl Drop for DetachedContextGuard {
     fn drop(&mut self) {
@@ -194,25 +194,25 @@ impl Deref for DetachedContextGuard {
 }
 
 impl DetachedContext {
-    pub fn log(&self, level: RedisLogLevel, message: &str) {
+    pub fn log(&self, level: ValkeyLogLevel, message: &str) {
         let c = self.ctx.load(Ordering::Relaxed);
         crate::logging::log_internal(c, level, message);
     }
 
     pub fn log_debug(&self, message: &str) {
-        self.log(RedisLogLevel::Debug, message);
+        self.log(ValkeyLogLevel::Debug, message);
     }
 
     pub fn log_notice(&self, message: &str) {
-        self.log(RedisLogLevel::Notice, message);
+        self.log(ValkeyLogLevel::Notice, message);
     }
 
     pub fn log_verbose(&self, message: &str) {
-        self.log(RedisLogLevel::Verbose, message);
+        self.log(ValkeyLogLevel::Verbose, message);
     }
 
     pub fn log_warning(&self, message: &str) {
-        self.log(RedisLogLevel::Warning, message);
+        self.log(ValkeyLogLevel::Warning, message);
     }
 
     pub fn set_context(&self, ctx: &Context) -> Result<(), ValkeyError> {
@@ -225,9 +225,9 @@ impl DetachedContext {
         Ok(())
     }
 
-    /// Lock Redis for command invocation. Returns [DetachedContextGuard] which will unlock Redis when dispose.
-    /// [DetachedContextGuard] implements [Deref<Target = Context>] so it can be used just like any Redis [Context] for command invocation.
-    /// Locking Redis when Redis is already locked by the current thread is left unspecified.
+    /// Lock Valkey for command invocation. Returns [DetachedContextGuard] which will unlock Valkey when dispose.
+    /// [DetachedContextGuard] implements [Deref<Target = Context>] so it can be used just like any Valkey [Context] for command invocation.
+    /// Locking Valkey when Valkey is already locked by the current thread is left unspecified.
     /// However, this function will not return on the second call (it might panic or deadlock, for example)..
     pub fn lock(&self) -> DetachedContextGuard {
         let c = self.ctx.load(Ordering::Relaxed);
@@ -241,7 +241,7 @@ unsafe impl Send for DetachedContext {}
 unsafe impl Sync for DetachedContext {}
 
 /// `Context` is a structure that's designed to give us a high-level interface to
-/// the Redis module API by abstracting away the raw C FFI calls.
+/// the Valkey module API by abstracting away the raw C FFI calls.
 #[derive(Debug)]
 pub struct Context {
     pub ctx: *mut raw::RedisModuleCtx,
@@ -338,24 +338,24 @@ impl Context {
         }
     }
 
-    pub fn log(&self, level: RedisLogLevel, message: &str) {
+    pub fn log(&self, level: ValkeyLogLevel, message: &str) {
         crate::logging::log_internal(self.ctx, level, message);
     }
 
     pub fn log_debug(&self, message: &str) {
-        self.log(RedisLogLevel::Debug, message);
+        self.log(ValkeyLogLevel::Debug, message);
     }
 
     pub fn log_notice(&self, message: &str) {
-        self.log(RedisLogLevel::Notice, message);
+        self.log(ValkeyLogLevel::Notice, message);
     }
 
     pub fn log_verbose(&self, message: &str) {
-        self.log(RedisLogLevel::Verbose, message);
+        self.log(ValkeyLogLevel::Verbose, message);
     }
 
     pub fn log_warning(&self, message: &str) {
-        self.log(RedisLogLevel::Warning, message);
+        self.log(ValkeyLogLevel::Warning, message);
     }
 
     /// # Panics
@@ -372,7 +372,7 @@ impl Context {
     /// Will panic if `RedisModule_IsKeysPositionRequest` is missing in redismodule.h
     #[must_use]
     pub fn is_keys_position_request(&self) -> bool {
-        // We want this to be available in tests where we don't have an actual Redis to call
+        // We want this to be available in tests where we don't have an actual Valkey to call
         if cfg!(test) {
             return false;
         }
@@ -425,7 +425,7 @@ impl Context {
             .map_or_else(|e| Err(e.into()), |v| Ok((&v).into()))
     }
 
-    /// Invoke a command on Redis and return the result
+    /// Invoke a command on Valkey and return the result
     /// Unlike 'call' this API also allow to pass a CallOption to control different aspects
     /// of the command invocation.
     pub fn call_ext<'a, T: Into<StrCallArgs<'a>>, R: From<CallResult<'static>>>(
@@ -610,18 +610,18 @@ impl Context {
     }
 
     #[must_use]
-    pub fn open_key(&self, key: &ValkeyString) -> RedisKey {
-        RedisKey::open(self.ctx, key)
+    pub fn open_key(&self, key: &ValkeyString) -> ValkeyKey {
+        ValkeyKey::open(self.ctx, key)
     }
 
     #[must_use]
-    pub fn open_key_with_flags(&self, key: &ValkeyString, flags: KeyFlags) -> RedisKey {
-        RedisKey::open_with_flags(self.ctx, key, flags)
+    pub fn open_key_with_flags(&self, key: &ValkeyString, flags: KeyFlags) -> ValkeyKey {
+        ValkeyKey::open_with_flags(self.ctx, key, flags)
     }
 
     #[must_use]
-    pub fn open_key_writable(&self, key: &ValkeyString) -> RedisKeyWritable {
-        RedisKeyWritable::open(self.ctx, key)
+    pub fn open_key_writable(&self, key: &ValkeyString) -> ValkeyKeyWritable {
+        ValkeyKeyWritable::open(self.ctx, key)
     }
 
     #[must_use]
@@ -629,8 +629,8 @@ impl Context {
         &self,
         key: &ValkeyString,
         flags: KeyFlags,
-    ) -> RedisKeyWritable {
-        RedisKeyWritable::open_with_flags(self.ctx, key, flags)
+    ) -> ValkeyKeyWritable {
+        ValkeyKeyWritable::open_with_flags(self.ctx, key, flags)
     }
 
     pub fn replicate_verbatim(&self) {
@@ -736,7 +736,7 @@ impl Context {
     }
 
     /// Return ContextFlags object that allows to check properties related to the state of
-    /// the current Redis instance such as:
+    /// the current Valkey instance such as:
     /// * Role (master/slave)
     /// * Loading RDB/AOF
     /// * Execution mode such as multi exec or Lua
@@ -802,8 +802,8 @@ impl Context {
     api!(
         [RedisModule_AddPostNotificationJob],
         /// When running inside a key space notification callback, it is dangerous and highly discouraged to perform any write
-        /// operation. In order to still perform write actions in this scenario, Redis provides this API ([add_post_notification_job])
-        /// that allows to register a job callback which Redis will call when the following condition holds:
+        /// operation. In order to still perform write actions in this scenario, Valkey provides this API ([add_post_notification_job])
+        /// that allows to register a job callback which Valkey will call when the following condition holds:
         ///
         /// 1. It is safe to perform any write operation.
         /// 2. The job will be called atomically along side the key space notification.
@@ -812,7 +812,7 @@ impl Context {
         /// This raises a concerns of entering an infinite loops, we consider infinite loops
         /// as a logical bug that need to be fixed in the module, an attempt to protect against
         /// infinite loops by halting the execution could result in violation of the feature correctness
-        /// and so Redis will make no attempt to protect the module from infinite loops.
+        /// and so Valkey will make no attempt to protect the module from infinite loops.
         pub fn add_post_notification_job<F: FnOnce(&Context) + 'static>(
             &self,
             callback: F,
@@ -833,7 +833,7 @@ impl Context {
     api!(
         [RedisModule_AvoidReplicaTraffic],
         /// Returns true if a client sent the CLIENT PAUSE command to the server or
-        /// if Redis Cluster does a manual failover, pausing the clients.
+        /// if Valkey Cluster does a manual failover, pausing the clients.
         /// This is needed when we have a master with replicas, and want to write,
         /// without adding further data to the replication channel, that the replicas
         /// replication offset, match the one of the master. When this happens, it is
@@ -852,7 +852,7 @@ impl Context {
         }
     );
 
-    /// Return [Ok(true)] is the current Redis deployment is enterprise, otherwise [Ok(false)].
+    /// Return [Ok(true)] is the current Valkey deployment is enterprise, otherwise [Ok(false)].
     /// Return error in case it was not possible to determind the deployment.
     fn is_enterprise_internal(&self) -> Result<bool, ValkeyError> {
         let info_res = self.call("info", &["server"])?;
@@ -864,7 +864,7 @@ impl Context {
         Ok(info.contains("rlec_version:"))
     }
 
-    /// Return `true` is the current Redis deployment is enterprise, otherwise `false`.
+    /// Return `true` is the current Valkey deployment is enterprise, otherwise `false`.
     pub fn is_enterprise(&self) -> bool {
         self.is_enterprise_internal().unwrap_or_else(|e| {
             log::error!("Failed getting deployment type, assuming oss. Error: {e}.");
@@ -888,7 +888,7 @@ extern "C" fn post_notification_job<F: FnOnce(&Context)>(
     callback.take().map_or_else(
         || {
             ctx.log(
-                RedisLogLevel::Warning,
+                ValkeyLogLevel::Warning,
                 "Got a None callback on post notification job.",
             )
         },
@@ -898,7 +898,7 @@ extern "C" fn post_notification_job<F: FnOnce(&Context)>(
     );
 }
 
-unsafe impl RedisLockIndicator for Context {}
+unsafe impl ValkeyLockIndicator for Context {}
 
 bitflags! {
     /// An object represent ACL permissions.
@@ -1315,7 +1315,7 @@ bitflags! {
         /// The command is running in the context of a Lua script
         const LUA = raw::REDISMODULE_CTX_FLAGS_LUA as c_int;
 
-        /// The command is running inside a Redis transaction
+        /// The command is running inside a Valkey transaction
         const MULTI = raw::REDISMODULE_CTX_FLAGS_MULTI as c_int;
 
         /// The instance is a master
@@ -1342,7 +1342,7 @@ bitflags! {
         /// Maxmemory is set and has an eviction policy that may delete keys
         const EVICTED = raw::REDISMODULE_CTX_FLAGS_EVICT as c_int;
 
-        /// Redis is out of memory according to the maxmemory flag.
+        /// Valkey is out of memory according to the maxmemory flag.
         const OOM = raw::REDISMODULE_CTX_FLAGS_OOM as c_int;
 
         /// Less than 25% of memory available according to maxmemory.
@@ -1351,7 +1351,7 @@ bitflags! {
         /// The command was sent over the replication link.
         const REPLICATED = raw::REDISMODULE_CTX_FLAGS_REPLICATED as c_int;
 
-        /// Redis is currently loading either from AOF or RDB.
+        /// Valkey is currently loading either from AOF or RDB.
         const LOADING = raw::REDISMODULE_CTX_FLAGS_LOADING as c_int;
 
         /// The replica has no link with its master
@@ -1369,7 +1369,7 @@ bitflags! {
         /// There is currently some background process active.
         const ACTIVE_CHILD = raw::REDISMODULE_CTX_FLAGS_ACTIVE_CHILD as c_int;
 
-        /// Redis is currently running inside background child process.
+        /// Valkey is currently running inside background child process.
         const IS_CHILD = raw::REDISMODULE_CTX_FLAGS_IS_CHILD as c_int;
 
         /// The next EXEC will fail due to dirty CAS (touched keys).
@@ -1382,7 +1382,7 @@ bitflags! {
         /// The current client uses RESP3 protocol
         const FLAGS_RESP3 = raw::REDISMODULE_CTX_FLAGS_RESP3 as c_int;
 
-        /// Redis is currently async loading database for diskless replication.
+        /// Valkey is currently async loading database for diskless replication.
         const ASYNC_LOADING = raw::REDISMODULE_CTX_FLAGS_ASYNC_LOADING as c_int;
     }
 }

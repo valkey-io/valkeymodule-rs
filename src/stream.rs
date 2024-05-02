@@ -1,4 +1,4 @@
-use crate::key::RedisKey;
+use crate::key::ValkeyKey;
 use crate::raw;
 use crate::Status;
 use crate::ValkeyError;
@@ -14,12 +14,12 @@ pub struct StreamRecord {
 
 #[derive(Debug)]
 pub struct StreamIterator<'key> {
-    key: &'key RedisKey,
+    key: &'key ValkeyKey,
 }
 
 impl<'key> StreamIterator<'key> {
     pub(crate) fn new(
-        key: &RedisKey,
+        key: &ValkeyKey,
         mut from: Option<raw::RedisModuleStreamID>,
         mut to: Option<raw::RedisModuleStreamID>,
         exclusive: bool,

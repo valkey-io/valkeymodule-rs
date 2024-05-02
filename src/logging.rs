@@ -3,21 +3,21 @@ use std::ffi::CString;
 use std::ptr;
 use strum_macros::AsRefStr;
 
-const NOT_INITIALISED_MESSAGE: &str = "Redis module hasn't been initialised.";
+const NOT_INITIALISED_MESSAGE: &str = "Valkey module hasn't been initialised.";
 
-/// [RedisLogLevel] is a level of logging which can be used when
+/// [ValkeyLogLevel] is a level of logging which can be used when
 /// logging with Redis. See [raw::RedisModule_Log] and the official
 /// redis [reference](https://redis.io/docs/reference/modules/modules-api-ref/).
 #[derive(Clone, Copy, Debug, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
-pub enum RedisLogLevel {
+pub enum ValkeyLogLevel {
     Debug,
     Notice,
     Verbose,
     Warning,
 }
 
-impl From<log::Level> for RedisLogLevel {
+impl From<log::Level> for ValkeyLogLevel {
     fn from(value: log::Level) -> Self {
         match value {
             log::Level::Error | log::Level::Warn => Self::Warning,
@@ -28,7 +28,7 @@ impl From<log::Level> for RedisLogLevel {
     }
 }
 
-pub(crate) fn log_internal<L: Into<RedisLogLevel>>(
+pub(crate) fn log_internal<L: Into<ValkeyLogLevel>>(
     ctx: *mut raw::RedisModuleCtx,
     level: L,
     message: &str,
@@ -47,7 +47,7 @@ pub(crate) fn log_internal<L: Into<RedisLogLevel>>(
 /// This function should be used when a callback is returning a critical error
 /// to the caller since cannot load or save the data for some critical reason.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub fn log_io_error(io: *mut raw::RedisModuleIO, level: RedisLogLevel, message: &str) {
+pub fn log_io_error(io: *mut raw::RedisModuleIO, level: ValkeyLogLevel, message: &str) {
     if cfg!(test) {
         return;
     }
@@ -62,31 +62,31 @@ pub fn log_io_error(io: *mut raw::RedisModuleIO, level: RedisLogLevel, message: 
     }
 }
 
-/// Log a message to the Redis log with the given log level, without
-/// requiring a context. This prevents Redis from including the module
+/// Log a message to the Valkey log with the given log level, without
+/// requiring a context. This prevents Valkey from including the module
 /// name in the logged message.
-pub fn log<T: AsRef<str>>(level: RedisLogLevel, message: T) {
+pub fn log<T: AsRef<str>>(level: ValkeyLogLevel, message: T) {
     log_internal(ptr::null_mut(), level, message.as_ref());
 }
 
-/// Log a message to Redis at the [RedisLogLevel::Debug] level.
+/// Log a message to Valkey at the [ValkeyLogLevel::Debug] level.
 pub fn log_debug<T: AsRef<str>>(message: T) {
-    log(RedisLogLevel::Debug, message.as_ref());
+    log(ValkeyLogLevel::Debug, message.as_ref());
 }
 
-/// Log a message to Redis at the [RedisLogLevel::Notice] level.
+/// Log a message to Valkey at the [ValkeyLogLevel::Notice] level.
 pub fn log_notice<T: AsRef<str>>(message: T) {
-    log(RedisLogLevel::Notice, message.as_ref());
+    log(ValkeyLogLevel::Notice, message.as_ref());
 }
 
-/// Log a message to Redis at the [RedisLogLevel::Verbose] level.
+/// Log a message to Valkey at the [ValkeyLogLevel::Verbose] level.
 pub fn log_verbose<T: AsRef<str>>(message: T) {
-    log(RedisLogLevel::Verbose, message.as_ref());
+    log(ValkeyLogLevel::Verbose, message.as_ref());
 }
 
-/// Log a message to Redis at the [RedisLogLevel::Warning] level.
+/// Log a message to Valkey at the [ValkeyLogLevel::Warning] level.
 pub fn log_warning<T: AsRef<str>>(message: T) {
-    log(RedisLogLevel::Warning, message.as_ref());
+    log(ValkeyLogLevel::Warning, message.as_ref());
 }
 
 /// The [log] crate implementation of logging.
@@ -98,25 +98,25 @@ pub mod standard_log_implementation {
     use super::*;
     use log::{Metadata, Record, SetLoggerError};
 
-    static mut LOGGER: RedisGlobalLogger = RedisGlobalLogger(ptr::null_mut());
+    static mut LOGGER: ValkeyGlobalLogger = ValkeyGlobalLogger(ptr::null_mut());
 
     /// The struct which has an implementation of the [log] crate's
     /// logging interface.
     ///
     /// # Note
     ///
-    /// Redis does not support logging at the [log::Level::Error] level,
+    /// Valkey does not support logging at the [log::Level::Error] level,
     /// so logging at this level will be converted to logging at the
     /// [log::Level::Warn] level under the hood.
-    struct RedisGlobalLogger(*mut raw::RedisModuleCtx);
+    struct ValkeyGlobalLogger(*mut raw::RedisModuleCtx);
 
     // The pointer of the Global logger can only be changed once during
     // the startup. Once one of the [std::sync::OnceLock] or
     // [std::sync::OnceCell] is stabilised, we can remove these unsafe
     // trait implementations in favour of using the aforementioned safe
     // types.
-    unsafe impl Send for RedisGlobalLogger {}
-    unsafe impl Sync for RedisGlobalLogger {}
+    unsafe impl Send for ValkeyGlobalLogger {}
+    unsafe impl Sync for ValkeyGlobalLogger {}
 
     /// Sets this logger as a global logger. Use this method to set
     /// up the logger. If this method is never called, the default
@@ -161,7 +161,7 @@ pub mod standard_log_implementation {
         }
     }
 
-    impl log::Log for RedisGlobalLogger {
+    impl log::Log for ValkeyGlobalLogger {
         fn enabled(&self, _: &Metadata) -> bool {
             true
         }
@@ -188,7 +188,7 @@ pub mod standard_log_implementation {
         }
 
         fn flush(&self) {
-            // The flushing isn't required for the Redis logging.
+            // The flushing isn't required for the Valkey logging.
         }
     }
 }

@@ -1,4 +1,4 @@
-use crate::context::thread_safe::{RedisLockIndicator, ValkeyGILGuard};
+use crate::context::thread_safe::{ValkeyGILGuard, ValkeyLockIndicator};
 use crate::{raw, CallOptionResp, CallOptionsBuilder, CallResult, ValkeyValue};
 use crate::{Context, ValkeyError, ValkeyString};
 use bitflags::bitflags;
@@ -82,7 +82,7 @@ macro_rules! enum_configuration {
 }
 
 /// [`ConfigurationContext`] is used as a special context that indicate that we are
-/// running with the Redis GIL is held but we should not perform all the regular
+/// running with the Valkey GIL is held but we should not perform all the regular
 /// operation we can perfrom on the regular Context.
 pub struct ConfigurationContext {
     _dummy: usize, // We set some none public vairable here so user will not be able to construct such object
@@ -94,7 +94,7 @@ impl ConfigurationContext {
     }
 }
 
-unsafe impl RedisLockIndicator for ConfigurationContext {}
+unsafe impl ValkeyLockIndicator for ConfigurationContext {}
 
 pub trait ConfigurationValue<T>: Sync + Send {
     fn get(&self, ctx: &ConfigurationContext) -> T;

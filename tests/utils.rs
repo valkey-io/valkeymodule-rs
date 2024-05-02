@@ -23,7 +23,7 @@ impl Drop for ChildGuard {
     }
 }
 
-pub fn start_redis_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let extension = if cfg!(target_os = "macos") {
         "dylib"
     } else {
@@ -46,7 +46,7 @@ pub fn start_redis_server_with_module(module_name: &str, port: u16) -> Result<Ch
     .collect();
 
     assert!(fs::metadata(&module_path)
-        .with_context(|| format!("Loading redis module: {}", module_path.display()))?
+        .with_context(|| format!("Loading valkey module: {}", module_path.display()))?
         .is_file());
 
     let module_path = format!("{}", module_path.display());
@@ -60,7 +60,7 @@ pub fn start_redis_server_with_module(module_name: &str, port: u16) -> Result<Ch
         "yes",
     ];
 
-    let redis_server = Command::new("valkey-server")
+    let valkey_server = Command::new("valkey-server")
         .args(args)
         .spawn()
         .map(|c| ChildGuard {
@@ -68,11 +68,11 @@ pub fn start_redis_server_with_module(module_name: &str, port: u16) -> Result<Ch
             child: c,
         })?;
 
-    Ok(redis_server)
+    Ok(valkey_server)
 }
 
 // Get connection to Redis
-pub fn get_redis_connection(port: u16) -> Result<Connection> {
+pub fn get_valkey_connection(port: u16) -> Result<Connection> {
     let client = redis::Client::open(format!("redis://127.0.0.1:{port}/"))?;
     loop {
         let res = client.get_connection();
@@ -80,7 +80,7 @@ pub fn get_redis_connection(port: u16) -> Result<Connection> {
             Ok(con) => return Ok(con),
             Err(e) => {
                 if e.is_connection_refusal() {
-                    // Redis not ready yet, sleep and retry
+                    // Valkey not ready yet, sleep and retry
                     std::thread::sleep(Duration::from_millis(50));
                 } else {
                     return Err(e.into());

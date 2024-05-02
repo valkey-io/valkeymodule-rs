@@ -116,7 +116,7 @@ pub struct BeginSearchKeyword {
     startfrom: i32,
 }
 
-/// This struct represents how Redis should start looking for keys.
+/// This struct represents how Valkey should start looking for keys.
 /// There are 2 possible options:
 /// 1. Index - start looking for keys from a given position.
 /// 2. Keyword - Search for a specific keyward and start looking for keys from this keyword
@@ -199,12 +199,12 @@ pub struct FindKeysNum {
     key_step: i32,
 }
 
-/// After Redis finds the location from where it needs to start looking for keys,
-/// Redis will start finding keys base on the information in this enum.
+/// After Valkey finds the location from where it needs to start looking for keys,
+/// Valkey will start finding keys base on the information in this enum.
 /// There are 2 possible options:
 /// 1. Range -   Required to specify additional 3 more values, `last_key`, `steps`, and `limit`.
 /// 2. Keynum -  Required to specify additional 3 more values, `keynumidx`, `firstkey`, and `keystep`.
-///              Redis will consider the argument at `keynumidx` as an indicator
+///              Valkey will consider the argument at `keynumidx` as an indicator
 ///              to the number of keys that will follow. Then it will start
 ///              from `firstkey` and jump each `keystep` to find the keys.
 pub enum FindKeys {

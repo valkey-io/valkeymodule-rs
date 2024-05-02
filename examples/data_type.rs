@@ -7,7 +7,7 @@ struct MyType {
     data: String,
 }
 
-static MY_REDIS_TYPE: ValkeyType = ValkeyType::new(
+static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
     "mytype123",
     0,
     raw::RedisModuleTypeMethods {
@@ -52,14 +52,14 @@ fn alloc_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     let key = ctx.open_key_writable(&key);
 
-    if let Some(value) = key.get_value::<MyType>(&MY_REDIS_TYPE)? {
+    if let Some(value) = key.get_value::<MyType>(&MY_VALKEY_TYPE)? {
         value.data = "B".repeat(size as usize);
     } else {
         let value = MyType {
             data: "A".repeat(size as usize),
         };
 
-        key.set_value(&MY_REDIS_TYPE, value)?;
+        key.set_value(&MY_VALKEY_TYPE, value)?;
     }
     Ok(size.into())
 }
@@ -70,7 +70,7 @@ fn alloc_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     let key = ctx.open_key(&key);
 
-    let value = match key.get_value::<MyType>(&MY_REDIS_TYPE)? {
+    let value = match key.get_value::<MyType>(&MY_VALKEY_TYPE)? {
         Some(value) => value.data.as_str().into(),
         None => ().into(),
     };
@@ -85,7 +85,7 @@ valkey_module! {
     version: 1,
     allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
     data_types: [
-        MY_REDIS_TYPE,
+        MY_VALKEY_TYPE,
     ],
     commands: [
         ["alloc.set", alloc_set, "write", 1, 1, 1],

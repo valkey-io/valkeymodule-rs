@@ -233,7 +233,7 @@ pub fn call_reply_integer(reply: *mut RedisModuleCallReply) -> c_longlong {
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_bool(reply: *mut RedisModuleCallReply) -> bool {
     (unsafe { RedisModule_CallReplyBool.unwrap()(reply) } != 0)
@@ -241,7 +241,7 @@ pub fn call_reply_bool(reply: *mut RedisModuleCallReply) -> bool {
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_double(reply: *mut RedisModuleCallReply) -> f64 {
     unsafe { RedisModule_CallReplyDouble.unwrap()(reply) }
@@ -249,7 +249,7 @@ pub fn call_reply_double(reply: *mut RedisModuleCallReply) -> f64 {
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_big_number(reply: *mut RedisModuleCallReply) -> Option<String> {
     unsafe {
@@ -265,7 +265,7 @@ pub fn call_reply_big_number(reply: *mut RedisModuleCallReply) -> Option<String>
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_verbatim_string(reply: *mut RedisModuleCallReply) -> Option<(String, Vec<u8>)> {
     unsafe {
@@ -294,7 +294,7 @@ pub fn call_reply_array_element(
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_set_element(
     reply: *mut RedisModuleCallReply,
@@ -305,7 +305,7 @@ pub fn call_reply_set_element(
 
 /// # Panics
 ///
-/// Panics if the Redis server doesn't support replying with bool (since RESP3).
+/// Panics if the Valkey server doesn't support replying with bool (since RESP3).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn call_reply_map_element(
     reply: *mut RedisModuleCallReply,

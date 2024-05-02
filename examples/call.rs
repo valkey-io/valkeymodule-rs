@@ -52,7 +52,7 @@ fn call_test(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
         .try_into()?;
     if "TEST" != &res {
         return Err(ValkeyError::Str(
-            "Failed calling 'ECHO TEST' with RedisString",
+            "Failed calling 'ECHO TEST' with ValkeyString",
         ));
     }
 
@@ -61,7 +61,7 @@ fn call_test(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
         .try_into()?;
     if "TEST" != &res {
         return Err(ValkeyError::Str(
-            "Failed calling 'ECHO TEST' with dynamic array of RedisString",
+            "Failed calling 'ECHO TEST' with dynamic array of ValkeyString",
         ));
     }
 

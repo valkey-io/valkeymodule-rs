@@ -90,7 +90,7 @@ macro_rules! redis_event_handler {
     }};
 }
 
-/// Defines a Redis module.
+/// Defines a Valkey module.
 ///
 /// It registers the defined module, sets it up and initialises properly,
 /// registers all the commands and types.
@@ -99,8 +99,8 @@ macro_rules! valkey_module {
     (
         name: $module_name:expr,
         version: $module_version:expr,
-        /// Global allocator for the redis module defined.
-        /// In most of the cases, the Redis allocator ([crate::alloc::RedisAlloc])
+        /// Global allocator for the valkey module defined.
+        /// In most of the cases, the Valkey allocator ([crate::alloc::ValkeyAlloc])
         /// should be used.
         allocator: ($allocator_type:ty, $allocator_init:expr),
         data_types: [
@@ -161,7 +161,7 @@ macro_rules! valkey_module {
             $(module_config_set:$module_config_set_command:expr,)?
         ])?
     ) => {
-        /// Redis module allocator.
+        /// Valkey module allocator.
         #[global_allocator]
         static REDIS_MODULE_ALLOCATOR: $allocator_type = $allocator_init;
 
@@ -208,7 +208,7 @@ macro_rules! valkey_module {
             use $crate::configuration::get_enum_default_config_value;
 
             // We use a statically sized buffer to avoid allocating.
-            // This is needed since we use a custom allocator that relies on the Redis allocator,
+            // This is needed since we use a custom allocator that relies on the Valkey allocator,
             // which isn't yet ready at this point.
             let mut name_buffer = [0; 64];
             unsafe {
