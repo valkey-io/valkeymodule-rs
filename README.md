@@ -26,4 +26,4 @@ This repo was forked from [redismodule-rs](https://github.com/RedisLabsModules/r
 See the [examples](examples) directory for some sample modules.
 
 This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
-Therefore, following the [Valkeyi Modules API](https://redis.io/topics/modules-intro) documentation will be mostly relevant here as well.
+Therefore, following the [Valkey Modules API](https://redis.io/topics/modules-intro) documentation will be mostly relevant here as well.
