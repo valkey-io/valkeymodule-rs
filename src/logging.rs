@@ -91,14 +91,12 @@ pub fn log_warning<T: AsRef<str>>(message: T) {
 
 /// The [log] crate implementation of logging.
 pub mod standard_log_implementation {
-    use std::sync::atomic::Ordering;
+    use std::sync::{atomic::Ordering, OnceLock};
 
     use crate::ValkeyError;
 
     use super::*;
     use log::{Metadata, Record, SetLoggerError};
-
-    static mut LOGGER: ValkeyGlobalLogger = ValkeyGlobalLogger(ptr::null_mut());
 
     /// The struct which has an implementation of the [log] crate's
     /// logging interface.
@@ -152,13 +150,15 @@ pub mod standard_log_implementation {
             .map_err(|e| ValkeyError::String(format!("Couldn't set up the logger: {e}")))
     }
 
+    fn logger(context: *mut raw::RedisModuleCtx) -> &'static ValkeyGlobalLogger {
+        static LOGGER: OnceLock<ValkeyGlobalLogger> = OnceLock::new();
+        LOGGER.get_or_init(|| ValkeyGlobalLogger(context))
+    }
+
     /// The same as [setup] but sets the custom module context.
     #[allow(dead_code)]
     pub fn setup_for_context(context: *mut raw::RedisModuleCtx) -> Result<(), SetLoggerError> {
-        unsafe {
-            LOGGER.0 = context;
-            log::set_logger(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Trace))
-        }
+        log::set_logger(logger(context)).map(|()| log::set_max_level(log::LevelFilter::Trace))
     }
 
     impl log::Log for ValkeyGlobalLogger {
