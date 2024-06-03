@@ -1,5 +1,5 @@
 use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
-use valkey_module::{InfoContext, Status};
+use valkey_module::InfoContext;
 
 fn test_helper_version(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     let ver = ctx.get_redis_version()?;
@@ -30,10 +30,17 @@ fn test_helper_err(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(().into())
 }
 
-fn add_info(ctx: &InfoContext, _for_crash_report: bool) {
-    if ctx.add_info_section(Some("test_helper")) == Status::Ok {
-        ctx.add_info_field_str("field", "value");
-    }
+fn add_info_impl(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
+    ctx.builder()
+        .add_section("test_helper")
+        .field("field", "value")?
+        .build_section()?
+        .build_info()
+        .map(|_| ())
+}
+
+fn add_info(ctx: &InfoContext, for_crash_report: bool) {
+    add_info_impl(ctx, for_crash_report).expect("Failed to add info");
 }
 
 //////////////////////////////////////////////////////
