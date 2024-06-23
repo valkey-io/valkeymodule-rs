@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use redis_module_macros::{command, ValkeyValue};
+use valkey_module_macros::{command, ValkeyValue};
 use valkey_module::ValkeyError;
 use valkey_module::{valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue};
 

@@ -432,27 +432,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redis-module-macros"
-version = "99.99.99"
-dependencies = [
- "proc-macro2",
- "quote 1.0.36",
- "serde",
- "serde_syn",
- "syn 1.0.109",
-]
-
-[[package]]
-name = "redis-module-macros-internals"
-version = "2.0.7"
-dependencies = [
- "lazy_static",
- "proc-macro2",
- "quote 1.0.36",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "regex"
 version = "1.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -682,7 +661,7 @@ dependencies = [
 
 [[package]]
 name = "valkey-module"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -698,12 +677,33 @@ dependencies = [
  "nix",
  "num-traits 0.2.19",
  "redis",
- "redis-module-macros",
- "redis-module-macros-internals",
  "regex",
  "serde",
  "strum_macros",
  "valkey-module",
+ "valkey-module-macros",
+ "valkey-module-macros-internals",
+]
+
+[[package]]
+name = "valkey-module-macros"
+version = "0.1.1"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.36",
+ "serde",
+ "serde_syn",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "valkey-module-macros-internals"
+version = "0.1.1"
+dependencies = [
+ "lazy_static",
+ "proc-macro2",
+ "quote 1.0.36",
+ "syn 1.0.109",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 use bitflags::bitflags;
-use redis_module_macros_internals::api;
+use valkey_module_macros_internals::api;
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 use std::os::raw::c_void;

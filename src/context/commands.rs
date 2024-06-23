@@ -5,7 +5,7 @@ use crate::ValkeyError;
 use bitflags::bitflags;
 use libc::c_char;
 use linkme::distributed_slice;
-use redis_module_macros_internals::api;
+use valkey_module_macros_internals::api;
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_int;

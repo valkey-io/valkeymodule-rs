@@ -1,4 +1,4 @@
-use redis_module_macros::command;
+use valkey_module_macros::command;
 use valkey_module::{
     key::KeyFlags, valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
