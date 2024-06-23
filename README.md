@@ -6,7 +6,7 @@
 
 # valkeymodule-rs
 
-This crate provides an idiomatic Rust API for the [Valkey Modules API](https://redis.io/topics/modules-intro).
+This crate provides an idiomatic Rust API for the [Valkey Modules API](https://valkey.io/docs/topics/modules-api-ref/).
 It allows writing Valkey modules in Rust, without needing to use raw pointers or unsafe code. See [here](https://docs.rs/valkey-module/latest) for the most recent API documentation.
 
 This repo was forked from [redismodule-rs](https://github.com/RedisLabsModules/redismodule-rs).  We appreciate the contributions of the original authors.  
@@ -26,4 +26,4 @@ This repo was forked from [redismodule-rs](https://github.com/RedisLabsModules/r
 See the [examples](examples) directory for some sample modules.
 
 This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
-Therefore, following the [Valkeyi Modules API](https://redis.io/topics/modules-intro) documentation will be mostly relevant here as well.
+Therefore, following the [Valkeyi Modules API](https://valkey.io/docs/topics/modules-api-ref/) documentation will be mostly relevant here as well.

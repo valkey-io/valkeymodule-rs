@@ -167,7 +167,7 @@ macro_rules! valkey_module {
 
         // The old-style info command handler, if specified.
         $(
-            #[redis_module_macros::info_command_handler]
+            #[valkey_module_macros::info_command_handler]
             #[inline]
             fn module_info(ctx: &InfoContext, for_crash_report: bool) -> ValkeyResult<()> {
                 $info_func(ctx, for_crash_report);

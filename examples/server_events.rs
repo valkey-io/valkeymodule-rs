@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use redis_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
+use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };

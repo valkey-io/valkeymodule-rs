@@ -1,4 +1,4 @@
-use redis_module_macros::info_command_handler;
+use valkey_module_macros::info_command_handler;
 use valkey_module::InfoContext;
 use valkey_module::{valkey_module, ValkeyResult};
 
