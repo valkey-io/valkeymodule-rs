@@ -1,6 +1,6 @@
-use valkey_module_macros::{info_command_handler, InfoSection};
 use valkey_module::InfoContext;
 use valkey_module::{valkey_module, ValkeyResult};
+use valkey_module_macros::{info_command_handler, InfoSection};
 
 #[derive(Debug, Clone, InfoSection)]
 struct InfoSection1 {

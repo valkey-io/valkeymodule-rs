@@ -1,11 +1,11 @@
 use bitflags::bitflags;
-use valkey_module_macros_internals::api;
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::CString;
 use std::os::raw::c_void;
 use std::os::raw::{c_char, c_int, c_long, c_longlong};
 use std::ptr::{self, NonNull};
 use std::sync::atomic::{AtomicPtr, Ordering};
+use valkey_module_macros_internals::api;
 
 use crate::key::{KeyFlags, ValkeyKey, ValkeyKeyWritable};
 use crate::logging::ValkeyLogLevel;

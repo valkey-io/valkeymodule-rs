@@ -7,7 +7,7 @@ const NOT_INITIALISED_MESSAGE: &str = "Valkey module hasn't been initialised.";
 
 /// [ValkeyLogLevel] is a level of logging which can be used when
 /// logging with Redis. See [raw::RedisModule_Log] and the official
-/// valkey [reference](https://valkey.io/docs/topics/modules-api-ref/).
+/// valkey [reference](https://valkey.io/topics/modules-api-ref/).
 #[derive(Clone, Copy, Debug, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum ValkeyLogLevel {
