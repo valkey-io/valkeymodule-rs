@@ -1,14 +1,15 @@
 use valkey_module_macros::info_command_handler;
 use valkey_module::{valkey_module, ValkeyResult};
-use valkey_module::{InfoContext, Status};
+use valkey_module::InfoContext;
 
 #[info_command_handler]
 fn add_info(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
-    if ctx.add_info_section(Some("info")) == Status::Ok {
-        ctx.add_info_field_str("field", "value");
-    }
-
-    Ok(())
+    ctx.builder()
+        .add_section("info")
+        .field("field", "value")?
+        .build_section()?
+        .build_info()
+        .map(|_| ())
 }
 
 //////////////////////////////////////////////////////
