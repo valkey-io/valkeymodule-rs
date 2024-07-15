@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
+use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);

@@ -1,5 +1,5 @@
-use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
 use valkey_module::InfoContext;
+use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
 
 fn test_helper_version(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     let ver = ctx.get_redis_version()?;

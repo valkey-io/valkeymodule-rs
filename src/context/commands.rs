@@ -5,11 +5,11 @@ use crate::ValkeyError;
 use bitflags::bitflags;
 use libc::c_char;
 use linkme::distributed_slice;
-use valkey_module_macros_internals::api;
 use std::ffi::CString;
 use std::mem::MaybeUninit;
 use std::os::raw::c_int;
 use std::ptr;
+use valkey_module_macros_internals::api;
 
 const COMMNAD_INFO_VERSION: raw::RedisModuleCommandInfoVersion =
     raw::RedisModuleCommandInfoVersion {
