@@ -38,6 +38,9 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
          *
          * From: https://linux.die.net/man/3/jemalloc
          */
+        if cfg!(feature = "enable-system-alloc") {
+            return std::alloc::System.alloc(layout);
+        }
         let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
 
         match raw::RedisModule_Alloc {
@@ -46,7 +49,10 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        if cfg!(feature = "enable-system-alloc") {
+            return std::alloc::System.dealloc(ptr, layout);
+        }
         match raw::RedisModule_Free {
             Some(f) => f(ptr.cast()),
             None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),

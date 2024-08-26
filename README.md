@@ -25,5 +25,19 @@ This repo was forked from [redismodule-rs](https://github.com/RedisLabsModules/r
 
 See the [examples](examples) directory for some sample modules.
 
+To optionally enter the `System.alloc` code paths in `alloc.rs` specify this in `Cargo.toml` of your module:
+```
+[features]
+enable-system-alloc = ["valkey-module/system-alloc"]
+```
+For unit tests with `System.alloc` use this: 
+```
+cargo test --features enable-system-alloc
+```
+For integration tests with `ValkeyAlloc` use this:
+```
+cargo test
+```
+
 This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
 Therefore, following the [Valkeyi Modules API](https://valkey.io/topics/modules-api-ref/) documentation will be mostly relevant here as well.
