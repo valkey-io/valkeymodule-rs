@@ -315,7 +315,6 @@ type CommandCallback =
 pub struct CommandInfo {
     name: String,
     flags: Option<String>,
-    enterprise_flags: Option<String>,
     summary: Option<String>,
     complexity: Option<String>,
     since: Option<String>,
@@ -329,7 +328,6 @@ impl CommandInfo {
     pub fn new(
         name: String,
         flags: Option<String>,
-        enterprise_flags: Option<String>,
         summary: Option<String>,
         complexity: Option<String>,
         since: Option<String>,
@@ -341,7 +339,6 @@ impl CommandInfo {
         CommandInfo {
             name,
             flags,
-            enterprise_flags,
             summary,
             complexity,
             since,
@@ -371,14 +368,10 @@ api! {[
     ],
     /// Register all the commands located on `COMMNADS_LIST`.
     fn register_commands_internal(ctx: &Context) -> Result<(), ValkeyError> {
-        let is_enterprise = ctx.is_enterprise();
         COMMANDS_LIST.iter().try_for_each(|command| {
             let command_info = command()?;
             let name: CString = CString::new(command_info.name.as_str()).unwrap();
-            let mut flags = command_info.flags.as_deref().unwrap_or("").to_owned();
-            if is_enterprise {
-                flags = format!("{flags} {}", command_info.enterprise_flags.as_deref().unwrap_or("")).trim().to_owned();
-            }
+            let flags = command_info.flags.as_deref().unwrap_or("").to_owned();
             let flags = CString::new(flags).map_err(|e| ValkeyError::String(e.to_string()))?;
 
             if unsafe {
