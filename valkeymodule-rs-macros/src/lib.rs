@@ -10,7 +10,6 @@ mod redis_value;
 /// The macro accept the following arguments that discribe the command properties:
 /// * name (optional) - The command name. in case not given, the function name will be taken.
 /// * flags - An array of [`command::RedisCommandFlags`].
-/// * enterprise_flags - An array of [`command::RedisEnterpriseCommandFlags`].
 /// * summary (optional) - Command summary
 /// * complexity (optional) - Command compexity
 /// * since (optional) - At which module version the command was first introduce

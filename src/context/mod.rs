@@ -851,26 +851,6 @@ impl Context {
             unsafe { RedisModule_AvoidReplicaTraffic() == 1 }
         }
     );
-
-    /// Return [Ok(true)] is the current Valkey deployment is enterprise, otherwise [Ok(false)].
-    /// Return error in case it was not possible to determind the deployment.
-    fn is_enterprise_internal(&self) -> Result<bool, ValkeyError> {
-        let info_res = self.call("info", &["server"])?;
-        let info = match &info_res {
-            ValkeyValue::BulkValkeyString(res) => res.try_as_str()?,
-            ValkeyValue::SimpleString(res) => res.as_str(),
-            _ => return Err(ValkeyError::Str("Mismatch call reply type")),
-        };
-        Ok(info.contains("rlec_version:"))
-    }
-
-    /// Return `true` is the current Valkey deployment is enterprise, otherwise `false`.
-    pub fn is_enterprise(&self) -> bool {
-        self.is_enterprise_internal().unwrap_or_else(|e| {
-            log::error!("Failed getting deployment type, assuming oss. Error: {e}.");
-            false
-        })
-    }
 }
 
 extern "C" fn post_notification_job_free_callback<F: FnOnce(&Context)>(pd: *mut c_void) {
