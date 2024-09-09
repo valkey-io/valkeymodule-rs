@@ -30,7 +30,7 @@ impl Parse for Args {
     }
 }
 
-/// This proc macro allows specifying which RedisModuleAPI is required by some redismodue-rs
+/// This proc macro allows specifying which RedisModuleAPI is required by some valekymodue-rs
 /// function. The macro finds, for a given set of RedisModuleAPI, what the minimal Valkey version is
 /// that contains all those APIs and decides whether or not the function might raise an [APIError].
 ///

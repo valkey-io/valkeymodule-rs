@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
@@ -48,7 +49,7 @@ fn num_maxmemory_changes(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResu
 valkey_module! {
     name: "srv_events",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],

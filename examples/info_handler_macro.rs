@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::InfoContext;
 use valkey_module::{valkey_module, ValkeyResult};
 use valkey_module_macros::info_command_handler;
@@ -17,7 +18,7 @@ fn add_info(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
 valkey_module! {
     name: "info_handler_macro",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [],
 }

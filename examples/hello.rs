@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
 
 fn hello_mul(_: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -24,7 +25,7 @@ fn hello_mul(_: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "hello",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["hello.mul", hello_mul, "", 0, 0, 0],

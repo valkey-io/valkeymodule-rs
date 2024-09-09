@@ -1,7 +1,7 @@
-[![license](https://img.shields.io/github/license/RedisLabsModules/redismodule-rs.svg)](https://github.com/RedisLabsModules/redismodule-rs/blob/master/LICENSE)
-[![Releases](https://img.shields.io/github/release/RedisLabsModules/redismodule-rs.svg)](https://github.com/RedisLabsModules/redismodule-rs/releases/latest)
-[![crates.io](https://img.shields.io/crates/v/redis-module.svg)](https://crates.io/crates/redis-module)
-[![docs](https://docs.rs/redis-module/badge.svg)](https://docs.rs/redis-module)
+[![license](https://img.shields.io/github/license/RedisLabsModules/redismodule-rs.svg)](https://github.com/valkey-io/valkeymodule-rs/blob/main/LICENSE)
+[![Releases](https://img.shields.io/github/release/RedisLabsModules/redismodule-rs.svg)](https://github.com/valkey-io/valkeymodule-rs/releases)
+[![crates.io](https://img.shields.io/crates/v/redis-module.svg)](https://crates.io/crates/valkey-module)
+[![docs](https://docs.rs/redis-module/badge.svg)](https://docs.rs/valkey-module)
 [![CircleCI](https://circleci.com/gh/RedisLabsModules/redismodule-rs/tree/master.svg?style=svg)](https://circleci.com/gh/RedisLabsModules/redismodule-rs/tree/master)
 
 # valkeymodule-rs

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::ValkeyError;
 use valkey_module::{valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue};
 use valkey_module_macros::{command, ValkeyValue};
@@ -37,7 +38,7 @@ enum ValkeyValueEnum {
         arity: -1,
         key_spec: [
             {
-                notes: "test redis value derive macro",
+                notes: "test valkey value derive macro",
                 flags: [ReadOnly, Access],
                 begin_search: Index({ index : 0 }),
                 find_keys: Range({ last_key : 0, steps : 0, limit : 0 }),
@@ -130,7 +131,7 @@ fn num_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "server_events",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [],
 }

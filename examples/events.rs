@@ -1,5 +1,6 @@
 use std::ptr::NonNull;
 use std::sync::atomic::{AtomicI64, Ordering};
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     valkey_module, Context, NotifyEvent, Status, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
@@ -10,7 +11,7 @@ static NUM_KEYS: AtomicI64 = AtomicI64::new(0);
 
 fn on_event(ctx: &Context, event_type: NotifyEvent, event: &str, key: &[u8]) {
     if key == b"num_sets" {
-        // break infinit look
+        // break infinite loop
         return;
     }
     let msg = format!(
@@ -22,7 +23,7 @@ fn on_event(ctx: &Context, event_type: NotifyEvent, event: &str, key: &[u8]) {
     ctx.log_notice(msg.as_str());
     let _ = ctx.add_post_notification_job(|ctx| {
         // it is not safe to write inside the notification callback itself.
-        // So we perform the write on a post job notificaiton.
+        // So we perform write on a post job notificaiton.
         if let Err(e) = ctx.call("incr", &["num_sets"]) {
             ctx.log_warning(&format!("Error on incr command, {}.", e));
         }
@@ -66,7 +67,7 @@ fn num_keys(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "events",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["events.send", event_send, "", 0, 0, 0],

@@ -248,7 +248,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         arity: -1,
 ///         key_spec: [
 ///             {
-///                 notes: "test redis value derive macro",
+///                 notes: "test valkey value derive macro",
 ///                 flags: [ReadOnly, Access],
 ///                 begin_search: Index({ index : 0 }),
 ///                 find_keys: Range({ last_key : 0, steps : 0, limit : 0 }),
@@ -332,7 +332,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         arity: -1,
 ///         key_spec: [
 ///             {
-///                 notes: "test redis value derive macro",
+///                 notes: "test valkey value derive macro",
 ///                 flags: [ReadOnly, Access],
 ///                 begin_search: Index({ index : 0 }),
 ///                 find_keys: Range({ last_key : 0, steps : 0, limit : 0 }),

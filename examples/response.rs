@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     redisvalue::ValkeyValueKey, valkey_module, Context, NextArg, ValkeyError, ValkeyResult,
     ValkeyString, ValkeyValue,
@@ -64,7 +65,7 @@ fn map_unique(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "response",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["map.mget", map_mget, "readonly", 1, 1, 1],

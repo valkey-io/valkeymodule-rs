@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue};
 
 fn keys_pos(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -25,7 +26,7 @@ fn keys_pos(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "keys_pos",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["keys_pos", keys_pos, "getkeys-api", 1, 1, 1],

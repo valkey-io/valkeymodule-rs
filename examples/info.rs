@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
 };
@@ -23,7 +24,7 @@ fn info_cmd(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "info",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["infoex", info_cmd, "", 0, 0, 0],

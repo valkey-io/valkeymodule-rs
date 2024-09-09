@@ -35,7 +35,7 @@ pub enum ValkeyCommandFlags {
 
     /// The command may have different outputs even starting from the same input arguments and key values.
     /// Starting from Redis 7.0 this flag has been deprecated. Declaring a command as "random" can be done using
-    /// command tips, see https://redis.io/topics/command-tips.
+    /// command tips, see https://valkey.io/commands/.
     Random,
 
     /// The command is allowed to run on slaves that don't serve stale data. Don't use if you don't know what

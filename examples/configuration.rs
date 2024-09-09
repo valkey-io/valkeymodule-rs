@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use lazy_static::lazy_static;
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     configuration::{ConfigurationContext, ConfigurationFlags},
     enum_configuration, valkey_module, ConfigurationValue, Context, ValkeyGILGuard, ValkeyResult,
@@ -21,7 +22,7 @@ lazy_static! {
     static ref NUM_OF_CONFIGURATION_CHANGES: ValkeyGILGuard<i64> = ValkeyGILGuard::default();
     static ref CONFIGURATION_I64: ValkeyGILGuard<i64> = ValkeyGILGuard::default();
     static ref CONFIGURATION_ATOMIC_I64: AtomicI64 = AtomicI64::new(1);
-    static ref CONFIGURATION_REDIS_STRING: ValkeyGILGuard<ValkeyString> =
+    static ref CONFIGURATION_VALKEY_STRING: ValkeyGILGuard<ValkeyString> =
         ValkeyGILGuard::new(ValkeyString::create(None, "default"));
     static ref CONFIGURATION_STRING: ValkeyGILGuard<String> = ValkeyGILGuard::new("default".into());
     static ref CONFIGURATION_MUTEX_STRING: Mutex<String> = Mutex::new("default".into());
@@ -52,7 +53,7 @@ fn num_changes(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "configuration",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["configuration.num_changes", num_changes, "", 0, 0, 0],
@@ -63,7 +64,7 @@ valkey_module! {
             ["atomic_i64", &*CONFIGURATION_ATOMIC_I64, 10, 0, 1000, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
         ],
         string: [
-            ["redis_string", &*CONFIGURATION_REDIS_STRING, "default", ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
+            ["valkey_string", &*CONFIGURATION_VALKEY_STRING, "default", ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
             ["string", &*CONFIGURATION_STRING, "default", ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed::<String, _>))],
             ["mutex_string", &*CONFIGURATION_MUTEX_STRING, "default", ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed::<String, _>))],
         ],

@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::InfoContext;
 use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
 
@@ -48,7 +49,7 @@ fn add_info(ctx: &InfoContext, for_crash_report: bool) {
 valkey_module! {
     name: "test_helper",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     info: add_info,
     commands: [
