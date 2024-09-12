@@ -129,7 +129,7 @@ pub mod standard_log_implementation {
     /// method instead.
     ///
     /// In case this function is invoked before the initialisation, and
-    /// so without the redis module context, no context will be used for
+    /// so without the valkey module context, no context will be used for
     /// the logging, however, the logger will be set.
     ///
     /// # Example

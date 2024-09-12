@@ -109,7 +109,7 @@ impl CallOptionsBuilder {
         self
     }
 
-    /// Enable this option will cause the command to be replicaed to the replica and AOF
+    /// Enable this option will cause the command to be replicated to the replica and AOF
     pub fn replicate(mut self) -> CallOptionsBuilder {
         self.add_flag("!");
         self
@@ -384,7 +384,7 @@ impl Context {
     ///
     /// Will panic if `RedisModule_KeyAtPos` is missing in redismodule.h
     pub fn key_at_pos(&self, pos: i32) {
-        // TODO: This will crash redis if `pos` is out of range.
+        // TODO: This will crash valkey if `pos` is out of range.
         // Think of a way to make this safe by checking the range.
         unsafe {
             raw::RedisModule_KeyAtPos.unwrap()(self.ctx, pos as c_int);
@@ -687,13 +687,13 @@ impl Context {
         }
     }
 
-    /// Returns the redis version either by calling `RedisModule_GetServerVersion` API,
+    /// Returns the valkey version either by calling `RedisModule_GetServerVersion` API,
     /// Or if it is not available, by calling "info server" API and parsing the reply
     pub fn get_redis_version(&self) -> Result<Version, ValkeyError> {
         self.get_redis_version_internal(false)
     }
 
-    /// Returns the redis version by calling "info server" API and parsing the reply
+    /// Returns the valkey version by calling "info server" API and parsing the reply
     pub fn get_redis_version_rm_call(&self) -> Result<Version, ValkeyError> {
         self.get_redis_version_internal(true)
     }

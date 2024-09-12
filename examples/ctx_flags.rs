@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     valkey_module, Context, ContextFlags, ValkeyResult, ValkeyString, ValkeyValue,
 };
@@ -17,7 +18,7 @@ fn role(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "ctx_flags",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["my_role", role, "readonly", 0, 0, 0],

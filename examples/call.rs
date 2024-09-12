@@ -5,6 +5,7 @@ use valkey_module::{
 };
 
 use std::thread;
+use valkey_module::alloc::ValkeyAlloc;
 
 fn call_test(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     let res: String = ctx.call("ECHO", &["TEST"])?.try_into()?;
@@ -161,7 +162,7 @@ fn call_blocking_from_detach_ctx(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyR
 valkey_module! {
     name: "call",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["call.test", call_test, "", 0, 0, 0],

@@ -1,4 +1,5 @@
 use std::time::Duration;
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
 fn callback(ctx: &Context, data: String) {
@@ -42,7 +43,7 @@ fn timer_stop(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "timer",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["timer.create", timer_create, "", 0, 0, 0],

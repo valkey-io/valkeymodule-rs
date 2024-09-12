@@ -35,7 +35,7 @@ pub enum ValkeyCommandFlags {
 
     /// The command may have different outputs even starting from the same input arguments and key values.
     /// Starting from Redis 7.0 this flag has been deprecated. Declaring a command as "random" can be done using
-    /// command tips, see https://redis.io/topics/command-tips.
+    /// command tips, see https://valkey.io/commands/.
     Random,
 
     /// The command is allowed to run on slaves that don't serve stale data. Don't use if you don't know what
@@ -231,7 +231,7 @@ fn to_token_stream(s: Option<String>) -> proc_macro2::TokenStream {
         .unwrap_or(quote! {None})
 }
 
-pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub(crate) fn valkey_command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as Args);
     let func: ItemFn = match syn::parse(item) {
         Ok(res) => res,

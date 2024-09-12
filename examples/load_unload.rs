@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{logging::ValkeyLogLevel, valkey_module, Context, Status, ValkeyString};
 
 static mut GLOBAL_STATE: Option<String> = None;
@@ -36,7 +37,7 @@ fn deinit(ctx: &Context) -> Status {
 valkey_module! {
     name: "load_unload",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     init: init,
     deinit: deinit,

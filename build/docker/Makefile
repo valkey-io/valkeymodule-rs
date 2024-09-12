@@ -3,7 +3,7 @@ ROOT=../..
 
 include $(ROOT)/deps/readies/mk/main
 
-REPO=redismodule-rs
+REPO=valkeymodule-rs
 
 REDIS_VERSION=7.2-rc1
 

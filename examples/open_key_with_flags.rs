@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     key::KeyFlags, valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
@@ -61,7 +62,7 @@ fn write(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "open_key_with_flags",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [],
 }

@@ -2,6 +2,7 @@ use lazy_static::lazy_static;
 use std::mem::drop;
 use std::thread;
 use std::time::Duration;
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     valkey_module, Context, NextArg, ThreadSafeContext, ValkeyGILGuard, ValkeyResult, ValkeyString,
     ValkeyValue,
@@ -14,7 +15,7 @@ fn threads(_: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
         loop {
             let ctx = thread_ctx.lock();
             ctx.call("INCR", &["threads"]).unwrap();
-            // release the lock as soon as we're done accessing redis memory
+            // release the lock as soon as we're done accessing valkey memory
             drop(ctx);
             thread::sleep(Duration::from_millis(1000));
         }
@@ -62,7 +63,7 @@ fn get_static_data_on_thread(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyR
 valkey_module! {
     name: "threads",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["threads", threads, "", 0, 0, 0],

@@ -1,4 +1,5 @@
 use std::time::Duration;
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{valkey_module, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString};
 
 fn expire_cmd(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
@@ -22,7 +23,7 @@ fn expire_cmd(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "expire",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["expire.cmd", expire_cmd, "write fast deny-oom", 1, 1, 1],

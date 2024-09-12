@@ -12,7 +12,7 @@ use syn::{
 /// Generate [From] implementation for [ValkeyValue] for Enum.
 /// The generated code will simply check the Enum current type (using
 /// a match statement) and will perform [Into] and the matched variant.
-fn enum_redis_value(struct_name: Ident, enum_data: DataEnum) -> TokenStream {
+fn enum_valkey_value(struct_name: Ident, enum_data: DataEnum) -> TokenStream {
     let variants = enum_data
         .variants
         .into_iter()
@@ -49,7 +49,7 @@ impl Parse for FieldAttr {
 /// The generated code will create a [ValkeyValue::Map] element such that
 /// the keys are the fields names and the value are the result of
 /// running [Into] on each field value to convert it to [ValkeyValue].
-fn struct_redis_value(struct_name: Ident, struct_data: DataStruct) -> TokenStream {
+fn struct_valkey_value(struct_name: Ident, struct_data: DataStruct) -> TokenStream {
     let fields = match struct_data.fields {
         Fields::Named(f) => f,
         _ => {
@@ -135,12 +135,12 @@ fn struct_redis_value(struct_name: Ident, struct_data: DataStruct) -> TokenStrea
 /// Runs the relevant code generation base on the element
 /// the proc macro was used on. Currently supports Enums and
 /// structs.
-pub fn redis_value(item: TokenStream) -> TokenStream {
+pub fn valkey_value(item: TokenStream) -> TokenStream {
     let struct_input: DeriveInput = parse_macro_input!(item);
     let struct_name = struct_input.ident;
     match struct_input.data {
-        Data::Struct(s) => struct_redis_value(struct_name, s),
-        Data::Enum(e) => enum_redis_value(struct_name, e),
+        Data::Struct(s) => struct_valkey_value(struct_name, s),
+        Data::Enum(e) => enum_valkey_value(struct_name, e),
         _ => {
             quote! {compile_error!("ValkeyValue derive can only be apply on struct.")}.into()
         }

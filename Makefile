@@ -32,7 +32,7 @@ include $(MK)/rules
 
 #----------------------------------------------------------------------------------------------
 
-MODULE_NAME=redismodule-rs.so
+MODULE_NAME=valkeymodule-rs.so
 
 ifeq ($(DEBUG),1)
 TARGET_DIR=target/debug

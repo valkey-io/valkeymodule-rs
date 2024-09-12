@@ -37,6 +37,7 @@ bitflags! {
         const HANDLE_IO_ERRORS = REDISMODULE_OPTIONS_HANDLE_IO_ERRORS as c_int;
         const NO_IMPLICIT_SIGNAL_MODIFIED = REDISMODULE_OPTION_NO_IMPLICIT_SIGNAL_MODIFIED as c_int;
         const HANDLE_REPL_ASYNC_LOAD = REDISMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD as c_int;
+        const ALLOW_NESTED_KEYSPACE_NOTIFICATIONS = REDISMODULE_OPTIONS_ALLOW_NESTED_KEYSPACE_NOTIFICATIONS as c_int;
     }
 }
 
@@ -869,7 +870,7 @@ pub fn add_info_end_dict_field(ctx: *mut RedisModuleInfoCtx) -> Status {
 /// # Safety
 ///
 /// This function is safe to use as it doesn't perform any work with
-/// the [RedisModuleCtx] pointer except for passing it to the redis server.
+/// the [RedisModuleCtx] pointer except for passing it to the valkey server.
 ///
 /// # Panics
 ///
@@ -885,7 +886,7 @@ pub unsafe fn export_shared_api(
 /// # Safety
 ///
 /// This function is safe to use as it doesn't perform any work with
-/// the [RedisModuleCtx] pointer except for passing it to the redis server.
+/// the [RedisModuleCtx] pointer except for passing it to the valkey server.
 ///
 /// # Panics
 ///
@@ -918,7 +919,7 @@ pub fn get_keyspace_events() -> NotifyEvent {
 /// # Safety
 ///
 /// This function is safe to use as it doesn't perform any work with
-/// the [RedisModuleCtx] pointer except for passing it to the redis server.
+/// the [RedisModuleCtx] pointer except for passing it to the valkey server.
 ///
 /// # Panics
 ///

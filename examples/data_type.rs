@@ -1,4 +1,5 @@
 use std::os::raw::c_void;
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{raw, valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
@@ -83,7 +84,7 @@ fn alloc_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "alloc",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [
         MY_VALKEY_TYPE,
     ],

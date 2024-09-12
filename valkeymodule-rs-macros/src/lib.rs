@@ -4,7 +4,7 @@ use syn::ItemFn;
 
 mod command;
 mod info_section;
-mod redis_value;
+mod valkey_value;
 
 /// This proc macro allow to specify that the follow function is a Valkey command.
 /// The macro accept the following arguments that discribe the command properties:
@@ -82,7 +82,7 @@ mod redis_value;
 /// **Notice**, by default Valkey does not validate the command spec. User should validate the command keys on the module command code. The command spec is used for validation on cluster so Valkey can raise a cross slot error when needed.
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    command::redis_command(attr, item)
+    command::valkey_command(attr, item)
 }
 
 /// Proc macro which is set on a function that need to be called whenever the server role changes.
@@ -248,7 +248,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         arity: -1,
 ///         key_spec: [
 ///             {
-///                 notes: "test redis value derive macro",
+///                 notes: "test valkey value derive macro",
 ///                 flags: [ReadOnly, Access],
 ///                 begin_search: Index({ index : 0 }),
 ///                 find_keys: Range({ last_key : 0, steps : 0, limit : 0 }),
@@ -256,7 +256,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         ]
 ///     }
 /// )]
-/// fn redis_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+/// fn valkey_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
 ///     Ok(ValkeyValueDerive {
 ///         i: 10,
 ///         f: 1.1,
@@ -283,7 +283,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// The code above will generate the following reply (in resp3):
 ///
 /// ```bash
-/// 127.0.0.1:6379> redis_value_derive
+/// 127.0.0.1:6379> valkey_value_derive
 /// 1# "f" => (double) 1.1
 /// 2# "hash_map" => 1# "key" => "val"
 /// 3# "hash_set" => 1~ "key"
@@ -332,7 +332,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         arity: -1,
 ///         key_spec: [
 ///             {
-///                 notes: "test redis value derive macro",
+///                 notes: "test valkey value derive macro",
 ///                 flags: [ReadOnly, Access],
 ///                 begin_search: Index({ index : 0 }),
 ///                 find_keys: Range({ last_key : 0, steps : 0, limit : 0 }),
@@ -340,7 +340,7 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 ///         ]
 ///     }
 /// )]
-/// fn redis_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
+/// fn valkey_value_derive(_ctx: &Context, _args: Vec<RedisString>) -> RedisResult {
 ///     Ok(ValkeyValueDerive {
 ///         i1: 10,
 ///         inner: ValkeyValueDeriveInner{ i2: 10 },
@@ -352,14 +352,14 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// The code above will generate the following reply (in resp3):
 ///
 /// ```bash
-/// 127.0.0.1:6379> redis_value_derive
+/// 127.0.0.1:6379> valkey_value_derive
 /// 1# "i1" => 10
 /// 2# "i2" => 10
 /// ```
 ///
 #[proc_macro_derive(ValkeyValue, attributes(ValkeyValueAttr))]
-pub fn redis_value(item: TokenStream) -> TokenStream {
-    redis_value::redis_value(item)
+pub fn valkey_value(item: TokenStream) -> TokenStream {
+    valkey_value::valkey_value(item)
 }
 
 /// A procedural macro which registers this function as the custom

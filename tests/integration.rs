@@ -96,7 +96,7 @@ fn test_command_name() -> Result<()> {
     // Call the tested command
     let res: Result<String, RedisError> = redis::cmd("test_helper.name").query(&mut con);
 
-    // The expected result is according to redis version
+    // The expected result is according to valkey version
     let info: String = redis::cmd("info")
         .arg(&["server"])
         .query(&mut con)
@@ -428,7 +428,7 @@ fn test_server_event() -> Result<()> {
 
     redis::cmd("flushall")
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run flushall")?;
 
     let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
 
@@ -437,7 +437,7 @@ fn test_server_event() -> Result<()> {
     redis::cmd("config")
         .arg(&["set", "maxmemory", "1"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
 
@@ -446,7 +446,7 @@ fn test_server_event() -> Result<()> {
     redis::cmd("config")
         .arg(&["set", "maxmemory", "0"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
 
@@ -470,7 +470,7 @@ fn test_configuration() -> Result<()> {
         let res: Vec<String> = redis::cmd("config")
             .arg(&["get", config])
             .query(&mut con)
-            .with_context(|| "failed to run flushall")?;
+            .with_context(|| "failed to run config get")?;
         Ok(res[1].clone())
     };
 
@@ -479,7 +479,7 @@ fn test_configuration() -> Result<()> {
         let res: String = redis::cmd("config")
             .arg(&["set", config, val])
             .query(&mut con)
-            .with_context(|| "failed to run flushall")?;
+            .with_context(|| "failed to run config set")?;
         assert_eq!(res, "OK");
         Ok(())
     };
@@ -492,9 +492,9 @@ fn test_configuration() -> Result<()> {
     config_set("configuration.atomic_i64", "100")?;
     assert_eq!(config_get("configuration.atomic_i64")?, "100");
 
-    assert_eq!(config_get("configuration.redis_string")?, "default");
-    config_set("configuration.redis_string", "new")?;
-    assert_eq!(config_get("configuration.redis_string")?, "new");
+    assert_eq!(config_get("configuration.valkey_string")?, "default");
+    config_set("configuration.valkey_string", "new")?;
+    assert_eq!(config_get("configuration.valkey_string")?, "new");
 
     assert_eq!(config_get("configuration.string")?, "default");
     config_set("configuration.string", "new")?;
@@ -523,7 +523,7 @@ fn test_configuration() -> Result<()> {
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
-        .with_context(|| "failed to run flushall")?;
+        .with_context(|| "failed to run configuration.num_changes")?;
     assert_eq!(res, 18); // the first configuration initialisation is counted as well, so we will get 18 changes.
 
     Ok(())
@@ -539,12 +539,12 @@ fn test_response() -> Result<()> {
     redis::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run hset")?;
 
     let mut res: Vec<String> = redis::cmd("map.mget")
         .arg(&["k", "a", "c", "e"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run map.mget")?;
 
     res.sort();
     assert_eq!(&res, &["a", "b", "b", "c", "d", "e"]);
@@ -552,7 +552,7 @@ fn test_response() -> Result<()> {
     let mut res: Vec<String> = redis::cmd("map.unique")
         .arg(&["k", "a", "c", "e"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run map.unique")?;
 
     res.sort();
     assert_eq!(&res, &["b", "d"]);
@@ -570,28 +570,28 @@ fn test_command_proc_macro() -> Result<()> {
     let res: Vec<String> = redis::cmd("COMMAND")
         .arg(&["GETKEYS", "classic_keys", "x", "foo", "y", "bar"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
     let res: Vec<String> = redis::cmd("COMMAND")
         .arg(&["GETKEYS", "keyword_keys", "foo", "x", "1", "y", "2"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
     let res: Vec<String> = redis::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "3", "x", "y", "z", "foo", "bar"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y", "z"]);
 
     let res: Vec<String> = redis::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "0", "foo", "bar"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run command getkeys")?;
 
     assert!(res.is_empty());
 
@@ -599,22 +599,22 @@ fn test_command_proc_macro() -> Result<()> {
 }
 
 #[test]
-fn test_redis_value_derive() -> Result<()> {
+fn test_valkey_value_derive() -> Result<()> {
     let port: u16 = 6498;
     let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    let res: Value = redis::cmd("redis_value_derive")
+    let res: Value = redis::cmd("valkey_value_derive")
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res.as_sequence().unwrap().len(), 22);
 
-    let res: String = redis::cmd("redis_value_derive")
+    let res: String = redis::cmd("valkey_value_derive")
         .arg(&["test"])
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res, "OK");
 
@@ -631,13 +631,13 @@ fn test_call_blocking() -> Result<()> {
 
     let res: Option<String> = redis::cmd("call.blocking")
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run call.blocking")?;
 
     assert_eq!(res, None);
 
     let res: Option<String> = redis::cmd("call.blocking_from_detached_ctx")
         .query(&mut con)
-        .with_context(|| "failed to run string.set")?;
+        .with_context(|| "failed to run call.blocking_from_detached_ctx")?;
 
     assert_eq!(res, None);
 
@@ -661,13 +661,13 @@ fn test_open_key_with_flags() -> Result<()> {
         redis::cmd("set")
             .arg(&["x", "1"])
             .query(&mut con)
-            .with_context(|| "failed to run string.set")?;
+            .with_context(|| "failed to run set")?;
 
         // Set experition time to 1 second.
         redis::cmd("pexpire")
             .arg(&["x", "1"])
             .query(&mut con)
-            .with_context(|| "failed to run expire")?;
+            .with_context(|| "failed to run pexpire")?;
 
         // Sleep for 2 seconds, ensure expiration time has passed.
         thread::sleep(Duration::from_millis(500));

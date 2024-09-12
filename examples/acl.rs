@@ -1,3 +1,4 @@
+use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     valkey_module, AclPermissions, Context, NextArg, ValkeyError, ValkeyResult, ValkeyString,
     ValkeyValue,
@@ -23,7 +24,7 @@ fn get_current_user(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 valkey_module! {
     name: "acl",
     version: 1,
-    allocator: (valkey_module::alloc::ValkeyAlloc, valkey_module::alloc::ValkeyAlloc),
+    allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
         ["verify_key_access_for_user", verify_key_access_for_user, "", 0, 0, 0],
