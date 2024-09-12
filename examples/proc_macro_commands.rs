@@ -46,7 +46,7 @@ enum ValkeyValueEnum {
         ]
     }
 )]
-fn redis_value_derive(
+fn valkey_value_derive(
     _ctx: &Context,
     args: Vec<ValkeyString>,
 ) -> Result<ValkeyValueEnum, ValkeyError> {

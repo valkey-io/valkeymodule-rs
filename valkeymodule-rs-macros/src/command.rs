@@ -231,7 +231,7 @@ fn to_token_stream(s: Option<String>) -> proc_macro2::TokenStream {
         .unwrap_or(quote! {None})
 }
 
-pub(crate) fn redis_command(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub(crate) fn valkey_command(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as Args);
     let func: ItemFn = match syn::parse(item) {
         Ok(res) => res,

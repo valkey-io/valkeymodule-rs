@@ -599,22 +599,22 @@ fn test_command_proc_macro() -> Result<()> {
 }
 
 #[test]
-fn test_redis_value_derive() -> Result<()> {
+fn test_valkey_value_derive() -> Result<()> {
     let port: u16 = 6498;
     let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    let res: Value = redis::cmd("redis_value_derive")
+    let res: Value = redis::cmd("valkey_value_derive")
         .query(&mut con)
-        .with_context(|| "failed to run redis_value_derive")?;
+        .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res.as_sequence().unwrap().len(), 22);
 
-    let res: String = redis::cmd("redis_value_derive")
+    let res: String = redis::cmd("valkey_value_derive")
         .arg(&["test"])
         .query(&mut con)
-        .with_context(|| "failed to run redis_value_derive")?;
+        .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res, "OK");
 
