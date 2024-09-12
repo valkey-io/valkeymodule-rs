@@ -1,6 +1,6 @@
 [package]
 name = "valkey-module"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Dmitry Polyakovsky <dmitry.polyakovsky@oracle.com>"]
 edition = "2021"
 build = "build.rs"
@@ -132,7 +132,7 @@ linkme = "0.3"
 serde = { version = "1", features = ["derive"] }
 nix = "0.26"
 cfg-if = "1"
-valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.1"}
+valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.2"}
 log = "0.4"
 
 [dev-dependencies]
