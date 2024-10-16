@@ -1,5 +1,6 @@
 use std::os::raw::c_void;
 use valkey_module::alloc::ValkeyAlloc;
+use valkey_module::digest::Digest;
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{raw, valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
@@ -17,10 +18,10 @@ static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
         rdb_save: None,
         aof_rewrite: None,
         free: Some(free),
+        digest: Some(digest),
 
         // Currently unused by Redis
         mem_usage: None,
-        digest: None,
 
         // Aux data
         aux_load: None,
@@ -42,6 +43,13 @@ static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
 
 unsafe extern "C" fn free(value: *mut c_void) {
     drop(Box::from_raw(value.cast::<MyType>()));
+}
+
+unsafe extern "C" fn digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
+    let mut dig = Digest::new(md);
+    let val = &*(value.cast::<MyType>());
+    dig.add_string_buffer(&val.data.as_bytes());
+    dig.end_sequence();
 }
 
 fn alloc_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
