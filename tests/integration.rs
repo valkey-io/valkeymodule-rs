@@ -736,3 +736,53 @@ fn test_expire() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_alloc_data_type() -> Result<()> {
+    let port: u16 = 6503;
+    let _guards = vec![start_valkey_server_with_module("data_type", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Test set to verify allocation
+    let res: i64 = redis::cmd("alloc.set")
+        .arg(&["test_key", "10"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.set")?;
+    assert_eq!(res, 10);
+
+    // Get value and verify content
+    let res: String = redis::cmd("alloc.get")
+        .arg(&["test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.get")?;
+    assert_eq!(res, "A".repeat(10));
+
+    // Test set reallocation
+    let res: i64 = redis::cmd("alloc.set")
+        .arg(&["test_key", "5"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.set")?;
+    assert_eq!(res, 5);
+
+    // Test get with reallocated key
+    let res: String = redis::cmd("alloc.get")
+        .arg(&["test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.get")?;
+    assert_eq!(res, "B".repeat(5));
+
+    let _: i64 = redis::cmd("DEL")
+        .arg(&["test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run DEL")?;
+
+    // Test get with deleted key
+    let res: Option<String> = redis::cmd("alloc.get")
+        .arg(&["test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.get")?;
+    assert!(res.is_none());
+
+    Ok(())
+}
