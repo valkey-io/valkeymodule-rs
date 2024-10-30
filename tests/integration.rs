@@ -813,7 +813,7 @@ fn test_debug() -> Result<()> {
     let res: redis::Value = redis::cmd("DEBUG")
         .arg(&["digest-value", "test_key"])
         .query(&mut con)
-        .with_context(|| "failed to run DEBUG DIGEST")?;
+        .with_context(|| "failed to run DEBUG DIGEST-VALUE")?;
     assert!(!matches!(res, redis::Value::Nil), "DEBUG DIGEST-VALUE should not return nil");
 
     let _: i64 = redis::cmd("DEL")
