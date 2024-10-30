@@ -738,7 +738,7 @@ fn test_expire() -> Result<()> {
 }
 
 #[test]
-fn test_alloc_data_type() -> Result<()> {
+fn test_alloc() -> Result<()> {
     let port: u16 = 6503;
     let _guards = vec![start_valkey_server_with_module("data_type", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
