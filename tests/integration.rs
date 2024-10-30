@@ -786,3 +786,43 @@ fn test_alloc() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_debug() -> Result<()> {
+    let port: u16 = 6504;
+    let _guards = vec![start_valkey_server_with_module("data_type", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    let _: i64 = redis::cmd("alloc.set")
+        .arg(&["test_key", "10"])
+        .query(&mut con)
+        .with_context(|| "failed to run alloc.set")?;
+
+    // Test DEBUG digest command to verify digest callback
+    let res: String = redis::cmd("DEBUG")
+        .arg(&["digest"])
+        .query(&mut con)
+        .with_context(|| "failed to run DEBUG DIGEST")?;
+    assert!(
+        !res.is_empty(),
+        "DEBUG DIGEST should return a non-empty string"
+    );
+
+    let _: i64 = redis::cmd("DEL")
+        .arg(&["test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run DEL")?;
+
+    // Test DEBUG digest command to verify digest callback on unset key
+    let res: String = redis::cmd("DEBUG")
+        .arg(&["digest"])
+        .query(&mut con)
+        .with_context(|| "failed to run DEBUG DIGEST")?;
+    assert!(
+        !res.is_empty(),
+        "DEBUG DIGEST should return a non-empty string"
+    );
+
+    Ok(())
+}
