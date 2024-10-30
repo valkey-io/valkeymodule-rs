@@ -799,9 +799,9 @@ fn test_debug() -> Result<()> {
         .query(&mut con)
         .with_context(|| "failed to run alloc.set")?;
 
-    // Test DEBUG digest command to verify digest callback
+    // Test DEBUG DIGEST command to verify digest callback
     let res: String = redis::cmd("DEBUG")
-        .arg(&["digest"])
+        .arg("digest")
         .query(&mut con)
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
@@ -809,19 +809,26 @@ fn test_debug() -> Result<()> {
         "DEBUG DIGEST should return a non-empty string"
     );
 
+    // Test DEBUG DIGEST-VALUE command to verify digest callback
+    let res: redis::Value = redis::cmd("DEBUG")
+        .arg(&["digest-value", "test_key"])
+        .query(&mut con)
+        .with_context(|| "failed to run DEBUG DIGEST")?;
+    assert!(!matches!(res, redis::Value::Nil), "DEBUG DIGEST-VALUE should not return nil");
+
     let _: i64 = redis::cmd("DEL")
-        .arg(&["test_key"])
+        .arg("test_key")
         .query(&mut con)
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG digest command to verify digest callback on unset key
     let res: String = redis::cmd("DEBUG")
-        .arg(&["digest"])
+        .arg("digest")
         .query(&mut con)
         .with_context(|| "failed to run DEBUG DIGEST")?;
-    assert!(
-        !res.is_empty(),
-        "DEBUG DIGEST should return a non-empty string"
+    assert_eq!(
+        res,
+        "0".repeat(40)
     );
 
     Ok(())
