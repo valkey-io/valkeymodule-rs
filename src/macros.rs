@@ -1,15 +1,19 @@
 #[macro_export]
 macro_rules! redis_command {
-    ($ctx:expr,
-     $command_name:expr,
-     $command_handler:expr,
-     $command_flags:expr,
-     $firstkey:expr,
-     $lastkey:expr,
-     $keystep:expr) => {{
+    (
+        $ctx:expr,
+        $command_name:expr,
+        $command_handler:expr,
+        $command_flags:expr,
+        $firstkey:expr,
+        $lastkey:expr,
+        $keystep:expr
+        $(,
+            $command_acl_categories:expr
+        )?
+        ) => {{
         let name = CString::new($command_name).unwrap();
         let flags = CString::new($command_flags).unwrap();
-
         /////////////////////
         extern "C" fn __do_command(
             ctx: *mut $crate::raw::RedisModuleCtx,
@@ -17,12 +21,10 @@ macro_rules! redis_command {
             argc: c_int,
         ) -> c_int {
             let context = $crate::Context::new(ctx);
-
             let args = $crate::decode_args(ctx, argv, argc);
             let response = $command_handler(&context, args);
             context.reply(response.map(|v| v.into())) as c_int
         }
-        /////////////////////
 
         if unsafe {
             $crate::raw::RedisModule_CreateCommand.unwrap()(
@@ -38,6 +40,13 @@ macro_rules! redis_command {
         {
             return $crate::raw::Status::Err as c_int;
         }
+
+        $(
+            let context = $crate::Context::new($ctx);
+            let acl_categories_to_add = CString::new($command_acl_categories).unwrap();
+            #[cfg(feature = "min-valkey-compatibility-version-8-0")]
+            context.set_acl_category(name.as_ptr(), acl_categories_to_add.as_ptr());
+        )?
     }};
 }
 
@@ -109,6 +118,9 @@ macro_rules! valkey_module {
         $(init: $init_func:ident,)* $(,)*
         $(deinit: $deinit_func:ident,)* $(,)*
         $(info: $info_func:ident,)?
+        $(acl_categories: [
+            $($acl_category:expr),* $(,)*
+        ])?
         commands: [
             $([
                 $name:expr,
@@ -117,7 +129,10 @@ macro_rules! valkey_module {
                 $firstkey:expr,
                 $lastkey:expr,
                 $keystep:expr
-              ]),* $(,)*
+                $(,
+                    $command_acl_categories:expr
+                )?
+            ]),* $(,)?
         ] $(,)*
         $(event_handlers: [
             $([
@@ -241,7 +256,14 @@ macro_rules! valkey_module {
             )*
 
             $(
-                $crate::redis_command!(ctx, $name, $command, $flags, $firstkey, $lastkey, $keystep);
+                $(
+                    #[cfg(feature = "min-valkey-compatibility-version-8-0")]
+                    context.add_acl_category($acl_category);
+                )*
+            )?
+
+            $(
+                $crate::redis_command!(ctx, $name, $command, $flags, $firstkey, $lastkey, $keystep $(, $command_acl_categories)?);
             )*
 
             if $crate::commands::register_commands(&context) == raw::Status::Err {

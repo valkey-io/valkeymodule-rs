@@ -21,7 +21,7 @@ lazy_static::lazy_static! {
         ("RedisModule_ACLAddLogEntryByUserName".to_string(), 70200),
         ("RedisModule_GetCommand".to_string(), 70000),
         ("RedisModule_SetCommandInfo".to_string(), 70000),
-
+        ("RedisModule_AddACLCategory".to_string(), 80000),
     ]);
 
     pub(crate) static ref API_OLDEST_VERSION: usize = 60000;
@@ -30,6 +30,7 @@ lazy_static::lazy_static! {
         (60200, "min-redis-compatibility-version-6-2".to_string()),
         (70000, "min-redis-compatibility-version-7-0".to_string()),
         (70200, "min-redis-compatibility-version-7-2".to_string()),
+        (80000, "min-valkey-compatibility-version-8-0".to_string()),
     ];
 }
 

@@ -33,7 +33,10 @@ pub use crate::context::commands;
 pub use crate::context::keys_cursor::KeysCursor;
 pub use crate::context::server_events;
 pub use crate::context::AclPermissions;
-#[cfg(feature = "min-redis-compatibility-version-7-2")]
+#[cfg(all(any(
+    feature = "min-valkey-compatibility-version-8-0",
+    feature = "min-redis-compatibility-version-7-2"
+)))]
 pub use crate::context::BlockingCallOptions;
 pub use crate::context::CallOptionResp;
 pub use crate::context::CallOptions;
