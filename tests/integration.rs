@@ -69,8 +69,9 @@ fn test_helper_version() -> Result<()> {
         .with_context(|| "failed to run test_helper.version")?;
     assert!(res[0] > 0);
 
-    // TODO https://github.com/valkey-io/valkeymodule-rs/issues/14
     // Test also an internal implementation that might not always be reached
+    // TODO: this check is currently disabled because Valkey 8.0.0 returns
+    //       redis_version:7.2.4 and the test expects it to be 8.0.0
     // let res2: Vec<i64> = redis::cmd("test_helper._version_rm_call")
     //     .query(&mut con)
     //     .with_context(|| "failed to run test_helper._version_rm_call")?;
