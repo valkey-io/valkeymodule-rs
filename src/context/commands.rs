@@ -464,6 +464,7 @@ api! {[
 
 #[cfg(all(
     any(
+        feature = "min-valkey-compatibility-version-8-0",
         feature = "min-redis-compatibility-version-7-2",
         feature = "min-redis-compatibility-version-7-0"
     ),
@@ -488,6 +489,7 @@ pub fn register_commands(ctx: &Context) -> Status {
         feature = "min-redis-compatibility-version-6-0"
     ),
     not(any(
+        feature = "min-valkey-compatibility-version-8-0",
         feature = "min-redis-compatibility-version-7-2",
         feature = "min-redis-compatibility-version-7-0"
     ))

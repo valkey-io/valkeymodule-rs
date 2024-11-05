@@ -736,3 +736,41 @@ fn test_expire() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_acl_categories() -> Result<()> {
+    let port = 6503;
+    let _guards =
+        vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // Get all commands that have the ACL read
+    let response_data: Vec<String> = redis::cmd("COMMAND")
+        .arg(&["LIST", "FILTERBY", "ACLCAT", "read"])
+        .query(&mut con)
+        .with_context(|| "failed to get list of commands associated with read")?;
+
+    // Check if the list of returned commands contains existing_categories which is a new command we added the read ACL to
+    let search_str = String::from("existing_categories");
+    assert!(response_data.contains(&search_str));
+
+    // Get all commands that have the custom ACL custom_acl_one
+    let response_data: Vec<String> = redis::cmd("COMMAND")
+        .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_one"])
+        .query(&mut con)
+        .with_context(|| "failed to get list of commands associated with custom_acl_one")?;
+    // Check if the two commands we added this custom acl to are returned
+    let search_str = String::from("custom_category");
+    assert!(response_data.contains(&search_str));
+    let search_str = String::from("custom_categories");
+    assert!(response_data.contains(&search_str));
+
+    // Get all commands that have the custom ACL custom_acl_two
+    let response_data: Vec<String> = redis::cmd("COMMAND")
+        .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_two"])
+        .query(&mut con)
+        .with_context(|| "failed to get list of commadns associated with custom_acl_two")?;
+    // Check if the two commands we added this custom acl to are returned
+    let search_str = String::from("custom_categories");
+    assert!(response_data.contains(&search_str));
+    Ok(())
+}
