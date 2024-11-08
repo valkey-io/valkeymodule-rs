@@ -11,6 +11,7 @@ mod redismodule;
 pub mod redisraw;
 pub mod redisvalue;
 pub mod stream;
+pub mod digest;
 
 pub mod configuration;
 mod context;
