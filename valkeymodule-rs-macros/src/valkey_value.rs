@@ -141,8 +141,6 @@ pub fn valkey_value(item: TokenStream) -> TokenStream {
     match struct_input.data {
         Data::Struct(s) => struct_valkey_value(struct_name, s),
         Data::Enum(e) => enum_valkey_value(struct_name, e),
-        _ => {
-            quote! {compile_error!("ValkeyValue derive can only be apply on struct.")}.into()
-        }
+        _ => quote! {compile_error!("ValkeyValue derive can only be apply on struct.")}.into(),
     }
 }
