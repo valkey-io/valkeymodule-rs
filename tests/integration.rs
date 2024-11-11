@@ -814,7 +814,10 @@ fn test_debug() -> Result<()> {
         .arg(&["digest-value", "test_key"])
         .query(&mut con)
         .with_context(|| "failed to run DEBUG DIGEST-VALUE")?;
-    assert!(!matches!(res, redis::Value::Nil), "DEBUG DIGEST-VALUE should not return nil");
+    assert!(
+        !matches!(res, redis::Value::Nil),
+        "DEBUG DIGEST-VALUE should not return nil"
+    );
 
     let _: i64 = redis::cmd("DEL")
         .arg("test_key")
@@ -826,11 +829,12 @@ fn test_debug() -> Result<()> {
         .arg("digest")
         .query(&mut con)
         .with_context(|| "failed to run DEBUG DIGEST")?;
-    assert_eq!(
-        res,
-        "0".repeat(40)
-    );
+    assert_eq!(res, "0".repeat(40));
 
+    Ok(())
+}
+
+#[test]
 fn test_acl_categories() -> Result<()> {
     let port = 6503;
     let _guards =
