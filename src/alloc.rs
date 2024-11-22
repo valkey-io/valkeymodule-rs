@@ -41,8 +41,8 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
         if cfg!(feature = "enable-system-alloc") {
             return std::alloc::System.alloc(layout);
         }
-        let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
 
+        let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
         match raw::RedisModule_Alloc {
             Some(alloc) => alloc(size).cast(),
             None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
@@ -65,9 +65,9 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
             return std::alloc::System.alloc_zeroed(layout);
         }
         let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
-
+        let num_elements = size / layout.align();
         match raw::RedisModule_Calloc {
-            Some(calloc) => calloc(size, 1).cast(),
+            Some(calloc) => calloc(num_elements, layout.align()).cast(),
             None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
         }
     }
