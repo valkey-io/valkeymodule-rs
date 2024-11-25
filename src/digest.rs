@@ -19,7 +19,7 @@ impl Digest {
     ///
     /// Will panic if `RedisModule_GetKeyNameFromDigest` is missing in redismodule.h
     pub fn get_key_name(&self) -> ValkeyString {
-        ValkeyString::from_redis_module_string(std::ptr::null_mut(), unsafe {
+        ValkeyString::new(None, unsafe {
             raw::RedisModule_GetKeyNameFromDigest
                 .expect("RedisModule_GetKeyNameFromDigest is not available.")(self.dig)
             .cast_mut()
