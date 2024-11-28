@@ -20,15 +20,14 @@ fn test_helper_command_name(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyRe
     Ok(ctx.current_command_name()?.into())
 }
 
-fn test_helper_err(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
-    if args.len() < 1 {
+fn test_helper_err(_ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    if args.len() < 2 {
         return Err(ValkeyError::WrongArity);
     }
 
     let msg = args.get(1).unwrap();
 
-    ctx.reply_error_string(msg.try_as_str().unwrap());
-    Ok(().into())
+    Err(ValkeyError::Str(msg.try_as_str().unwrap()))
 }
 
 fn add_info_impl(ctx: &InfoContext, _for_crash_report: bool) -> ValkeyResult<()> {
