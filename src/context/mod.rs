@@ -499,7 +499,7 @@ impl Context {
         feature = "min-redis-compatibility-version-7-2",
         feature = "min-valkey-compatibility-version-8-0"
     ),))]
-    pub fn set_acl_category(&self, command_name: *const i8, acl_flags: *const i8) -> raw::Status {
+    pub fn set_acl_category(&self, command_name: *const c_char, acl_flags: *const c_char) -> raw::Status {
         unsafe {
             let command = raw::RedisModule_GetCommand.unwrap()(self.ctx, command_name);
             raw::RedisModule_SetCommandACLCategories.unwrap()(command, acl_flags).into()
