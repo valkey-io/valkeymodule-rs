@@ -1,6 +1,6 @@
 use crate::{raw, ValkeyString};
 
-use std::os::raw::c_char;
+use std::os::raw::{c_char, c_int, c_longlong};
 
 /// `Digest` is a high-level rust interface to the Valkey module C API
 /// abstracting away the raw C ffi calls.
@@ -31,7 +31,7 @@ impl Digest {
     /// # Panics
     ///
     /// Will panic if `RedisModule_GetDbIdFromDigest` is missing in redismodule.h
-    pub fn get_db_id(&self) -> i32 {
+    pub fn get_db_id(&self) -> c_int {
         unsafe {
             raw::RedisModule_GetDbIdFromDigest
                 .expect("RedisModule_GetDbIdFromDigest is not available.")(self.dig)
@@ -59,7 +59,7 @@ impl Digest {
     /// # Panics
     ///
     /// Will panic if `RedisModule_DigestAddLongLong` is missing in redismodule.h
-    pub fn add_long_long(&mut self, ll: i64) {
+    pub fn add_long_long(&mut self, ll: c_longlong) {
         unsafe {
             raw::RedisModule_DigestAddLongLong
                 .expect("RedisModule_DigestAddLongLong is not available.")(self.dig, ll)
