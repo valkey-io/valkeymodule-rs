@@ -479,7 +479,7 @@ fn test_configuration() -> Result<()> {
         let res: String = redis::cmd("config")
             .arg(&["set", config, val])
             .query(&mut con)
-            .with_context(|| "failed to run config set")?;
+            .map_err(|e| anyhow::anyhow!("Failed to run config set: {}", e))?;
         assert_eq!(res, "OK");
         Ok(())
     };
@@ -520,11 +520,40 @@ fn test_configuration() -> Result<()> {
     config_set("configuration.enum_mutex", "Val2")?;
     assert_eq!(config_get("configuration.enum_mutex")?, "Val2");
 
+    // Validate that configs can be rejected
+    let value = config_set("configuration.reject-valkey_string", "reject-value");
+    assert!(value.unwrap_err().to_string().contains("Rejected from custom string validation"));
+    let value = config_set("configuration.reject-i64", "123");
+    assert!(value.unwrap_err().to_string().contains("Rejected from custom i64 validation"));
+    let value = config_set("configuration.reject-bool", "no");
+    assert!(value.unwrap_err().to_string().contains("Rejected from custom bool validation"));
+    let value = config_set("configuration.reject-enum", "Val2");
+    assert!(value.unwrap_err().to_string().contains("Rejected from custom enum validation"));
+
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
-    assert_eq!(res, 18); // the first configuration initialisation is counted as well, so we will get 18 changes.
+    assert_eq!(res, 26); // the first configuration initialisation is counted as well, so we will get 22 changes.
+
+    // Validate that configs with logic to reject values can also succeed
+    assert_eq!(config_get("configuration.reject-valkey_string")?, "default");
+    config_set("configuration.reject-valkey_string", "valid-value")?;
+    assert_eq!(config_get("configuration.reject-valkey_string")?, "valid-value");
+    assert_eq!(config_get("configuration.reject-i64")?, "10");
+    config_set("configuration.reject-i64", "11")?;
+    assert_eq!(config_get("configuration.reject-i64")?, "11");
+    assert_eq!(config_get("configuration.reject-bool")?, "yes");
+    config_set("configuration.reject-bool", "yes")?;
+    assert_eq!(config_get("configuration.reject-bool")?, "yes");
+    assert_eq!(config_get("configuration.reject-enum")?, "Val1");
+    config_set("configuration.reject-enum", "Val1")?;
+    assert_eq!(config_get("configuration.reject-enum")?, "Val1");
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let res: i64 = redis::cmd("configuration.num_changes")
+        .query(&mut con)
+        .with_context(|| "failed to run configuration.num_changes")?;
+    assert_eq!(res, 28);
 
     Ok(())
 }
