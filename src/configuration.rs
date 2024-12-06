@@ -175,9 +175,13 @@ impl ConfigurationValue<bool> for AtomicBool {
 
 type OnUpdatedCallback<T> = Box<dyn Fn(&ConfigurationContext, &str, &'static T)>;
 
+type OnSetCallback<T> =
+    Box<dyn Fn(&ConfigurationContext, &str, &'static T) -> Result<(), ValkeyError>>;
+
 struct ConfigrationPrivateData<G, T: ConfigurationValue<G> + 'static> {
     variable: &'static T,
     on_changed: Option<OnUpdatedCallback<T>>,
+    on_set: Option<OnSetCallback<T>>,
     phantom: PhantomData<G>,
 }
 
@@ -191,12 +195,24 @@ impl<G, T: ConfigurationValue<G> + 'static> ConfigrationPrivateData<G, T> {
             return raw::REDISMODULE_ERR as i32;
         }
         let c_str_name = unsafe { CStr::from_ptr(name) };
+        if let Some(v) = self.on_set.as_ref() {
+            let result = v(
+                &configuration_ctx,
+                c_str_name.to_str().unwrap(),
+                self.variable,
+            );
+            if let Err(e) = result {
+                let error_msg = ValkeyString::create(None, e.to_string().as_str());
+                unsafe { *err = error_msg.take() };
+                return raw::REDISMODULE_ERR as i32;
+            }
+        }
         if let Some(v) = self.on_changed.as_ref() {
             v(
                 &configuration_ctx,
                 c_str_name.to_str().unwrap(),
                 self.variable,
-            )
+            );
         }
         raw::REDISMODULE_OK as i32
     }
@@ -233,11 +249,13 @@ pub fn register_i64_configuration<T: ConfigurationValue<i64>>(
     max: i64,
     flags: ConfigurationFlags,
     on_changed: Option<OnUpdatedCallback<T>>,
+    on_set: Option<OnSetCallback<T>>,
 ) {
     let name = CString::new(name).unwrap();
     let config_private_data = ConfigrationPrivateData {
         variable,
         on_changed,
+        on_set,
         phantom: PhantomData::<i64>,
     };
     unsafe {
@@ -304,12 +322,14 @@ pub fn register_string_configuration<T: ConfigurationValue<ValkeyString>>(
     default: &str,
     flags: ConfigurationFlags,
     on_changed: Option<OnUpdatedCallback<T>>,
+    on_set: Option<OnSetCallback<T>>,
 ) {
     let name = CString::new(name).unwrap();
     let default = CString::new(default).unwrap();
     let config_private_data = ConfigrationPrivateData {
         variable,
         on_changed,
+        on_set,
         phantom: PhantomData::<ValkeyString>,
     };
     unsafe {
@@ -359,11 +379,13 @@ pub fn register_bool_configuration<T: ConfigurationValue<bool>>(
     default: bool,
     flags: ConfigurationFlags,
     on_changed: Option<OnUpdatedCallback<T>>,
+    on_set: Option<OnSetCallback<T>>,
 ) {
     let name = CString::new(name).unwrap();
     let config_private_data = ConfigrationPrivateData {
         variable,
         on_changed,
+        on_set,
         phantom: PhantomData::<bool>,
     };
     unsafe {
@@ -427,6 +449,7 @@ pub fn register_enum_configuration<G: EnumConfigurationValue, T: ConfigurationVa
     default: G,
     flags: ConfigurationFlags,
     on_changed: Option<OnUpdatedCallback<T>>,
+    on_set: Option<OnSetCallback<T>>,
 ) {
     let name = CString::new(name).unwrap();
     let (names, vals) = default.get_options();
@@ -438,6 +461,7 @@ pub fn register_enum_configuration<G: EnumConfigurationValue, T: ConfigurationVa
     let config_private_data = ConfigrationPrivateData {
         variable,
         on_changed,
+        on_set,
         phantom: PhantomData::<G>,
     };
     unsafe {
