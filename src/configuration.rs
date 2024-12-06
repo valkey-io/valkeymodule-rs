@@ -175,7 +175,8 @@ impl ConfigurationValue<bool> for AtomicBool {
 
 type OnUpdatedCallback<T> = Box<dyn Fn(&ConfigurationContext, &str, &'static T)>;
 
-type OnSetCallback<T> = Box<dyn Fn(&ConfigurationContext, &str, &'static T) -> Result<(), ValkeyError>>;
+type OnSetCallback<T> =
+    Box<dyn Fn(&ConfigurationContext, &str, &'static T) -> Result<(), ValkeyError>>;
 
 struct ConfigrationPrivateData<G, T: ConfigurationValue<G> + 'static> {
     variable: &'static T,
