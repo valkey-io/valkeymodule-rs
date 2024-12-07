@@ -831,11 +831,8 @@ fn test_debug() -> Result<()> {
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res, "0".repeat(40));
 
-    Ok(())
-}
+    // Start testing add_long_long
 
-#[test]
-fn test_debug2() -> Result<()> {
     // DB1
     let port: u16 = 6505;
     let _guards = vec![start_valkey_server_with_module("data_type2", port)
