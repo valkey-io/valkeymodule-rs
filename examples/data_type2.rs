@@ -23,8 +23,6 @@ static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
         aof_rewrite: None,
         free: Some(free),
         digest: Some(digest),
-
-        // Currently unused by Redis
         mem_usage: None,
 
         // Aux data
