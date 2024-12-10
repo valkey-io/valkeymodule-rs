@@ -1,12 +1,16 @@
+use raw::KeyType;
+use std::collections::HashMap;
 use std::os::raw::c_void;
+use std::ptr::null;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::digest::Digest;
+use valkey_module::key::{ValkeyKey, ValkeyKeyWritable};
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{raw, valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 
 #[derive(Debug)]
 struct MyType {
-    data: String,
+    data: i64,
 }
 
 static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
@@ -46,7 +50,10 @@ unsafe extern "C" fn free(value: *mut c_void) {
 unsafe extern "C" fn digest(md: *mut raw::RedisModuleDigest, value: *mut c_void) {
     let mut dig = Digest::new(md);
     let val = &*(value.cast::<MyType>());
-    dig.add_string_buffer(&val.data.as_bytes());
+    dig.add_long_long(val.data);
+    dig.get_db_id();
+    let keyname = dig.get_key_name();
+    assert!(!keyname.is_empty());
     dig.end_sequence();
 }
 
@@ -60,12 +67,9 @@ fn alloc_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let key = ctx.open_key_writable(&key);
 
     if let Some(value) = key.get_value::<MyType>(&MY_VALKEY_TYPE)? {
-        value.data = "B".repeat(size as usize);
+        value.data = size;
     } else {
-        let value = MyType {
-            data: "A".repeat(size as usize),
-        };
-
+        let value = MyType { data: size };
         key.set_value(&MY_VALKEY_TYPE, value)?;
     }
     Ok(size.into())
@@ -78,7 +82,7 @@ fn alloc_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let key = ctx.open_key(&key);
 
     let value = match key.get_value::<MyType>(&MY_VALKEY_TYPE)? {
-        Some(value) => value.data.as_str().into(),
+        Some(value) => value.data.into(),
         None => ().into(),
     };
 
@@ -88,7 +92,7 @@ fn alloc_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 //////////////////////////////////////////////////////
 
 valkey_module! {
-    name: "alloc",
+    name: "alloc2",
     version: 1,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [
