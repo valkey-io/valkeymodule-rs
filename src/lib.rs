@@ -3,6 +3,7 @@ extern crate num_traits;
 
 pub mod alloc;
 pub mod apierror;
+pub mod defrag;
 pub mod digest;
 pub mod error;
 pub mod native_types;
