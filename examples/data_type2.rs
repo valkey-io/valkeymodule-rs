@@ -1,10 +1,6 @@
-use raw::KeyType;
-use std::collections::HashMap;
 use std::os::raw::c_void;
-use std::ptr::null;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::digest::Digest;
-use valkey_module::key::{ValkeyKey, ValkeyKeyWritable};
 use valkey_module::native_types::ValkeyType;
 use valkey_module::{raw, valkey_module, Context, NextArg, ValkeyResult, ValkeyString};
 

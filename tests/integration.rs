@@ -206,7 +206,7 @@ fn test_string() -> Result<()> {
 
     redis::cmd("string.set")
         .arg(&["key", "value"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     let res: String = redis::cmd("string.get").arg(&["key"]).query(&mut con)?;
@@ -225,12 +225,12 @@ fn test_scan() -> Result<()> {
 
     redis::cmd("set")
         .arg(&["x", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     redis::cmd("set")
         .arg(&["y", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     let mut res: Vec<String> = redis::cmd("scan_keys").query(&mut con)?;
@@ -377,7 +377,7 @@ fn test_key_space_notifications() -> Result<()> {
     let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
     assert_eq!(res, 0);
 
-    let _ = redis::cmd("GET").arg(&["x"]).query(&mut con)?;
+    let _ = redis::cmd("GET").arg(&["x"]).exec(&mut con)?;
 
     let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
     assert_eq!(res, 1);
@@ -420,7 +420,7 @@ fn test_server_event() -> Result<()> {
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     redis::cmd("flushall")
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run flushall")?;
 
     let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
@@ -428,7 +428,7 @@ fn test_server_event() -> Result<()> {
     assert_eq!(res, 1);
 
     redis::cmd("flushall")
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run flushall")?;
 
     let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
@@ -437,7 +437,7 @@ fn test_server_event() -> Result<()> {
 
     redis::cmd("config")
         .arg(&["set", "maxmemory", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
@@ -446,7 +446,7 @@ fn test_server_event() -> Result<()> {
 
     redis::cmd("config")
         .arg(&["set", "maxmemory", "0"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
@@ -583,7 +583,7 @@ fn test_response() -> Result<()> {
 
     redis::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run hset")?;
 
     let mut res: Vec<String> = redis::cmd("map.mget")
@@ -699,19 +699,19 @@ fn test_open_key_with_flags() -> Result<()> {
     // Avoid active expriation
     redis::cmd("DEBUG")
         .arg(&["SET-ACTIVE-EXPIRE", "0"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run DEBUG SET-ACTIVE-EXPIRE")?;
 
     for cmd in ["open_key_with_flags.write", "open_key_with_flags.read"].into_iter() {
         redis::cmd("set")
             .arg(&["x", "1"])
-            .query(&mut con)
+            .exec(&mut con)
             .with_context(|| "failed to run set")?;
 
         // Set experition time to 1 second.
         redis::cmd("pexpire")
             .arg(&["x", "1"])
-            .query(&mut con)
+            .exec(&mut con)
             .with_context(|| "failed to run pexpire")?;
 
         // Sleep for 2 seconds, ensure expiration time has passed.
@@ -737,8 +737,8 @@ fn test_open_key_with_flags() -> Result<()> {
         assert_eq!(expired_keys, 0);
 
         // Delete key and reset stats
-        redis::cmd("del").arg(&["x"]).query(&mut con)?;
-        redis::cmd("config").arg(&["RESETSTAT"]).query(&mut con)?;
+        redis::cmd("del").arg(&["x"]).exec(&mut con)?;
+        redis::cmd("config").arg(&["RESETSTAT"]).exec(&mut con)?;
     }
 
     Ok(())
@@ -755,7 +755,7 @@ fn test_expire() -> Result<()> {
     // Create a key without TTL
     redis::cmd("set")
         .arg(&["key", "value"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run set")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
@@ -764,7 +764,7 @@ fn test_expire() -> Result<()> {
     // Set TTL on the key
     redis::cmd("expire.cmd")
         .arg(&["key", "100"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run expire.cmd")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
@@ -773,7 +773,7 @@ fn test_expire() -> Result<()> {
     // Remove TTL on the key
     redis::cmd("expire.cmd")
         .arg(&["key", "-1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run expire.cmd")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
