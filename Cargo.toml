@@ -1,6 +1,6 @@
 [package]
 name = "valkey-module"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Dmitry Polyakovsky <dmitry.polyakovsky@oracle.com>"]
 edition = "2021"
 build = "build.rs"
@@ -137,14 +137,14 @@ linkme = "0.3"
 serde = { version = "1", features = ["derive"] }
 nix = "0.26"
 cfg-if = "1"
-valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.3"}
+valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.4"}
 log = "0.4"
 
 [dev-dependencies]
 anyhow = "1"
 redis = "0.28"
 lazy_static = "1"
-valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.3" }
+valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.4" }
 valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"] }
 
 [build-dependencies]
