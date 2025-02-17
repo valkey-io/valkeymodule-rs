@@ -1,16 +1,16 @@
 use std::thread;
 use std::time::Duration;
 
-use crate::utils::{get_valkey_connection, start_valkey_server_with_module};
 use anyhow::Context;
 use anyhow::Result;
 use redis::Value;
 use redis::{RedisError, RedisResult};
-
-mod utils;
+use utils::{get_valkey_connection, start_valkey_server_with_module};
 
 const FAILED_TO_START_SERVER: &str = "failed to start valkey server";
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
+
+mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
@@ -891,10 +891,10 @@ fn test_debug() -> Result<()> {
     let mut con2 = get_valkey_connection(port2).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     // Set on DB1
-    let _: i64 = redis::cmd("alloc.set")
+    let _: i64 = redis::cmd("alloc2.set")
         .arg(&["k1", "3"])
         .query(&mut con1)
-        .with_context(|| "failed to run alloc.set")?;
+        .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB1 to verify digest callback
     let res: String = redis::cmd("DEBUG")
@@ -907,7 +907,7 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB1
-    let get_res_db1: String = redis::cmd("alloc.get")
+    let get_res_db1: String = redis::cmd("alloc2.get")
         .arg("k1")
         .query(&mut con1)
         .with_context(|| "failed to run DEBUG DIGEST")?;
@@ -917,10 +917,10 @@ fn test_debug() -> Result<()> {
     );
 
     // Set on DB2
-    let _: i64 = redis::cmd("alloc.set")
+    let _: i64 = redis::cmd("alloc2.set")
         .arg(&["k1", "3"])
         .query(&mut con2)
-        .with_context(|| "failed to run alloc.set")?;
+        .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback
     let res: String = redis::cmd("DEBUG")
@@ -933,7 +933,7 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB2
-    let get_res_db2: String = redis::cmd("alloc.get")
+    let get_res_db2: String = redis::cmd("alloc2.get")
         .arg("k1")
         .query(&mut con2)
         .with_context(|| "failed to run DEBUG DIGEST")?;

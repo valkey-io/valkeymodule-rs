@@ -10,7 +10,7 @@ struct MyType {
 }
 
 static MY_VALKEY_TYPE: ValkeyType = ValkeyType::new(
-    "mytype123",
+    "mytype456",
     0,
     raw::RedisModuleTypeMethods {
         version: raw::REDISMODULE_TYPE_METHOD_VERSION as u64,
@@ -95,7 +95,7 @@ valkey_module! {
         MY_VALKEY_TYPE,
     ],
     commands: [
-        ["alloc.set", alloc_set, "write", 1, 1, 1],
-        ["alloc.get", alloc_get, "readonly", 1, 1, 1],
+        ["alloc2.set", alloc_set, "write", 1, 1, 1],
+        ["alloc2.get", alloc_get, "readonly", 1, 1, 1],
     ],
 }

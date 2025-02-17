@@ -33,7 +33,7 @@ pub enum ModuleChangeSubevent {
 
 #[derive(Clone)]
 pub enum ServerEventHandler {
-    RuleChanged(fn(&Context, ServerRole)),
+    RoleChanged(fn(&Context, ServerRole)),
     Loading(fn(&Context, LoadingSubevent)),
     Flush(fn(&Context, FlushSubevent)),
     ModuleChange(fn(&Context, ModuleChangeSubevent)),
