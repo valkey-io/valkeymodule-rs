@@ -203,6 +203,21 @@ extern "C" {
     pub fn Export_RedisModule_InitAPI(ctx: *mut RedisModuleCtx) -> c_void;
 }
 
+// This is the one static function we need to initialize a module.
+// bindgen does not generate it for us (probably since it's defined as static in valkeymodule.h).
+#[allow(improper_ctypes)]
+#[link(name = "valkeymodule", kind = "static")]
+extern "C" {
+    pub fn Export_ValkeyModule_Init(
+        ctx: *mut ValkeyModuleCtx,
+        module_name: *const c_char,
+        module_version: c_int,
+        api_version: c_int,
+    ) -> c_int;
+
+    pub fn Export_ValkeyModule_InitAPI(ctx: *mut ValkeyModuleCtx) -> c_void;
+}
+
 ///////////////////////////////////////////////////////////////
 
 pub const FMT: *const c_char = b"v\0".as_ptr().cast::<c_char>();

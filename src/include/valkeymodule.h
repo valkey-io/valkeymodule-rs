@@ -1881,7 +1881,7 @@ VALKEYMODULE_API ValkeyModuleScriptingEngineExecutionState (*ValkeyModule_GetFun
 
 /* This is included inline inside each Valkey module. */
 static int ValkeyModule_Init(ValkeyModuleCtx *ctx, const char *name, int ver, int apiver) VALKEYMODULE_ATTR_UNUSED;
-static int ValkeyModule_Init(ValkeyModuleCtx *ctx, const char *name, int ver, int apiver) {
+static void ValkeyModule_InitAPI(ValkeyModuleCtx *ctx) {
     void *getapifuncptr = ((void **)ctx)[0];
     ValkeyModule_GetApi = (int (*)(const char *, void *))(unsigned long)getapifuncptr;
     VALKEYMODULE_GET_API(Alloc);
@@ -2248,7 +2248,10 @@ static int ValkeyModule_Init(ValkeyModuleCtx *ctx, const char *name, int ver, in
     VALKEYMODULE_GET_API(RegisterScriptingEngine);
     VALKEYMODULE_GET_API(UnregisterScriptingEngine);
     VALKEYMODULE_GET_API(GetFunctionExecutionState);
+}
 
+static int ValkeyModule_Init(ValkeyModuleCtx *ctx, const char *name, int ver, int apiver) {
+    ValkeyModule_InitAPI(ctx);
     if (ValkeyModule_IsModuleNameBusy && ValkeyModule_IsModuleNameBusy(name)) return VALKEYMODULE_ERR;
     ValkeyModule_SetModuleAttribs(ctx, name, ver, apiver);
     return VALKEYMODULE_OK;
