@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
-/// Ensure child process is killed both on normal exit and when panicking due to a failed test.
 pub struct ChildGuard {
     name: &'static str,
     child: std::process::Child,
@@ -64,7 +63,7 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
         .args(args)
         .spawn()
         .map(|c| ChildGuard {
-            name: "valkey-server",
+            name: "server",
             child: c,
         })?;
 

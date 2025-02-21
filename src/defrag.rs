@@ -1,6 +1,6 @@
 use std::os::raw::c_void;
 
-use crate::raw;
+use crate::{raw, Status};
 
 /// `Defrag` is a high-level rust interface to the Valkey module C API
 /// abstracting away the raw C ffi calls.
@@ -13,7 +13,7 @@ impl Defrag {
         Self { defrag_ctx }
     }
 
-    /// # Safety
+    /// # Returns a pointer to the new alloction of the data, if no defragmentation was needed a null pointer is returned
     ///
     /// # Panics
     ///
@@ -22,7 +22,7 @@ impl Defrag {
         unsafe { raw::RedisModule_DefragAlloc.unwrap()(self.defrag_ctx, ptr) }
     }
 
-    /// # Safety
+    /// # Sets a cursor on the last item defragged so that the next defrag cycle can start fromn that position
     ///
     /// # Panics
     ///
@@ -36,7 +36,7 @@ impl Defrag {
         }
     }
 
-    /// # Safety
+    /// # Returns the place we last defragged if applicable.
     ///
     /// # Panics
     ///
@@ -52,7 +52,7 @@ impl Defrag {
         }
     }
 
-    /// # Safety
+    /// # Returns true if we have been defragging to long and need to stop
     ///
     /// # Panics
     ///

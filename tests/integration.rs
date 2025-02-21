@@ -1,16 +1,16 @@
 use std::thread;
 use std::time::Duration;
 
-use crate::utils::{get_valkey_connection, start_valkey_server_with_module};
 use anyhow::Context;
 use anyhow::Result;
 use redis::Value;
 use redis::{RedisError, RedisResult};
-
-mod utils;
+use utils::{get_valkey_connection, start_valkey_server_with_module};
 
 const FAILED_TO_START_SERVER: &str = "failed to start valkey server";
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
+
+mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
@@ -206,7 +206,7 @@ fn test_string() -> Result<()> {
 
     redis::cmd("string.set")
         .arg(&["key", "value"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     let res: String = redis::cmd("string.get").arg(&["key"]).query(&mut con)?;
@@ -225,12 +225,12 @@ fn test_scan() -> Result<()> {
 
     redis::cmd("set")
         .arg(&["x", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     redis::cmd("set")
         .arg(&["y", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run string.set")?;
 
     let mut res: Vec<String> = redis::cmd("scan_keys").query(&mut con)?;
@@ -377,7 +377,7 @@ fn test_key_space_notifications() -> Result<()> {
     let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
     assert_eq!(res, 0);
 
-    let _ = redis::cmd("GET").arg(&["x"]).query(&mut con)?;
+    let _ = redis::cmd("GET").arg(&["x"]).exec(&mut con)?;
 
     let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
     assert_eq!(res, 1);
@@ -420,7 +420,7 @@ fn test_server_event() -> Result<()> {
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     redis::cmd("flushall")
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run flushall")?;
 
     let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
@@ -428,7 +428,7 @@ fn test_server_event() -> Result<()> {
     assert_eq!(res, 1);
 
     redis::cmd("flushall")
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run flushall")?;
 
     let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
@@ -437,7 +437,7 @@ fn test_server_event() -> Result<()> {
 
     redis::cmd("config")
         .arg(&["set", "maxmemory", "1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
@@ -446,7 +446,7 @@ fn test_server_event() -> Result<()> {
 
     redis::cmd("config")
         .arg(&["set", "maxmemory", "0"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run config set maxmemory")?;
 
     let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
@@ -583,7 +583,7 @@ fn test_response() -> Result<()> {
 
     redis::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run hset")?;
 
     let mut res: Vec<String> = redis::cmd("map.mget")
@@ -699,19 +699,19 @@ fn test_open_key_with_flags() -> Result<()> {
     // Avoid active expriation
     redis::cmd("DEBUG")
         .arg(&["SET-ACTIVE-EXPIRE", "0"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run DEBUG SET-ACTIVE-EXPIRE")?;
 
     for cmd in ["open_key_with_flags.write", "open_key_with_flags.read"].into_iter() {
         redis::cmd("set")
             .arg(&["x", "1"])
-            .query(&mut con)
+            .exec(&mut con)
             .with_context(|| "failed to run set")?;
 
         // Set experition time to 1 second.
         redis::cmd("pexpire")
             .arg(&["x", "1"])
-            .query(&mut con)
+            .exec(&mut con)
             .with_context(|| "failed to run pexpire")?;
 
         // Sleep for 2 seconds, ensure expiration time has passed.
@@ -737,8 +737,8 @@ fn test_open_key_with_flags() -> Result<()> {
         assert_eq!(expired_keys, 0);
 
         // Delete key and reset stats
-        redis::cmd("del").arg(&["x"]).query(&mut con)?;
-        redis::cmd("config").arg(&["RESETSTAT"]).query(&mut con)?;
+        redis::cmd("del").arg(&["x"]).exec(&mut con)?;
+        redis::cmd("config").arg(&["RESETSTAT"]).exec(&mut con)?;
     }
 
     Ok(())
@@ -755,7 +755,7 @@ fn test_expire() -> Result<()> {
     // Create a key without TTL
     redis::cmd("set")
         .arg(&["key", "value"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run set")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
@@ -764,7 +764,7 @@ fn test_expire() -> Result<()> {
     // Set TTL on the key
     redis::cmd("expire.cmd")
         .arg(&["key", "100"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run expire.cmd")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
@@ -773,7 +773,7 @@ fn test_expire() -> Result<()> {
     // Remove TTL on the key
     redis::cmd("expire.cmd")
         .arg(&["key", "-1"])
-        .query(&mut con)
+        .exec(&mut con)
         .with_context(|| "failed to run expire.cmd")?;
 
     let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
@@ -891,10 +891,10 @@ fn test_debug() -> Result<()> {
     let mut con2 = get_valkey_connection(port2).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     // Set on DB1
-    let _: i64 = redis::cmd("alloc.set")
+    let _: i64 = redis::cmd("alloc2.set")
         .arg(&["k1", "3"])
         .query(&mut con1)
-        .with_context(|| "failed to run alloc.set")?;
+        .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB1 to verify digest callback
     let res: String = redis::cmd("DEBUG")
@@ -907,7 +907,7 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB1
-    let get_res_db1: String = redis::cmd("alloc.get")
+    let get_res_db1: String = redis::cmd("alloc2.get")
         .arg("k1")
         .query(&mut con1)
         .with_context(|| "failed to run DEBUG DIGEST")?;
@@ -917,10 +917,10 @@ fn test_debug() -> Result<()> {
     );
 
     // Set on DB2
-    let _: i64 = redis::cmd("alloc.set")
+    let _: i64 = redis::cmd("alloc2.set")
         .arg(&["k1", "3"])
         .query(&mut con2)
-        .with_context(|| "failed to run alloc.set")?;
+        .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback
     let res: String = redis::cmd("DEBUG")
@@ -933,7 +933,7 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB2
-    let get_res_db2: String = redis::cmd("alloc.get")
+    let get_res_db2: String = redis::cmd("alloc2.get")
         .arg("k1")
         .query(&mut con2)
         .with_context(|| "failed to run DEBUG DIGEST")?;
@@ -1012,5 +1012,56 @@ fn test_acl_categories() -> Result<()> {
     // Check if the two commands we added this custom acl to are returned
     let search_str = String::from("custom_categories");
     assert!(response_data.contains(&search_str));
+    Ok(())
+}
+
+#[test]
+fn test_defrag() -> Result<()> {
+    let port = 6510;
+    let _guards = vec![start_valkey_server_with_module("data_type", port)
+    .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled 
+    // with not the default allocator we then exit this test early and don't test defrag
+    let memory_info: String = redis::cmd("info").arg("memory").query(&mut con).with_context(|| "Failed to run info memory")?;
+    if memory_info.contains("mem_allocator:libc") {
+        return Ok(())
+    }
+    // Set configs so active defrag will be able to run even with little defragmentation
+    redis::cmd("config")
+        .arg(&["set", "activedefrag", "yes"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set activedefrag")?;
+    redis::cmd("config")
+        .arg(&["set", "active-defrag-threshold-lower", "0"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set active-defrag-threshold-lower")?;
+    redis::cmd("config")
+        .arg(&["set", "active-defrag-ignore-bytes", "1"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set active-defrag-ignore-bytes")?;
+    // Create some keys for active defrag to work on
+    for i in 1..10000 {
+        let key = format!("test_key_{}", i);
+        let _: i64 = redis::cmd("alloc.set")
+            .arg(&[&key, "500"])
+            .query(&mut con)
+            .with_context(|| "failed to run alloc.set")?;
+    }
+    let info: String = redis::cmd("info")
+    .arg("stats")
+    .query(&mut con)
+    .with_context(|| "failed to run info stats")?;
+    assert!(!(info.contains("active_defrag_misses:0") || !(info.contains("active_defrag_hits:0"))));
+    assert!(!(info.contains("total_active_defrag_time:0")));
+    // Check that the getting the values that have been defragged doesn't crash and that the return value is what we expect
+    for i in 1..1000 {
+        let key = format!("test_key_{}", i);
+        let get_return: String = redis::cmd("alloc.get")
+            .arg(key)
+            .query(&mut con)
+            .with_context(|| "failed to run alloc.set")?;
+        assert!(get_return == "A".repeat(500));
+    }
     Ok(())
 }
