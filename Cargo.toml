@@ -125,6 +125,10 @@ crate-type = ["cdylib"]
 name = "expire"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "client"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
