@@ -3,14 +3,14 @@ use valkey_module::InfoContext;
 use valkey_module::{valkey_module, Context, ValkeyError, ValkeyResult, ValkeyString};
 
 fn test_helper_version(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    let ver = ctx.get_redis_version()?;
+    let ver = ctx.get_server_version()?;
     let response: Vec<i64> = vec![ver.major.into(), ver.minor.into(), ver.patch.into()];
 
     Ok(response.into())
 }
 
 fn test_helper_version_rm_call(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    let ver = ctx.get_redis_version_rm_call()?;
+    let ver = ctx.get_server_version_rm_call()?;
     let response: Vec<i64> = vec![ver.major.into(), ver.minor.into(), ver.patch.into()];
 
     Ok(response.into())
