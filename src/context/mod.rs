@@ -14,8 +14,7 @@ use crate::redisvalue::ValkeyValueKey;
 use crate::{
     add_info_begin_dict_field, add_info_end_dict_field, add_info_field_double,
     add_info_field_long_long, add_info_field_str, add_info_field_unsigned_long_long, raw, utils,
-    RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
-    RedisModule_GetClientNameById, RedisModule_GetClientUserNameById, Status,
+    Status,
 };
 use crate::{add_info_section, ValkeyResult};
 use crate::{ValkeyError, ValkeyString, ValkeyValue};
@@ -30,6 +29,7 @@ mod timer;
 
 pub mod blocked;
 pub mod call_reply;
+pub mod client;
 pub mod commands;
 pub mod info;
 pub mod keys_cursor;
@@ -828,36 +828,6 @@ impl Context {
         let acl_permission_result: Result<(), &str> = acl_permission_result.into();
         acl_permission_result
             .map_err(|_e| ValkeyError::Str("User does not have permissions on key"))
-    }
-
-    pub fn get_client_id(&self) -> u64 {
-        unsafe { RedisModule_GetClientId.unwrap()(self.ctx) }
-    }
-
-    pub fn get_client_name(&self) -> ValkeyString {
-        let client_id = self.get_client_id();
-        let client_name = unsafe { RedisModule_GetClientNameById.unwrap()(self.ctx, client_id) };
-        ValkeyString::from_redis_module_string(self.ctx, client_name)
-    }
-
-    pub fn get_client_username(&self) -> ValkeyString {
-        let client_id = self.get_client_id();
-        let client_username =
-            unsafe { RedisModule_GetClientUserNameById.unwrap()(self.ctx, client_id) };
-        ValkeyString::from_redis_module_string(self.ctx, client_username)
-    }
-
-    pub fn get_client_cert(&self) -> ValkeyString {
-        let client_id = self.get_client_id();
-        let client_cert = unsafe { RedisModule_GetClientCertificate.unwrap()(self.ctx, client_id) };
-        ValkeyString::from_redis_module_string(self.ctx, client_cert)
-    }
-
-    pub fn get_client_info(&self) -> ValkeyValue {
-        let client_id = self.get_client_id();
-        let client_info =
-            unsafe { RedisModule_GetClientInfoById.unwrap()(self.ctx as *mut c_void, client_id) };
-        (client_info as i64).into()
     }
 
     api!(
