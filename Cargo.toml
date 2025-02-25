@@ -160,3 +160,5 @@ min-redis-compatibility-version-6-2 = []
 min-redis-compatibility-version-6-0 = []
 # this is used to enable System.alloc instead of ValkeyAlloc for tests
 enable-system-alloc = []
+# this is to indicate the Module wants to use RedisModule APIs for calls
+use-redismodule-api = []

@@ -236,12 +236,38 @@ macro_rules! valkey_module {
 
             let module_version = $module_version as c_int;
 
-            if unsafe { raw::Export_RedisModule_Init(
-                ctx,
-                name_buffer.as_ptr().cast::<c_char>(),
-                module_version,
-                raw::REDISMODULE_APIVER_1 as c_int,
-            ) } == raw::Status::Err as c_int { return raw::Status::Err as c_int; }
+            // This block of code means that when Modules are compiled without the "use-redismodule-api" feature flag,
+            // we expect that ValkeyModule_Init should succeed. We do not YET utilize the ValkeyModule_Init invocation
+            // because the valkeymodule-rs still references RedisModule_* APIs for calls to the server.
+            #[cfg(not(feature = "use-redismodule-api"))]
+            {
+                let status = unsafe {
+                    raw::Export_ValkeyModule_Init(
+                        ctx as *mut raw::ValkeyModuleCtx,
+                        name_buffer.as_ptr().cast::<c_char>(),
+                        module_version,
+                        raw::VALKEYMODULE_APIVER_1 as c_int,
+                    )
+                };
+                if status == raw::Status::Err as c_int {
+                    return raw::Status::Err as c_int;
+                }
+            }
+
+            // For now, we need to initialize through RM_Init because several occurances are still using RedisModule_* APIs.
+            // Once we change every single Module API to be ValkeyModule_* (when the feature flag is not provided), we can
+            // update this block (invocation of RM_Init) to only be executed when the "use-redismodule-api" is provided.
+            let status = unsafe {
+                raw::Export_RedisModule_Init(
+                    ctx,
+                    name_buffer.as_ptr().cast::<c_char>(),
+                    module_version,
+                    raw::REDISMODULE_APIVER_1 as c_int,
+                )
+            };
+            if status == raw::Status::Err as c_int {
+                return raw::Status::Err as c_int;
+            }
 
             let context = $crate::Context::new(ctx);
             unsafe {

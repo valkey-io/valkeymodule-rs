@@ -61,10 +61,15 @@ fn main() {
 
     build
         .define(RM_EXPERIMENTAL_API, None)
-        .define(VM_EXPERIMENTAL_API, None)
         .file("src/redismodule.c")
         .include("src/include/")
         .compile("redismodule");
+
+    build
+        .define(VM_EXPERIMENTAL_API, None)
+        .file("src/valkeymodule.c")
+        .include("src/include/")
+        .compile("valkeymodule");
 
     let bindings_generator = bindgen::Builder::default();
 
