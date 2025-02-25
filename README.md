@@ -25,6 +25,14 @@ This repo was forked from [redismodule-rs](https://github.com/RedisLabsModules/r
 
 See the [examples](examples) directory for some sample modules.
 
+This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
+Therefore, following the [Valkey Modules API](https://valkey.io/topics/modules-api-ref/) documentation will be mostly relevant here as well.
+
+## Feature Flags
+
+1. System Allocator
+
+This feature flag is ideal for unit testing where the engine server is not running, and we do not have access to the Vakey engine Allocator; so we can use the System Allocator instead.
 To optionally enter the `System.alloc` code paths in `alloc.rs` specify this in `Cargo.toml` of your module:
 ```
 [features]
@@ -39,5 +47,17 @@ For integration tests with `ValkeyAlloc` use this:
 cargo test
 ```
 
-This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
-Therefore, following the [Valkeyi Modules API](https://valkey.io/topics/modules-api-ref/) documentation will be mostly relevant here as well.
+2. Redis Compatibility
+
+This feature flag is useful in case you have a Module that needs to be loaded on both Valkey and Redis Servers. In this case, you can use the `use-redismodule-api` flag so that the Module is loaded using the RedisModule API Initialization for compatibility.
+
+To use this feature by conditionally, specify the following in your `Cargo.toml`:
+```
+[features]
+use-redismodule-api = ["valkey-module/use-redismodule-api"]
+default = []
+```
+
+```
+cargo build --release --features use-redismodule-api
+```
