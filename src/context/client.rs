@@ -1,4 +1,8 @@
-use crate::{Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById, RedisModule_GetClientNameById, RedisModule_GetClientUserNameById, ValkeyString};
+use crate::{
+    Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId,
+    RedisModule_GetClientInfoById, RedisModule_GetClientNameById,
+    RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, ValkeyString,
+};
 use std::os::raw::c_void;
 
 impl RedisModuleClientInfo {
@@ -23,6 +27,12 @@ impl Context {
         let client_id = self.get_client_id();
         let client_name = unsafe { RedisModule_GetClientNameById.unwrap()(self.ctx, client_id) };
         ValkeyString::from_redis_module_string(self.ctx, client_name)
+    }
+
+    pub fn set_client_name(&self, client_name: &ValkeyString) -> i64 {
+        let client_id = self.get_client_id();
+        let resp = unsafe { RedisModule_SetClientNameById.unwrap()(client_id, client_name.inner) };
+        resp as i64
     }
 
     pub fn get_client_username(&self) -> ValkeyString {
