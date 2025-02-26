@@ -18,6 +18,8 @@ impl RedisModuleClientInfo {
     }
 }
 
+/// GetClientNameById, GetClientUserNameById and GetClientCertificate use autoMemoryAdd on the ValkeyModuleString pointer
+// after the callback (command, server event handler, ...) these ValkeyModuleString pointers will be freed automatically
 impl Context {
     pub fn get_client_id(&self) -> u64 {
         unsafe { RedisModule_GetClientId.unwrap()(self.ctx) }
