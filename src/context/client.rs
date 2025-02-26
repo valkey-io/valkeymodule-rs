@@ -1,9 +1,18 @@
-use crate::{
-    Context, RedisModule_GetClientCertificate, RedisModule_GetClientId,
-    RedisModule_GetClientInfoById, RedisModule_GetClientNameById,
-    RedisModule_GetClientUserNameById, ValkeyString,
-};
+use crate::{Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById, RedisModule_GetClientNameById, RedisModule_GetClientUserNameById, ValkeyString};
 use std::os::raw::c_void;
+
+impl RedisModuleClientInfo {
+    fn new() -> Self {
+        Self {
+            version: 1,
+            flags: 0,
+            id: 0,
+            addr: [0; 46],
+            port: 0,
+            db: 0,
+        }
+    }
+}
 
 impl Context {
     pub fn get_client_id(&self) -> u64 {
@@ -29,10 +38,11 @@ impl Context {
         ValkeyString::from_redis_module_string(self.ctx, client_cert)
     }
 
-    pub fn get_client_info(&self) -> u64 {
+    pub fn get_client_info(&self) -> RedisModuleClientInfo {
         let client_id = self.get_client_id();
-        let client_info =
-            unsafe { RedisModule_GetClientInfoById.unwrap()(self.ctx as *mut c_void, client_id) };
-        client_info as u64
+        let mut mci = RedisModuleClientInfo::new();
+        let mci_ptr: *mut c_void = &mut mci as *mut _ as *mut c_void;
+        unsafe { RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id) };
+        mci
     }
 }
