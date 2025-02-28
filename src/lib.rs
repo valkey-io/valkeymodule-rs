@@ -14,7 +14,7 @@ pub mod redisvalue;
 pub mod stream;
 
 pub mod configuration;
-mod context;
+pub mod context;
 pub mod key;
 pub mod logging;
 mod macros;
