@@ -1065,3 +1065,22 @@ fn test_defrag() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn test_client() -> Result<()> {
+    let port = 6507;
+    let _guards =
+        vec![start_valkey_server_with_module("client", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // Test client.id command
+    redis::cmd("client.id")
+        .exec(&mut con)
+        .with_context(|| "failed execute client.id")?;
+    // Test client.name
+    redis::cmd("client.name")
+        .arg("test_client")
+        .exec(&mut con)
+        .with_context(|| "failed execute client.name")?;
+    Ok(())
+}

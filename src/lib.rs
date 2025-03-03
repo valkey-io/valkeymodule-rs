@@ -109,8 +109,15 @@ pub fn basic_info_command_handler(ctx: &InfoContext, for_crash_report: bool) {
 }
 
 /// Initialize RedisModuleAPI without register as a module.
+#[cfg(feature = "use-redismodule-api")]
 pub fn init_api(ctx: &Context) {
     unsafe { crate::raw::Export_RedisModule_InitAPI(ctx.ctx) };
+}
+
+/// Initialize ValkeyModuleAPI without register as a module.
+#[cfg(not(feature = "use-redismodule-api"))]
+pub fn init_api(ctx: &Context) {
+    unsafe { crate::raw::Export_ValkeyModule_InitAPI(ctx.ctx as *mut raw::ValkeyModuleCtx) };
 }
 
 pub(crate) unsafe fn deallocate_pointer<P>(p: *mut P) {

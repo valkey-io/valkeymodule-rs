@@ -125,6 +125,10 @@ crate-type = ["cdylib"]
 name = "expire"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "client"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -160,3 +164,5 @@ min-redis-compatibility-version-6-2 = []
 min-redis-compatibility-version-6-0 = []
 # this is used to enable System.alloc instead of ValkeyAlloc for tests
 enable-system-alloc = []
+# this is to indicate the Module wants to use RedisModule APIs for calls
+use-redismodule-api = []

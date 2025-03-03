@@ -29,6 +29,7 @@ mod timer;
 
 pub mod blocked;
 pub mod call_reply;
+pub mod client;
 pub mod commands;
 pub mod info;
 pub mod keys_cursor;
@@ -719,13 +720,13 @@ impl Context {
 
     /// Returns the valkey version either by calling `RedisModule_GetServerVersion` API,
     /// Or if it is not available, by calling "info server" API and parsing the reply
-    pub fn get_redis_version(&self) -> Result<Version, ValkeyError> {
-        self.get_redis_version_internal(false)
+    pub fn get_server_version(&self) -> Result<Version, ValkeyError> {
+        self.get_server_version_internal(false)
     }
 
     /// Returns the valkey version by calling "info server" API and parsing the reply
-    pub fn get_redis_version_rm_call(&self) -> Result<Version, ValkeyError> {
-        self.get_redis_version_internal(true)
+    pub fn get_server_version_rm_call(&self) -> Result<Version, ValkeyError> {
+        self.get_server_version_internal(true)
     }
 
     pub fn version_from_info(info: ValkeyValue) -> Result<Version, ValkeyError> {
@@ -745,7 +746,7 @@ impl Context {
     }
 
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn get_redis_version_internal(&self, force_use_rm_call: bool) -> Result<Version, ValkeyError> {
+    fn get_server_version_internal(&self, force_use_rm_call: bool) -> Result<Version, ValkeyError> {
         match unsafe { raw::RedisModule_GetServerVersion } {
             Some(api) if !force_use_rm_call => {
                 // Call existing API

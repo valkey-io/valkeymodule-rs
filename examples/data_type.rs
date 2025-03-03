@@ -1,4 +1,3 @@
-use std::io::Cursor;
 use std::os::raw::c_void;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::defrag::Defrag;
@@ -61,15 +60,19 @@ unsafe extern "C" fn defrag(defrag_ctx: *mut raw::RedisModuleDefragCtx, _from_ke
     // Example usage of how shouldstopdefrag and defrag cursors would work. The data type used in this example is not complicated enough to use defrag cursors and 
     // 'should_stop_defrag' so this is just used to show how it could be used for a more compicated datatype.
     let mut cursor = defrag.get_cursor().unwrap_or(0);
+    // The call below will return the db_id of the current item we are defragging
+    let _db_id = defrag.get_db_id_from_defrag_context();
+    // The call below will return the key name of the item we are defragging
+    let _curr_key_name = defrag.get_key_name_from_defrag_context();
     let number_of_allocations_in_our_data_type = 100;
     while cursor <  number_of_allocations_in_our_data_type && !defrag.should_stop_defrag() {
         // Perform some defrag action i.e call defrag.alloc on the inner mechanism of the data type
         cursor += 1;
     }
-    // Save the cursor for where we will start defragmenting from next time
-    defrag.set_cursor(cursor);
     // If not all filters were looked at, return 1 to indicate incomplete defragmentation
     if cursor < number_of_allocations_in_our_data_type {
+        // Save the cursor for where we will start defragmenting from next time
+        defrag.set_cursor(cursor);
         return 1;
     }
     // 
