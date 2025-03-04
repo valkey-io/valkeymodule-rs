@@ -31,12 +31,19 @@ pub enum ModuleChangeSubevent {
     Unloaded,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ClientChangeSubevent {
+    Connected,
+    Disconnected,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
     Loading(fn(&Context, LoadingSubevent)),
     Flush(fn(&Context, FlushSubevent)),
     ModuleChange(fn(&Context, ModuleChangeSubevent)),
+    ClientChange(fn(&Context, ClientChangeSubevent)),
 }
 
 #[distributed_slice()]
@@ -59,6 +66,9 @@ pub static CRON_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
 
 #[distributed_slice()]
 pub static INFO_COMMAND_HANDLER_LIST: [fn(&InfoContext, bool) -> ValkeyResult<()>] = [..];
+
+#[distributed_slice()]
+pub static CLIENT_CHANGED_SERVER_EVENTS_LIST: [fn(&Context, ClientChangeSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -146,6 +156,25 @@ extern "C" fn module_change_event_callback(
         });
 }
 
+extern "C" fn client_change_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let client_change_sub_event = if subevent == raw::REDISMODULE_SUBEVENT_CLIENT_CHANGE_CONNECTED {
+        ClientChangeSubevent::Connected
+    } else {
+        ClientChangeSubevent::Disconnected
+    };
+    let ctx = Context::new(ctx);
+    CLIENT_CHANGED_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, client_change_sub_event);
+        });
+}
+
 extern "C" fn config_change_event_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -224,6 +253,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &MODULE_CHANGED_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_MODULE_CHANGE,
         Some(module_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &CLIENT_CHANGED_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_CLIENT_CHANGE,
+        Some(client_change_event_callback),
     )?;
     register_single_server_event_type(
         ctx,
