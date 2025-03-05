@@ -1,12 +1,14 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
+use valkey_module::server_events::ClientChangeSubevent;
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
-use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
+use valkey_module_macros::{client_changed_event_handler, config_changed_event_handler, cron_event_handler, flush_event_handler};
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
+static NUM_CONNECTS: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
 
@@ -28,6 +30,21 @@ fn config_changed_event_handler(_ctx: &Context, changed_configs: &[&str]) {
 #[cron_event_handler]
 fn cron_event_handler(_ctx: &Context, _hz: u64) {
     NUM_CRONS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[client_changed_event_handler]
+fn client_changed_event_handler(ctx: &Context, client_event: ClientChangeSubevent){
+    if let ClientChangeSubevent::Connected = client_event {
+        let id = ctx.get_client_id();
+        let current_user = ctx.get_current_user();
+        let username = ctx.get_client_username();
+
+        ctx.log_notice(&format!("id: {}", id));
+        ctx.log_notice(&format!("current_user: {}", current_user));
+        ctx.log_notice(&format!("username: {}", username));
+
+        NUM_CONNECTS.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -55,5 +72,5 @@ valkey_module! {
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
         ["num_crons", num_crons, "readonly", 0, 0, 0],
-    ],
+    ]
 }

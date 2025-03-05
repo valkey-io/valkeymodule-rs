@@ -173,7 +173,7 @@ pub fn module_changed_event_handler(_attr: TokenStream, item: TokenStream) -> To
     gen.into()
 }
 
-/// Proc macro which is set on a function that need to be called whenever a module is loaded or unloaded on the server.
+/// Proc macro which is set on a function that need to be called whenever a client connects or disconnects on the server.
 /// The function must accept a [Context] and [ClientChangeSubEvent].
 ///
 /// Example:
