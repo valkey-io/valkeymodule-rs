@@ -173,6 +173,28 @@ pub fn module_changed_event_handler(_attr: TokenStream, item: TokenStream) -> To
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called whenever a client connects or disconnects on the server.
+/// The function must accept a [Context] and [ClientChangeSubEvent].
+///
+/// Example:
+///
+/// ```rust,no_run,ignore
+/// #[client_changed_event_handler]
+/// fn client_changed_event_handler(ctx: &Context, values: ClientChangeSubEvent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn client_changed_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::CLIENT_CHANGED_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
 /// Proc macro which is set on a function that need to be called whenever a configuration change
 /// event is happening. The function must accept a [Context] and [&[&str]] that contains the names
 /// of the configiration values that was changed.
