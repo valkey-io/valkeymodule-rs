@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
-use redis::Value;
+use redis::{Commands, Value};
 use redis::{RedisError, RedisResult};
 use utils::{get_valkey_connection, start_valkey_server_with_module};
 
@@ -1046,5 +1046,10 @@ fn test_filter() -> Result<()> {
         .arg("")
         .exec(&mut con)
         .with_context(|| "failed execute info")?;
+    // test the set filter and verify key/value were replaced
+    let _: () = con.set("foo", "bar")?;
+    let resp: String = con.get("new_key")?;
+    assert_eq!(resp, "new_value");
+
     Ok(())
 }
