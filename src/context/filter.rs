@@ -2,8 +2,9 @@ use crate::{
     Context, RedisModuleCommandFilter, RedisModuleCommandFilterCtx, RedisModuleString,
     RedisModule_CommandFilterArgDelete, RedisModule_CommandFilterArgGet,
     RedisModule_CommandFilterArgInsert, RedisModule_CommandFilterArgReplace,
-    RedisModule_CommandFilterArgsCount, RedisModule_CreateString,
-    RedisModule_RegisterCommandFilter, RedisModule_UnregisterCommandFilter,
+    RedisModule_CommandFilterArgsCount, RedisModule_CommandFilterGetClientId,
+    RedisModule_CreateString, RedisModule_RegisterCommandFilter,
+    RedisModule_UnregisterCommandFilter, ValkeyString,
 };
 use std::ffi::{c_int, CString};
 use std::ptr::null_mut;
@@ -52,6 +53,15 @@ pub fn command_filter_arg_get(
     unsafe { RedisModule_CommandFilterArgGet.unwrap()(ctx, pos) }
 }
 
+/// wrapper to get argument as a String instead of RedisModuleString
+pub fn command_filter_arg_get_as_string(
+    ctx: *mut RedisModuleCommandFilterCtx,
+    pos: c_int,
+) -> String {
+    let arg = command_filter_arg_get(ctx, pos);
+    ValkeyString::from_ptr(arg).unwrap().to_string()
+}
+
 pub fn command_filter_arg_replace(
     ctx: *mut RedisModuleCommandFilterCtx,
     pos: c_int,
@@ -72,6 +82,9 @@ pub fn command_filter_arg_delete(ctx: *mut RedisModuleCommandFilterCtx, pos: c_i
     unsafe { RedisModule_CommandFilterArgDelete.unwrap()(ctx, pos) };
 }
 
+pub fn command_filter_get_client_id(ctx: *mut RedisModuleCommandFilterCtx) -> u64 {
+    unsafe { RedisModule_CommandFilterGetClientId.unwrap()(ctx) }
+}
 /// create a RedisModuleString from a &str without Context which is not present in filter functions
 pub fn arg_module_create_string(arg: &str) -> *mut RedisModuleString {
     let arg_cstring = CString::new(arg).unwrap();
