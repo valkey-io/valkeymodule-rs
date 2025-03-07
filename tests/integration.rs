@@ -1016,6 +1016,57 @@ fn test_acl_categories() -> Result<()> {
 }
 
 #[test]
+fn test_defrag() -> Result<()> {
+    let port = 6510;
+    let _guards = vec![start_valkey_server_with_module("data_type", port)
+    .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled 
+    // with not the default allocator we then exit this test early and don't test defrag
+    let memory_info: String = redis::cmd("info").arg("memory").query(&mut con).with_context(|| "Failed to run info memory")?;
+    if memory_info.contains("mem_allocator:libc") {
+        return Ok(())
+    }
+    // Set configs so active defrag will be able to run even with little defragmentation
+    redis::cmd("config")
+        .arg(&["set", "activedefrag", "yes"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set activedefrag")?;
+    redis::cmd("config")
+        .arg(&["set", "active-defrag-threshold-lower", "0"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set active-defrag-threshold-lower")?;
+    redis::cmd("config")
+        .arg(&["set", "active-defrag-ignore-bytes", "1"])
+        .exec(&mut con)
+        .with_context(|| "failed to run config set active-defrag-ignore-bytes")?;
+    // Create some keys for active defrag to work on
+    for i in 1..10000 {
+        let key = format!("test_key_{}", i);
+        let _: i64 = redis::cmd("alloc.set")
+            .arg(&[&key, "500"])
+            .query(&mut con)
+            .with_context(|| "failed to run alloc.set")?;
+    }
+    let info: String = redis::cmd("info")
+    .arg("stats")
+    .query(&mut con)
+    .with_context(|| "failed to run info stats")?;
+    assert!(!(info.contains("active_defrag_misses:0") || !(info.contains("active_defrag_hits:0"))));
+    assert!(!(info.contains("total_active_defrag_time:0")));
+    // Check that the getting the values that have been defragged doesn't crash and that the return value is what we expect
+    for i in 1..1000 {
+        let key = format!("test_key_{}", i);
+        let get_return: String = redis::cmd("alloc.get")
+            .arg(key)
+            .query(&mut con)
+            .with_context(|| "failed to run alloc.set")?;
+        assert!(get_return == "A".repeat(500));
+    }
+    Ok(())
+}
+
+#[test]
 fn test_client() -> Result<()> {
     let port = 6507;
     let _guards =
