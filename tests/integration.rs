@@ -457,6 +457,10 @@ fn test_server_event() -> Result<()> {
 
     assert!(res > 0);
 
+    let res: i64 = redis::cmd("num_connects").query(&mut con)?;
+
+    assert_eq!(res, 0);
+
     Ok(())
 }
 
@@ -1087,3 +1091,4 @@ fn test_client() -> Result<()> {
         .with_context(|| "failed execute client.name")?;
     Ok(())
 }
+
