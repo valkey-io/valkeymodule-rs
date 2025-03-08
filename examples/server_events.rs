@@ -1,12 +1,15 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
+use valkey_module::server_events::ClientChangeSubevent;
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
-use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
+use valkey_module_macros::{client_changed_event_handler, config_changed_event_handler, cron_event_handler, flush_event_handler};
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
+static NUM_CONNECTS: AtomicI64 = AtomicI64::new(0);
+static NUM_DISCONNECTS: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
 
@@ -30,6 +33,17 @@ fn cron_event_handler(_ctx: &Context, _hz: u64) {
     NUM_CRONS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[client_changed_event_handler]
+fn client_changed_event_handler(ctx: &Context, client_event: ClientChangeSubevent) {
+    if let ClientChangeSubevent::Connected = client_event {
+        ctx.log_notice(&format!("Connected"));
+        NUM_CONNECTS.fetch_add(1, Ordering::SeqCst);
+    } else {
+        ctx.log_notice(&format!("Disconnected"));
+        NUM_DISCONNECTS.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -44,6 +58,14 @@ fn num_maxmemory_changes(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResu
     ))
 }
 
+fn num_connects(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_CONNECTS.load(Ordering::SeqCst)))
+}
+
+fn num_disconnects(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_DISCONNECTS.load(Ordering::SeqCst)))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -55,5 +77,7 @@ valkey_module! {
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
         ["num_crons", num_crons, "readonly", 0, 0, 0],
-    ],
+        ["num_connects", num_connects, "readonly", 0, 0, 0],
+        ["num_disconnects", num_disconnects, "readonly", 0, 0, 0],
+    ]
 }
