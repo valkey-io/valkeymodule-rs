@@ -1,3 +1,4 @@
+pub use crate::context::filter::CommandFilter;
 pub use crate::context::InfoContext;
 extern crate num_traits;
 
@@ -15,7 +16,7 @@ pub mod redisvalue;
 pub mod stream;
 
 pub mod configuration;
-pub mod context;
+mod context;
 pub mod key;
 pub mod logging;
 mod macros;
