@@ -8,6 +8,7 @@ use crate::{
 };
 use std::ffi::{c_int, CString};
 use std::ptr::null_mut;
+use std::str::Utf8Error;
 
 #[derive(Debug, Clone, Copy)]
 pub struct CommandFilter {
@@ -31,10 +32,13 @@ impl CommandFilter {
         unsafe { RedisModule_CommandFilterArgGet.unwrap()(ctx, pos) }
     }
 
-    /// wrapper to get argument as a String instead of RedisModuleString
-    pub fn arg_get_as_string(ctx: *mut RedisModuleCommandFilterCtx, pos: c_int) -> String {
+    /// wrapper to get argument as a &str instead of RedisModuleString
+    pub fn arg_get_as_str<'a>(
+        ctx: *mut RedisModuleCommandFilterCtx,
+        pos: c_int,
+    ) -> Result<&'a str, Utf8Error> {
         let arg = CommandFilter::arg_get(ctx, pos);
-        ValkeyString::from_ptr(arg).unwrap().to_string()
+        ValkeyString::from_ptr(arg)
     }
 
     pub fn arg_replace(

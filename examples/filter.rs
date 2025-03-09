@@ -51,7 +51,7 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
         return;
     }
     // check if cmd (first arg) is set
-    let cmd = CommandFilter::arg_get_as_string(ctx, 0);
+    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap().to_string();
     if !cmd.eq_ignore_ascii_case("set") {
         return;
     }
@@ -73,7 +73,7 @@ extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
         return;
     }
     // check if cmd (first arg) is info
-    let cmd = CommandFilter::arg_get_as_string(ctx, 0);
+    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap().to_string();
     if !cmd.eq_ignore_ascii_case("info") {
         return;
     }
