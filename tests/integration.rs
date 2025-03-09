@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
-use redis::Value;
+use redis::{Commands, Value};
 use redis::{RedisError, RedisResult};
 use utils::{get_valkey_connection, start_valkey_server_with_module};
 
@@ -1019,13 +1019,16 @@ fn test_acl_categories() -> Result<()> {
 fn test_defrag() -> Result<()> {
     let port = 6510;
     let _guards = vec![start_valkey_server_with_module("data_type", port)
-    .with_context(|| FAILED_TO_START_SERVER)?];
+        .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-    // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled 
+    // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
     // with not the default allocator we then exit this test early and don't test defrag
-    let memory_info: String = redis::cmd("info").arg("memory").query(&mut con).with_context(|| "Failed to run info memory")?;
+    let memory_info: String = redis::cmd("info")
+        .arg("memory")
+        .query(&mut con)
+        .with_context(|| "Failed to run info memory")?;
     if memory_info.contains("mem_allocator:libc") {
-        return Ok(())
+        return Ok(());
     }
     // Set configs so active defrag will be able to run even with little defragmentation
     redis::cmd("config")
@@ -1049,9 +1052,9 @@ fn test_defrag() -> Result<()> {
             .with_context(|| "failed to run alloc.set")?;
     }
     let info: String = redis::cmd("info")
-    .arg("stats")
-    .query(&mut con)
-    .with_context(|| "failed to run info stats")?;
+        .arg("stats")
+        .query(&mut con)
+        .with_context(|| "failed to run info stats")?;
     assert!(!(info.contains("active_defrag_misses:0") || !(info.contains("active_defrag_hits:0"))));
     assert!(!(info.contains("total_active_defrag_time:0")));
     // Check that the getting the values that have been defragged doesn't crash and that the return value is what we expect
@@ -1082,5 +1085,23 @@ fn test_client() -> Result<()> {
         .arg("test_client")
         .exec(&mut con)
         .with_context(|| "failed execute client.name")?;
+    Ok(())
+}
+
+#[test]
+fn test_filter() -> Result<()> {
+    let port = 6508;
+    let _guards =
+        vec![start_valkey_server_with_module("filter", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // currently the example implements a filter for info command
+    redis::cmd("info")
+        .exec(&mut con)
+        .with_context(|| "failed execute info")?;
+    // test the set filter and verify key/value were replaced
+    let _: () = con.set("foo", "bar")?;
+    let resp: String = con.get("new_key")?;
+    assert_eq!(resp, "new_value");
     Ok(())
 }

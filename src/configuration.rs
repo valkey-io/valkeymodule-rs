@@ -2,12 +2,12 @@ use crate::context::thread_safe::{ValkeyGILGuard, ValkeyLockIndicator};
 use crate::{raw, CallOptionResp, CallOptionsBuilder, CallResult, ValkeyValue};
 use crate::{Context, ValkeyError, ValkeyString};
 use bitflags::bitflags;
+use std::any::TypeId;
 use std::ffi::{CStr, CString};
 use std::marker::PhantomData;
 use std::os::raw::{c_char, c_int, c_longlong, c_void};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Mutex;
-use std::any::TypeId;
 
 bitflags! {
     /// Configuration options
@@ -312,15 +312,19 @@ extern "C" fn string_configuration_get<T: ConfigurationValue<ValkeyString> + 'st
         // For ValkeyString type we want to use the method 'safe_clone' in order to not cause a memory leak. Due to this we will do the flow as before explicitly in this match
         // but instead of doing a clone at the end we do a 'safe_clone'
         valkeystringtype if valkeystringtype == TypeId::of::<ValkeyGILGuard<ValkeyString>>() => {
-            let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<ValkeyString, ValkeyGILGuard<ValkeyString>>) };
+            let private_data = unsafe {
+                &*(privdata
+                    as *const ConfigrationPrivateData<ValkeyString, ValkeyGILGuard<ValkeyString>>)
+            };
             let valkey_gilguard = private_data.variable;
             let ctx = &ConfigurationContext::new();
             let value = valkey_gilguard.lock(ctx);
             value.safe_clone(&Context::dummy()).inner
-        },
+        }
         _ => {
             // For non ValkeyString types we can go through the typical flow of getting the config
-            let private_data = unsafe { &*(privdata as *const ConfigrationPrivateData<ValkeyString, T>) };
+            let private_data =
+                unsafe { &*(privdata as *const ConfigrationPrivateData<ValkeyString, T>) };
             private_data
                 .variable
                 .get(&ConfigurationContext::new())
