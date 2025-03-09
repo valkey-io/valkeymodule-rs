@@ -1,11 +1,12 @@
-use std::ffi::c_int;
+use std::ffi::{c_int, CString};
+use std::ptr::null_mut;
 use std::sync::RwLock;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::context::filter::*;
 use valkey_module::logging::log_notice;
 use valkey_module::{
-    valkey_module, Context, RedisModuleCommandFilterCtx, Status, ValkeyResult, ValkeyString,
-    VALKEYMODULE_CMDFILTER_NOSELF,
+    valkey_module, Context, RedisModuleCommandFilterCtx, RedisModuleString,
+    RedisModule_CreateString, Status, ValkeyResult, ValkeyString, VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
 static INFO_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
@@ -58,10 +59,10 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     // delete 2nd arg key
     CommandFilter::arg_delete(ctx, 1);
     // insert new key
-    let new_key = arg_module_create_string("new_key");
+    let new_key = create_module_string("new_key");
     CommandFilter::arg_insert(ctx, 1, new_key);
     // replace 3rd arg value
-    let new_value = arg_module_create_string("new_value");
+    let new_value = create_module_string("new_value");
     CommandFilter::arg_replace(ctx, 2, new_value);
 }
 
@@ -81,7 +82,7 @@ extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     let client_id = CommandFilter::get_client_id(ctx);
     log_notice(&format!("info filter for client_id {}", client_id));
     // replace info with info2 as the command name
-    let custom_cmd = arg_module_create_string("info2");
+    let custom_cmd = create_module_string("info2");
     CommandFilter::arg_replace(ctx, 0, custom_cmd);
 }
 
@@ -90,6 +91,19 @@ fn info2(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     ctx.log_notice("info2 command");
     //  do something different here
     Ok("info2".into())
+}
+
+/// create a RedisModuleString from a &str without Context which is not present in filter functions
+fn create_module_string(arg: &str) -> *mut RedisModuleString {
+    let arg_cstring = CString::new(arg).unwrap();
+    let arg_module_string = unsafe {
+        RedisModule_CreateString.unwrap()(
+            null_mut(),
+            arg_cstring.as_ptr(),
+            arg_cstring.as_bytes().len(),
+        )
+    };
+    arg_module_string
 }
 
 valkey_module! {

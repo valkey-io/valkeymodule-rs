@@ -3,11 +3,9 @@ use crate::{
     RedisModule_CommandFilterArgDelete, RedisModule_CommandFilterArgGet,
     RedisModule_CommandFilterArgInsert, RedisModule_CommandFilterArgReplace,
     RedisModule_CommandFilterArgsCount, RedisModule_CommandFilterGetClientId,
-    RedisModule_CreateString, RedisModule_RegisterCommandFilter,
-    RedisModule_UnregisterCommandFilter, ValkeyString,
+    RedisModule_RegisterCommandFilter, RedisModule_UnregisterCommandFilter, ValkeyString,
 };
-use std::ffi::{c_int, CString};
-use std::ptr::null_mut;
+use std::ffi::c_int;
 use std::str::Utf8Error;
 
 #[derive(Debug, Clone, Copy)]
@@ -88,17 +86,4 @@ impl Context {
             RedisModule_UnregisterCommandFilter.unwrap()(self.ctx, cmd_filter.inner);
         }
     }
-}
-
-/// create a RedisModuleString from a &str without Context which is not present in filter functions
-pub fn arg_module_create_string(arg: &str) -> *mut RedisModuleString {
-    let arg_cstring = CString::new(arg).unwrap();
-    let arg_module_string = unsafe {
-        RedisModule_CreateString.unwrap()(
-            null_mut(),
-            arg_cstring.as_ptr(),
-            arg_cstring.as_bytes().len(),
-        )
-    };
-    arg_module_string
 }
