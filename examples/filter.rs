@@ -2,10 +2,9 @@ use std::ffi::{c_int, CString};
 use std::ptr::null_mut;
 use std::sync::RwLock;
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::context::filter::*;
 use valkey_module::logging::log_notice;
 use valkey_module::{
-    valkey_module, Context, RedisModuleCommandFilterCtx, RedisModuleString,
+    valkey_module, CommandFilter, Context, RedisModuleCommandFilterCtx, RedisModuleString,
     RedisModule_CreateString, Status, ValkeyResult, ValkeyString, VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
