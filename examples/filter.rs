@@ -1,4 +1,5 @@
 use std::ffi::{c_int, CString};
+use std::ops::Deref;
 use std::ptr::null_mut;
 use std::sync::RwLock;
 use valkey_module::alloc::ValkeyAlloc;
@@ -33,13 +34,13 @@ fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
 
 fn deinit(ctx: &Context) -> Status {
     let info_guard = INFO_FILTER.read().unwrap();
-    if let Some(ref info_filter) = *info_guard {
-        ctx.unregister_command_filter(&info_filter);
+    if let Some(ref info_filter) = info_guard.deref() {
+        ctx.unregister_command_filter(info_filter);
     };
 
     let set_guard = SET_FILTER.read().unwrap();
-    if let Some(ref set_filter) = *set_guard {
-        ctx.unregister_command_filter(&set_filter);
+    if let Some(ref set_filter) = set_guard.deref() {
+        ctx.unregister_command_filter(set_filter);
     };
 
     Status::Ok
@@ -51,10 +52,13 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
         return;
     }
     // check if cmd (first arg) is set
-    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap().to_string();
+    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap();
     if !cmd.eq_ignore_ascii_case("set") {
         return;
     }
+    let key = CommandFilter::arg_get_as_str(ctx, 1).unwrap();
+    let value = CommandFilter::arg_get_as_str(ctx, 2).unwrap();
+    log_notice(&format!("set key: {}, value {}", key, value));
     // delete 2nd arg key
     CommandFilter::arg_delete(ctx, 1);
     // insert new key
