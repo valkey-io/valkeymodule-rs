@@ -18,6 +18,10 @@ unsafe impl Send for CommandFilter {}
 unsafe impl Sync for CommandFilter {}
 
 impl CommandFilter {
+    pub fn new(inner: *mut RedisModuleCommandFilter) -> Self {
+        CommandFilter { inner }
+    }
+
     pub fn is_null(&self) -> bool {
         self.inner.is_null()
     }
@@ -77,9 +81,7 @@ impl Context {
                 flags,
             )
         };
-        CommandFilter {
-            inner: module_cmd_filter,
-        }
+        CommandFilter::new(module_cmd_filter)
     }
     pub fn unregister_command_filter(&self, cmd_filter: &CommandFilter) {
         unsafe {
