@@ -25,46 +25,45 @@ impl CommandFilter {
     pub fn is_null(&self) -> bool {
         self.inner.is_null()
     }
+}
 
-    pub fn args_count(ctx: *mut RedisModuleCommandFilterCtx) -> c_int {
-        unsafe { RedisModule_CommandFilterArgsCount.unwrap()(ctx) }
+pub struct CommandFilterCtx {
+    inner: *mut RedisModuleCommandFilterCtx,
+}
+
+impl CommandFilterCtx {
+    pub fn new(inner: *mut RedisModuleCommandFilterCtx) -> Self {
+        CommandFilterCtx { inner }
     }
 
-    pub fn arg_get(ctx: *mut RedisModuleCommandFilterCtx, pos: c_int) -> *mut RedisModuleString {
-        unsafe { RedisModule_CommandFilterArgGet.unwrap()(ctx, pos) }
+    pub fn args_count(&self) -> c_int {
+        unsafe { RedisModule_CommandFilterArgsCount.unwrap()(self.inner) }
+    }
+
+    pub fn arg_get(&self, pos: c_int) -> *mut RedisModuleString {
+        unsafe { RedisModule_CommandFilterArgGet.unwrap()(self.inner, pos) }
     }
 
     /// wrapper to get argument as a &str instead of RedisModuleString
-    pub fn arg_get_as_str<'a>(
-        ctx: *mut RedisModuleCommandFilterCtx,
-        pos: c_int,
-    ) -> Result<&'a str, Utf8Error> {
-        let arg = CommandFilter::arg_get(ctx, pos);
+    pub fn arg_get_as_str<'a>(&self, pos: c_int) -> Result<&'a str, Utf8Error> {
+        let arg = self.arg_get(pos);
         ValkeyString::from_ptr(arg)
     }
 
-    pub fn arg_replace(
-        ctx: *mut RedisModuleCommandFilterCtx,
-        pos: c_int,
-        arg: *mut RedisModuleString,
-    ) {
-        unsafe { RedisModule_CommandFilterArgReplace.unwrap()(ctx, pos, arg) };
+    pub fn arg_replace(&self, pos: c_int, arg: *mut RedisModuleString) {
+        unsafe { RedisModule_CommandFilterArgReplace.unwrap()(self.inner, pos, arg) };
     }
 
-    pub fn arg_insert(
-        ctx: *mut RedisModuleCommandFilterCtx,
-        pos: c_int,
-        arg: *mut RedisModuleString,
-    ) {
-        unsafe { RedisModule_CommandFilterArgInsert.unwrap()(ctx, pos, arg) };
+    pub fn arg_insert(&self, pos: c_int, arg: *mut RedisModuleString) {
+        unsafe { RedisModule_CommandFilterArgInsert.unwrap()(self.inner, pos, arg) };
     }
 
-    pub fn arg_delete(ctx: *mut RedisModuleCommandFilterCtx, pos: c_int) {
-        unsafe { RedisModule_CommandFilterArgDelete.unwrap()(ctx, pos) };
+    pub fn arg_delete(&self, pos: c_int) {
+        unsafe { RedisModule_CommandFilterArgDelete.unwrap()(self.inner, pos) };
     }
 
-    pub fn get_client_id(ctx: *mut RedisModuleCommandFilterCtx) -> u64 {
-        unsafe { RedisModule_CommandFilterGetClientId.unwrap()(ctx) }
+    pub fn get_client_id(&self) -> u64 {
+        unsafe { RedisModule_CommandFilterGetClientId.unwrap()(self.inner) }
     }
 }
 

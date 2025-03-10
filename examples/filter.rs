@@ -5,8 +5,9 @@ use std::sync::RwLock;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::logging::log_notice;
 use valkey_module::{
-    valkey_module, CommandFilter, Context, RedisModuleCommandFilterCtx, RedisModuleString,
-    RedisModule_CreateString, Status, ValkeyResult, ValkeyString, VALKEYMODULE_CMDFILTER_NOSELF,
+    valkey_module, CommandFilter, CommandFilterCtx, Context, RedisModuleCommandFilterCtx,
+    RedisModuleString, RedisModule_CreateString, Status, ValkeyResult, ValkeyString,
+    VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
 static INFO_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
@@ -48,45 +49,48 @@ fn deinit(ctx: &Context) -> Status {
 
 /// this is just an example, please don't use this in production
 extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
-    if CommandFilter::args_count(ctx) != 3 {
+    let cf_ctx = CommandFilterCtx::new(ctx);
+
+    if cf_ctx.args_count() != 3 {
         return;
     }
     // check if cmd (first arg) is set
-    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap();
+    let cmd = cf_ctx.arg_get_as_str(0).unwrap();
     if !cmd.eq_ignore_ascii_case("set") {
         return;
     }
-    let key = CommandFilter::arg_get_as_str(ctx, 1).unwrap();
-    let value = CommandFilter::arg_get_as_str(ctx, 2).unwrap();
+    let key = cf_ctx.arg_get_as_str(1).unwrap();
+    let value = cf_ctx.arg_get_as_str(2).unwrap();
     log_notice(&format!("set key: {}, value {}", key, value));
     // delete 2nd arg key
-    CommandFilter::arg_delete(ctx, 1);
+    cf_ctx.arg_delete(1);
     // insert new key
     let new_key = create_module_string("new_key");
-    CommandFilter::arg_insert(ctx, 1, new_key);
+    cf_ctx.arg_insert(1, new_key);
     // replace 3rd arg value
     let new_value = create_module_string("new_value");
-    CommandFilter::arg_replace(ctx, 2, new_value);
+    cf_ctx.arg_replace(2, new_value);
 }
 
 extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
+    let cf_ctx = CommandFilterCtx::new(ctx);
+
     // we want the filter to be very efficient as it will be called for every command
     // check if there is only 1 arg, the command
-    let argc = CommandFilter::args_count(ctx);
-    if argc != 1 {
+    if cf_ctx.args_count() != 1 {
         return;
     }
     // check if cmd (first arg) is info
-    let cmd = CommandFilter::arg_get_as_str(ctx, 0).unwrap().to_string();
+    let cmd = cf_ctx.arg_get_as_str(0).unwrap();
     if !cmd.eq_ignore_ascii_case("info") {
         return;
     }
     // grab client_id
-    let client_id = CommandFilter::get_client_id(ctx);
+    let client_id = cf_ctx.get_client_id();
     log_notice(&format!("info filter for client_id {}", client_id));
     // replace info with info2 as the command name
     let custom_cmd = create_module_string("info2");
-    CommandFilter::arg_replace(ctx, 0, custom_cmd);
+    cf_ctx.arg_replace(0, custom_cmd);
 }
 
 // custom command that will be called instead of info
