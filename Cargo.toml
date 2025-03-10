@@ -1,6 +1,6 @@
 [package]
 name = "valkey-module"
-version = "0.1.4"
+version = "0.1.5"
 authors = ["Dmitry Polyakovsky <dmitry.polyakovsky@oracle.com>"]
 edition = "2021"
 build = "build.rs"

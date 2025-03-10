@@ -638,7 +638,7 @@ dependencies = [
 
 [[package]]
 name = "valkey-module"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "backtrace",
@@ -664,7 +664,7 @@ dependencies = [
 
 [[package]]
 name = "valkey-module-macros"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "proc-macro2",
  "quote 1.0.36",
@@ -675,7 +675,7 @@ dependencies = [
 
 [[package]]
 name = "valkey-module-macros-internals"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "lazy_static",
  "proc-macro2",
