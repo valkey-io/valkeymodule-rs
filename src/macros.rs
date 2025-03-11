@@ -139,7 +139,7 @@ macro_rules! valkey_module {
                 $([
                     $filter_func:expr,
                     $filter_flags:expr
-                ]),*
+                ]),* $(,)?
             ] $(,)*
         )?
         $(event_handlers: [
