@@ -133,6 +133,10 @@ crate-type = ["cdylib"]
 name = "filter"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "filter2"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"

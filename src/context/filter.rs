@@ -71,13 +71,13 @@ impl Context {
     pub fn register_command_filter(
         &self,
         module_cmd_filter_func: extern "C" fn(*mut RedisModuleCommandFilterCtx),
-        flags: c_int,
+        flags: u32,
     ) -> CommandFilter {
         let module_cmd_filter = unsafe {
             RedisModule_RegisterCommandFilter.unwrap()(
                 self.ctx,
                 Some(module_cmd_filter_func),
-                flags,
+                flags as c_int,
             )
         };
         CommandFilter::new(module_cmd_filter)
