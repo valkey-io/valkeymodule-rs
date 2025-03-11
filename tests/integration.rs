@@ -1103,5 +1103,11 @@ fn test_filter() -> Result<()> {
     let _: () = con.set("foo", "bar")?;
     let resp: String = con.get("new_key")?;
     assert_eq!(resp, "new_value");
+
+    let port = 6509;
+    let _guards =
+        vec![start_valkey_server_with_module("filter2", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+
     Ok(())
 }

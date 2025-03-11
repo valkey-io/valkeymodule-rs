@@ -1,4 +1,4 @@
-use std::ffi::{c_int, CString};
+use std::ffi::CString;
 use std::ops::Deref;
 use std::ptr::null_mut;
 use std::sync::RwLock;
@@ -10,20 +10,20 @@ use valkey_module::{
     VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
+// this module shows how to register filters using init and deinit
+
 static INFO_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
 static SET_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
 
 fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
-    let info_filter =
-        ctx.register_command_filter(info_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF as c_int);
+    let info_filter = ctx.register_command_filter(info_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
     if info_filter.is_null() {
         return Status::Err;
     }
     let mut info_guard = INFO_FILTER.write().unwrap();
     *info_guard = Some(info_filter);
 
-    let set_filter =
-        ctx.register_command_filter(set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF as c_int);
+    let set_filter = ctx.register_command_filter(set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
     if set_filter.is_null() {
         return Status::Err;
     }
