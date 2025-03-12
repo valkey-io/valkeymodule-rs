@@ -44,6 +44,12 @@ impl Context {
         ValkeyString::from_redis_module_string(self.ctx, client_username)
     }
 
+    pub fn get_client_username_by_id(&self, client_id: u64) -> ValkeyString {
+        let client_username =
+            unsafe { RedisModule_GetClientUserNameById.unwrap()(self.ctx, client_id) };
+        ValkeyString::from_redis_module_string(self.ctx, client_username)
+    }
+
     pub fn get_client_cert(&self) -> ValkeyString {
         let client_id = self.get_client_id();
         let client_cert = unsafe { RedisModule_GetClientCertificate.unwrap()(self.ctx, client_id) };
