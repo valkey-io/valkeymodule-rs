@@ -1,12 +1,17 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
+use valkey_module::server_events::ClientChangeSubevent;
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
-use valkey_module_macros::{config_changed_event_handler, cron_event_handler, flush_event_handler};
+use valkey_module_macros::{
+    client_changed_event_handler, config_changed_event_handler, cron_event_handler,
+    flush_event_handler,
+};
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
+static NUM_CONNECTS: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
 
@@ -30,6 +35,20 @@ fn cron_event_handler(_ctx: &Context, _hz: u64) {
     NUM_CRONS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[client_changed_event_handler]
+fn client_changed_event_handler(ctx: &Context, client_event: ClientChangeSubevent) {
+    match client_event {
+        ClientChangeSubevent::Connected => {
+            ctx.log_notice("Connected");
+            NUM_CONNECTS.fetch_add(1, Ordering::SeqCst);
+        }
+        ClientChangeSubevent::Disconnected => {
+            ctx.log_notice("Disconnected");
+            NUM_CONNECTS.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -44,6 +63,10 @@ fn num_maxmemory_changes(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResu
     ))
 }
 
+fn num_connects(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_CONNECTS.load(Ordering::SeqCst)))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -55,5 +78,6 @@ valkey_module! {
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
         ["num_crons", num_crons, "readonly", 0, 0, 0],
-    ],
+        ["num_connects", num_connects, "readonly", 0, 0, 0],
+    ]
 }
