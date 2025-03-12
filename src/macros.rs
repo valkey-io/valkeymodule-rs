@@ -134,6 +134,14 @@ macro_rules! valkey_module {
                 )?
             ]),* $(,)?
         ] $(,)*
+        $(
+            filters: [
+                $([
+                    $filter_func:expr,
+                    $filter_flags:expr
+                ]),*
+            ] $(,)*
+        )?
         $(event_handlers: [
             $([
                 $(@$event_type:ident) +:
@@ -179,6 +187,9 @@ macro_rules! valkey_module {
         /// Valkey module allocator.
         #[global_allocator]
         static REDIS_MODULE_ALLOCATOR: $allocator_type = $allocator_init;
+
+        use std::sync::OnceLock;
+        static CMD_FILTERS: OnceLock<Vec<valkey_module::CommandFilter>> = OnceLock::new();
 
         // The old-style info command handler, if specified.
         $(
@@ -295,6 +306,16 @@ macro_rules! valkey_module {
             if $crate::commands::register_commands(&context) == raw::Status::Err {
                 return raw::Status::Err as c_int;
             }
+
+            $(
+                let mut cmd_filters_vec = Vec::new();
+                $(
+                    let cmd_filter = context.register_command_filter($filter_func, $filter_flags);
+                    cmd_filters_vec.push(cmd_filter);
+                )*
+                // store filters in a static variable to unregister them on module unload
+                CMD_FILTERS.get_or_init(|| cmd_filters_vec);
+            )?
 
             $(
                 $(
@@ -439,6 +460,15 @@ macro_rules! valkey_module {
                     return $crate::Status::Err as c_int;
                 }
             )*
+
+            // unregister filters on module unload
+            let cmd_filters_vec = match CMD_FILTERS.get(){
+                Some(tmp) => tmp,
+                None => &vec![]
+            };
+            for filter in cmd_filters_vec {
+                context.unregister_command_filter(&filter);
+            }
 
             $crate::raw::Status::Ok as c_int
         }
