@@ -10,10 +10,8 @@ use valkey_module::{
     VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
-// this module shows how to register filters using init and deinit
-
+// this shows how to register filters using init and deinit
 static INFO_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
-static SET_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
 
 fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     let info_filter = ctx.register_command_filter(info_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
@@ -23,13 +21,6 @@ fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     let mut info_guard = INFO_FILTER.write().unwrap();
     *info_guard = Some(info_filter);
 
-    let set_filter = ctx.register_command_filter(set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
-    if set_filter.is_null() {
-        return Status::Err;
-    }
-    let mut set_guard = SET_FILTER.write().unwrap();
-    *set_guard = Some(set_filter);
-
     Status::Ok
 }
 
@@ -37,11 +28,6 @@ fn deinit(ctx: &Context) -> Status {
     let info_guard = INFO_FILTER.read().unwrap();
     if let Some(ref info_filter) = info_guard.deref() {
         ctx.unregister_command_filter(info_filter);
-    };
-
-    let set_guard = SET_FILTER.read().unwrap();
-    if let Some(ref set_filter) = set_guard.deref() {
-        ctx.unregister_command_filter(set_filter);
     };
 
     Status::Ok
@@ -122,5 +108,9 @@ valkey_module! {
     deinit: deinit,
     commands: [
         ["info2", info2, "readonly", 0, 0, 0],
+    ],
+    // this shows how to register filters using valkey_module! macro
+    filters: [
+        [set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF]
     ],
 }
