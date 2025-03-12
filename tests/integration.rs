@@ -457,9 +457,27 @@ fn test_server_event() -> Result<()> {
 
     assert!(res > 0);
 
-    let res: i64 = redis::cmd("num_connects").query(&mut con)?;
+    Ok(())
+}
 
-    assert_eq!(res, 0);
+#[test]
+fn test_client_change_event() -> Result<()> {
+    let port: u16 = 6494;
+    let _guards = vec![start_valkey_server_with_module("server_events", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let con2: redis::Connection =
+        get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    let conn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
+    println!("Connection result: {}", conn_res);
+    assert_eq!(conn_res, 2);
+
+    drop(con2);
+
+    let disconn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
+    println!("Disconnection result: {}", disconn_res);
+    assert_eq!(disconn_res, 1);
 
     Ok(())
 }
@@ -1091,4 +1109,3 @@ fn test_client() -> Result<()> {
         .with_context(|| "failed execute client.name")?;
     Ok(())
 }
-
