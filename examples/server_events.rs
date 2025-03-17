@@ -7,7 +7,7 @@ use valkey_module::{
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler,
+    flush_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -47,6 +47,11 @@ fn client_changed_event_handler(ctx: &Context, client_event: ClientChangeSubeven
             NUM_CONNECTS.fetch_sub(1, Ordering::SeqCst);
         }
     }
+}
+
+#[shutdown_event_handler]
+fn shutdown_event_handler(ctx: &Context, _event: u64) {
+    ctx.log_notice("Server is shutting down");
 }
 
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
