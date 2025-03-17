@@ -511,6 +511,45 @@ impl Context {
         }
     }
 
+    #[cfg(all(any(
+        feature = "min-redis-compatibility-version-7-2",
+        feature = "min-valkey-compatibility-version-8-0"
+    ),))]
+    pub fn authenticate_client_with_acl_user(&self, username: &ValkeyString) -> raw::Status {
+        let result = unsafe {
+            raw::RedisModule_AuthenticateClientWithACLUser.unwrap()(
+                self.ctx,
+                username.as_ptr().cast::<c_char>(),
+                username.len(),
+                None,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+
+        if result == raw::REDISMODULE_OK as c_int {
+            raw::Status::Ok
+        } else {
+            raw::Status::Err
+        }
+    }
+
+    #[cfg(all(any(
+        feature = "min-redis-compatibility-version-7-2",
+        feature = "min-valkey-compatibility-version-8-0"
+    ),))]
+    pub fn get_blocked_client_privdata<T: 'static>(&self) -> Option<Box<T>> {
+        unsafe {
+            let privdata = raw::RedisModule_GetBlockedClientPrivateData.unwrap()(self.ctx);
+            if privdata.is_null() {
+                None
+            } else {
+                // Cast directly to the target type
+                Some(Box::from_raw(privdata as *mut T))
+            }
+        }
+    }
+
     pub fn reply_with_key(&self, result: ValkeyValueKey) -> raw::Status {
         match result {
             ValkeyValueKey::Integer(i) => raw::reply_with_long_long(self.ctx, i),

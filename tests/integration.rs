@@ -1109,3 +1109,99 @@ fn test_client() -> Result<()> {
         .with_context(|| "failed execute client.name")?;
     Ok(())
 }
+
+#[test]
+fn test_custom_auth_callbacks() -> Result<()> {
+    let port = 6512;
+    let _guards =
+        vec![start_valkey_server_with_module("auth", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Set up ACL users with different permissions
+    let users = [
+        // First set of users
+        ("ref", "allow", "on", "+@all"),
+        ("def", "secret", "on", "+@all"),
+        ("puf", "superSecret123", "on", "+@all"),
+        // Second set of users
+        ("abc", "allow", "on", "+@all"),
+        ("ghk", "superSecret123", "on", "+@all"),
+        // Original test users
+        ("foo", "allow", "on", "+@all"),
+        ("bar", "secret", "on", "+@all"),
+        ("admin", "superSecret123", "on", "+@all"),
+    ];
+
+    // Create users
+    for (user, pass, state, perms) in users {
+        let res: String = redis::cmd("ACL")
+            .arg(&["SETUSER", user, state, &format!(">{}", pass), "~*", perms])
+            .query(&mut con)?;
+        assert_eq!(&res, "OK");
+    }
+
+    // Helper function to test authentication
+    fn test_auth(
+        con: &mut redis::Connection,
+        username: &str,
+        password: &str,
+        should_succeed: bool,
+    ) -> Result<()> {
+        let response: RedisResult<String> =
+            redis::cmd("AUTH").arg(&[username, password]).query(con);
+
+        if should_succeed {
+            let res =
+                response.with_context(|| format!("failed to authenticate {username} user"))?;
+            assert_eq!(res, "OK");
+        } else {
+            assert!(response.is_err());
+            let err = response.unwrap_err().to_string();
+            assert!(
+                err.contains("WRONGPASS: invalid username-password pair or user is disabled."),
+                "Unexpected error message: {}",
+                err
+            );
+        }
+        Ok(())
+    }
+
+    // Test successful authentications for first set - blocked authentication
+    test_auth(&mut con, "ref", "allow", true)?;
+    test_auth(&mut con, "def", "secret", true)?;
+    test_auth(&mut con, "puf", "superSecret123", true)?;
+
+    // Test failed authentications for first set
+    test_auth(&mut con, "ref", "wrong", false)?;
+    test_auth(&mut con, "def", "wrong", false)?;
+    test_auth(&mut con, "puf", "wrong", false)?;
+
+    // Test successful authentications for second set - blocked authentication
+    test_auth(&mut con, "abc", "allow", true)?;
+    test_auth(&mut con, "def", "secret", true)?;
+    test_auth(&mut con, "ghk", "superSecret123", true)?;
+
+    // Test failed authentications for second set
+    test_auth(&mut con, "abc", "wrong", false)?;
+    test_auth(&mut con, "def", "wrong", false)?;
+    test_auth(&mut con, "ghk", "wrong", false)?;
+    test_auth(&mut con, "abort-test", "wrong", false)?;
+
+    // Test original users - non-blocking auth
+    test_auth(&mut con, "foo", "allow", true)?;
+    test_auth(&mut con, "bar", "secret", true)?;
+    test_auth(&mut con, "admin", "superSecret123", true)?;
+
+    // Test failed authentications for original users
+    test_auth(&mut con, "foo", "wrong", false)?;
+    test_auth(&mut con, "bar", "wrong", false)?;
+    test_auth(&mut con, "admin", "wrong", false)?;
+
+    // Test unknown users authentication
+    test_auth(&mut con, "nonexistent", "password", false)?;
+    test_auth(&mut con, "", "", false)?;
+
+    Ok(())
+}

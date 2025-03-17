@@ -118,6 +118,9 @@ macro_rules! valkey_module {
         $(init: $init_func:ident,)* $(,)*
         $(deinit: $deinit_func:ident,)* $(,)*
         $(info: $info_func:ident,)?
+        $(auth: [
+            $($auth_callback:expr),* $(,)*
+        ],)?
         $(acl_categories: [
             $($acl_category:expr),* $(,)*
         ])?
@@ -412,6 +415,10 @@ macro_rules! valkey_module {
 
             raw::register_info_function(ctx, Some(__info_func));
 
+            $(
+                $crate::valkey_module_auth!(ctx, $($auth_callback),*);
+            )?
+
             if let Err(e) = register_server_events(&context) {
                 context.log_warning(&format!("{e}"));
                 return raw::Status::Err as c_int;
@@ -443,4 +450,40 @@ macro_rules! valkey_module {
             $crate::raw::Status::Ok as c_int
         }
     }
+}
+
+#[macro_export]
+macro_rules! valkey_module_auth {
+    ($ctx:expr, $($auth_callback:expr),* $(,)*) => {
+        $(
+            {   // New scope for each callback
+                extern "C" fn __do_auth(
+                    ctx: *mut $crate::raw::RedisModuleCtx,
+                    username: *mut $crate::raw::RedisModuleString,
+                    password: *mut $crate::raw::RedisModuleString,
+                    err: *mut *mut $crate::raw::RedisModuleString,
+                ) -> std::os::raw::c_int {
+                    let context = $crate::Context::new(ctx);
+                    let ctx_ptr = unsafe { std::ptr::NonNull::new_unchecked(ctx) };
+                    let username = $crate::ValkeyString::new(Some(ctx_ptr), username);
+                    let password = $crate::ValkeyString::new(Some(ctx_ptr), password);
+
+                    match $auth_callback(&context, username, password) {
+                        Ok(result) => result,
+                        Err(e) => {
+                            let error_msg = $crate::ValkeyString::create(None, e.to_string().as_str());
+                            unsafe { *err = error_msg.into_raw() };
+                            $crate::AUTH_HANDLED
+                        }
+                    }
+                }
+
+                unsafe {
+                    if let Some(register_auth) = $crate::raw::RedisModule_RegisterAuthCallback {
+                        register_auth($ctx, Some(__do_auth));
+                    }
+                }
+            }
+        )*
+    };
 }
