@@ -70,6 +70,9 @@ pub static INFO_COMMAND_HANDLER_LIST: [fn(&InfoContext, bool) -> ValkeyResult<()
 #[distributed_slice()]
 pub static CLIENT_CHANGED_SERVER_EVENTS_LIST: [fn(&Context, ClientChangeSubevent)] = [..];
 
+#[distributed_slice()]
+pub static SHUTDOWN_SERVER_EVENT_LIST: [fn(&Context, u64)] = [..];
+
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -175,6 +178,18 @@ extern "C" fn client_change_event_callback(
         });
 }
 
+extern "C" fn server_shutdown_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let ctx = Context::new(ctx);
+    SHUTDOWN_SERVER_EVENT_LIST.iter().for_each(|callback| {
+        callback(&ctx, subevent);
+    });
+}
+
 extern "C" fn config_change_event_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -271,6 +286,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &CRON_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_CRON_LOOP,
         Some(cron_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &SHUTDOWN_SERVER_EVENT_LIST,
+        raw::REDISMODULE_EVENT_SHUTDOWN,
+        Some(server_shutdown_callback),
     )?;
     Ok(())
 }
