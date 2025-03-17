@@ -130,6 +130,9 @@ macro_rules! valkey_module {
         $(init: $init_func:ident,)* $(,)*
         $(deinit: $deinit_func:ident,)* $(,)*
         $(info: $info_func:ident,)?
+        $(auth: [
+            $($auth_callback:expr),* $(,)*
+        ],)?
         $(acl_categories: [
             $($acl_category:expr),* $(,)*
         ])?
@@ -458,6 +461,10 @@ macro_rules! valkey_module {
 
             raw::register_info_function(ctx, Some(__info_func));
 
+            $(
+                $crate::valkey_module_auth!($module_name, ctx, $($auth_callback),*);
+            )?
+
             if let Err(e) = register_server_events(&context) {
                 context.log_warning(&format!("{e}"));
                 return raw::Status::Err as c_int;
@@ -498,4 +505,74 @@ macro_rules! valkey_module {
             $crate::raw::Status::Ok as c_int
         }
     }
+}
+
+/// Registers authentication callbacks with the Valkey module
+///
+/// Provides an unique safe wrapper for Valkey's authentication callback registration system.
+/// Used within the `valkey_module!` macro's auth field.
+///
+/// # Example
+/// ```ignore
+/// use valkey_module::valkey_module;
+///
+/// valkey_module! {
+///     name: "mymodule",
+///     version: 1,
+///     allocator: (ValkeyAlloc, ValkeyAlloc),
+///     auth: [
+///         blocking_callback,    // Called 2nd (LIFO)
+///         simple_callback,     // Called 1st
+///     ],
+///     // ... other fields
+/// }
+/// ```
+///
+/// # Note
+/// Callbacks are registered in LIFO order (last callback is called first).
+/// Requires Redis 7.2+ or Valkey 7.2+.
+#[macro_export]
+macro_rules! valkey_module_auth {
+    ($module_name:expr, $ctx:expr, $($auth_callback:expr),* $(,)*) => {
+        $(
+            {
+                paste::paste! {
+                    extern "C" fn [<__do_auth_ $module_name _ $auth_callback>](
+                        ctx: *mut $crate::raw::RedisModuleCtx,
+                        username: *mut $crate::raw::RedisModuleString,
+                        password: *mut $crate::raw::RedisModuleString,
+                        err: *mut *mut $crate::raw::RedisModuleString,
+                    ) -> std::os::raw::c_int {
+                        let context = $crate::Context::new(ctx);
+                        let ctx_ptr = unsafe { std::ptr::NonNull::new_unchecked(ctx) };
+                        let username = $crate::ValkeyString::new(Some(ctx_ptr), username);
+                        let password = $crate::ValkeyString::new(Some(ctx_ptr), password);
+
+                        match $auth_callback(&context, username, password) {
+                            Ok(result) => result,
+                            Err(e) => {
+                                let error_msg = $crate::ValkeyString::create_and_retain(&e.to_string());
+                                unsafe { *err = error_msg.inner };
+                                $crate::AUTH_HANDLED
+                            }
+                        }
+                    }
+
+                    #[cfg(not(any(
+                        feature = "min-redis-compatibility-version-7-2",
+                        feature = "min-valkey-compatibility-version-8-0"
+                    )))]
+                    compile_error!("Auth callbacks require Redis 7.2 or Valkey 7.2 and above");
+
+                    #[cfg(any(
+                        feature = "min-redis-compatibility-version-7-2",
+                        feature = "min-valkey-compatibility-version-8-0"
+                    ))]
+                    unsafe {
+                        $crate::raw::RedisModule_RegisterAuthCallback.expect("RedisModule_RegisterAuthCallback should exist on Redis/Valkey 7.2 and above")($ctx, Some([<__do_auth_ $module_name _ $auth_callback>]));
+                    }
+                }
+            }
+        )*
+    };
 }
