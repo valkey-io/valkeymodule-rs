@@ -56,6 +56,16 @@ impl CommandFilterCtx {
         ValkeyString::from_ptr(cmd).unwrap()
     }
 
+    // get all arguments as Vec<&str> minus the first one (the command)
+    pub fn args_get_all(&self) -> Vec<&str> {
+        let mut output = Vec::new();
+        for counter in 1..self.args_count() {
+            let arg = self.arg_get_as_str(counter).unwrap();
+            output.push(arg);
+        }
+        output
+    }
+
     pub fn arg_replace(&self, pos: c_int, arg: *mut RedisModuleString) {
         unsafe { RedisModule_CommandFilterArgReplace.unwrap()(self.inner, pos, arg) };
     }

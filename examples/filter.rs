@@ -45,6 +45,11 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     if !cmd.eq_ignore_ascii_case("set") {
         return;
     }
+    let all_args = cf_ctx.args_get_all();
+    log_notice(&format!(
+        "set_filter_fn cmd: {:?}, args: {:?}",
+        cmd, all_args
+    ));
     let key = cf_ctx.arg_get_as_str(1).unwrap();
     let value = cf_ctx.arg_get_as_str(2).unwrap();
     log_notice(&format!("set key: {}, value {}", key, value));

@@ -218,6 +218,16 @@ extern "C" {
     pub fn Export_ValkeyModule_InitAPI(ctx: *mut ValkeyModuleCtx) -> c_void;
 }
 
+// Helper function to safely check whether the use-redismodule-api feature flag is enabled
+// without requiring consumers to include it in their Cargo.toml.
+pub fn use_redis_module_api() -> bool {
+    if cfg!(feature = "use-redismodule-api") {
+        true
+    } else {
+        false
+    }
+}
+
 ///////////////////////////////////////////////////////////////
 
 pub const FMT: *const c_char = b"v\0".as_ptr().cast::<c_char>();
