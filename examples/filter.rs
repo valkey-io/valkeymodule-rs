@@ -41,7 +41,7 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
         return;
     }
     // check if cmd (first arg) is set
-    let cmd = cf_ctx.arg_get_as_str(0).unwrap();
+    let cmd = cf_ctx.cmd_get_as_str();
     if !cmd.eq_ignore_ascii_case("set") {
         return;
     }

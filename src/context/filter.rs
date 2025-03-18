@@ -50,6 +50,12 @@ impl CommandFilterCtx {
         ValkeyString::from_ptr(arg)
     }
 
+    // grab 0 argument, the command which is always present and return as str
+    pub fn cmd_get_as_str(&self) -> &str {
+        let cmd = self.arg_get(0);
+        ValkeyString::from_ptr(cmd).unwrap()
+    }
+
     pub fn arg_replace(&self, pos: c_int, arg: *mut RedisModuleString) {
         unsafe { RedisModule_CommandFilterArgReplace.unwrap()(self.inner, pos, arg) };
     }
