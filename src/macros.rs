@@ -239,8 +239,7 @@ macro_rules! valkey_module {
             // This block of code means that when Modules are compiled without the "use-redismodule-api" feature flag,
             // we expect that ValkeyModule_Init should succeed. We do not YET utilize the ValkeyModule_Init invocation
             // because the valkeymodule-rs still references RedisModule_* APIs for calls to the server.
-            #[cfg(not(feature = "use-redismodule-api"))]
-            {
+            if !raw::use_redis_module_api() {
                 let status = unsafe {
                     raw::Export_ValkeyModule_Init(
                         ctx as *mut raw::ValkeyModuleCtx,
