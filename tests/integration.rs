@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Result;
-use redis::Value;
+use redis::{Commands, Value};
 use redis::{RedisError, RedisResult};
 use utils::{get_valkey_connection, start_valkey_server_with_module};
 
@@ -462,7 +462,7 @@ fn test_server_event() -> Result<()> {
 
 #[test]
 fn test_client_change_event() -> Result<()> {
-    let port: u16 = 6494;
+    let port: u16 = 6511;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -1107,5 +1107,23 @@ fn test_client() -> Result<()> {
         .arg("test_client")
         .exec(&mut con)
         .with_context(|| "failed execute client.name")?;
+    Ok(())
+}
+
+#[test]
+fn test_filter() -> Result<()> {
+    let port = 6508;
+    let _guards =
+        vec![start_valkey_server_with_module("filter", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // currently the example implements a filter for info command
+    redis::cmd("info")
+        .exec(&mut con)
+        .with_context(|| "failed execute info")?;
+    // test the set filter and verify key/value were replaced
+    let _: () = con.set("foo", "bar")?;
+    let resp: String = con.get("new_key")?;
+    assert_eq!(resp, "new_value");
     Ok(())
 }

@@ -31,6 +31,7 @@ pub mod blocked;
 pub mod call_reply;
 pub mod client;
 pub mod commands;
+pub mod filter;
 pub mod info;
 pub mod keys_cursor;
 pub mod server_events;
