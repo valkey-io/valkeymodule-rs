@@ -33,8 +33,53 @@ fn deinit(ctx: &Context) -> Status {
     Status::Ok
 }
 
+/// if you register filter via init then you need to unregister it in deinit
+/// it also has to be an extern "C" function
+/// more complicated, it's better to use macro to register filters
+extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
+    let cf_ctx = CommandFilterCtx::new(ctx);
+
+    // we want the filter to be very efficient as it will be called for every command
+    // check if there is only 1 arg, the command
+    if cf_ctx.args_count() != 1 {
+        return;
+    }
+    // check if cmd (first arg) is info
+    let cmd = cf_ctx.arg_get_as_str(0).unwrap();
+    if !cmd.eq_ignore_ascii_case("info") {
+        return;
+    }
+    // grab client_id
+    let client_id = cf_ctx.get_client_id();
+    log_notice(&format!("info filter for client_id {}", client_id));
+    // replace info with info2 as the command name
+    let custom_cmd = create_module_string("info2");
+    cf_ctx.arg_replace(0, custom_cmd);
+}
+
+/// create a RedisModuleString from a &str without Context which is not present in filter functions
+fn create_module_string(arg: &str) -> *mut RedisModuleString {
+    let arg_cstring = CString::new(arg).unwrap();
+    let arg_module_string = unsafe {
+        RedisModule_CreateString.unwrap()(
+            null_mut(),
+            arg_cstring.as_ptr(),
+            arg_cstring.as_bytes().len(),
+        )
+    };
+    arg_module_string
+}
+
+// custom command that will be called instead of info
+fn info2(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    ctx.log_notice("info2 command");
+    //  do something different here
+    Ok("info2".into())
+}
+
 /// this is just an example, please don't use this in production
-extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
+/// creating Rust fn and converting it to extern "C" function in the macro
+fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     let cf_ctx = CommandFilterCtx::new(ctx);
 
     if cf_ctx.args_count() != 3 {
@@ -63,45 +108,9 @@ extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     cf_ctx.arg_replace(2, new_value);
 }
 
-extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
-    let cf_ctx = CommandFilterCtx::new(ctx);
-
-    // we want the filter to be very efficient as it will be called for every command
-    // check if there is only 1 arg, the command
-    if cf_ctx.args_count() != 1 {
-        return;
-    }
-    // check if cmd (first arg) is info
-    let cmd = cf_ctx.arg_get_as_str(0).unwrap();
-    if !cmd.eq_ignore_ascii_case("info") {
-        return;
-    }
-    // grab client_id
-    let client_id = cf_ctx.get_client_id();
-    log_notice(&format!("info filter for client_id {}", client_id));
-    // replace info with info2 as the command name
-    let custom_cmd = create_module_string("info2");
-    cf_ctx.arg_replace(0, custom_cmd);
-}
-
-// custom command that will be called instead of info
-fn info2(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    ctx.log_notice("info2 command");
-    //  do something different here
-    Ok("info2".into())
-}
-
-/// create a RedisModuleString from a &str without Context which is not present in filter functions
-fn create_module_string(arg: &str) -> *mut RedisModuleString {
-    let arg_cstring = CString::new(arg).unwrap();
-    let arg_module_string = unsafe {
-        RedisModule_CreateString.unwrap()(
-            null_mut(),
-            arg_cstring.as_ptr(),
-            arg_cstring.as_bytes().len(),
-        )
-    };
-    arg_module_string
+/// another Rust filter function
+fn another_filter_fn(_ctx: *mut RedisModuleCommandFilterCtx) {
+    log_notice("another_filter_fn called");
 }
 
 valkey_module! {
@@ -116,6 +125,8 @@ valkey_module! {
     ],
     // this shows how to register filters using valkey_module! macro
     filters: [
-        [set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF]
+        [set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF],
+        [another_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF]
+
     ],
 }

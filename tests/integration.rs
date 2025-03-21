@@ -462,7 +462,7 @@ fn test_server_event() -> Result<()> {
 
 #[test]
 fn test_client_change_event() -> Result<()> {
-    let port: u16 = 6494;
+    let port: u16 = 6511;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
