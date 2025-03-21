@@ -99,6 +99,17 @@ macro_rules! redis_event_handler {
     }};
 }
 
+// create an extern "C" wrapper for Rust filter function passed in to the macro
+// function names must be known at compile time so using a macro to generate them
+#[macro_export]
+macro_rules! define_extern_c_filter_func {
+    ($filter_func_name:ident, $filter_func:expr) => {
+        extern "C" fn $filter_func_name(ctx: *mut RedisModuleCommandFilterCtx) {
+            $filter_func(ctx);
+        }
+    };
+}
+
 /// Defines a Valkey module.
 ///
 /// It registers the defined module, sets it up and initialises properly,
@@ -137,7 +148,7 @@ macro_rules! valkey_module {
         $(
             filters: [
                 $([
-                    $filter_func:expr,
+                    $filter_func:ident,
                     $filter_flags:expr
                 ]),* $(,)?
             ] $(,)*
@@ -306,11 +317,16 @@ macro_rules! valkey_module {
                 return raw::Status::Err as c_int;
             }
 
+            // register filters on module load
             $(
                 let mut cmd_filters_vec = Vec::new();
                 $(
-                    let cmd_filter = context.register_command_filter($filter_func, $filter_flags);
-                    cmd_filters_vec.push(cmd_filter);
+                    paste::paste! {
+                        // creating a unique extern c filter function name:  __extern_c_ $filter_func
+                        $crate::define_extern_c_filter_func!([<__extern_c_ $filter_func>], $filter_func);
+                        let cmd_filter = context.register_command_filter([<__extern_c_ $filter_func>], $filter_flags);
+                        cmd_filters_vec.push(cmd_filter);
+                    }
                 )*
                 // store filters in a static variable to unregister them on module unload
                 CMD_FILTERS.get_or_init(|| cmd_filters_vec);

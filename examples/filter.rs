@@ -10,10 +10,8 @@ use valkey_module::{
     VALKEYMODULE_CMDFILTER_NOSELF,
 };
 
-// this module shows how to register filters using init and deinit
-
+// this shows how to register filters using init and deinit
 static INFO_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
-static SET_FILTER: RwLock<Option<CommandFilter>> = RwLock::new(None);
 
 fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     let info_filter = ctx.register_command_filter(info_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
@@ -22,13 +20,6 @@ fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     }
     let mut info_guard = INFO_FILTER.write().unwrap();
     *info_guard = Some(info_filter);
-
-    let set_filter = ctx.register_command_filter(set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF);
-    if set_filter.is_null() {
-        return Status::Err;
-    }
-    let mut set_guard = SET_FILTER.write().unwrap();
-    *set_guard = Some(set_filter);
 
     Status::Ok
 }
@@ -39,39 +30,12 @@ fn deinit(ctx: &Context) -> Status {
         ctx.unregister_command_filter(info_filter);
     };
 
-    let set_guard = SET_FILTER.read().unwrap();
-    if let Some(ref set_filter) = set_guard.deref() {
-        ctx.unregister_command_filter(set_filter);
-    };
-
     Status::Ok
 }
 
-/// this is just an example, please don't use this in production
-extern "C" fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
-    let cf_ctx = CommandFilterCtx::new(ctx);
-
-    if cf_ctx.args_count() != 3 {
-        return;
-    }
-    // check if cmd (first arg) is set
-    let cmd = cf_ctx.cmd_get_as_str();
-    if !cmd.eq_ignore_ascii_case("set") {
-        return;
-    }
-    let key = cf_ctx.arg_get_as_str(1).unwrap();
-    let value = cf_ctx.arg_get_as_str(2).unwrap();
-    log_notice(&format!("set key: {}, value {}", key, value));
-    // delete 2nd arg key
-    cf_ctx.arg_delete(1);
-    // insert new key
-    let new_key = create_module_string("new_key");
-    cf_ctx.arg_insert(1, new_key);
-    // replace 3rd arg value
-    let new_value = create_module_string("new_value");
-    cf_ctx.arg_replace(2, new_value);
-}
-
+/// if you register filter via init then you need to unregister it in deinit
+/// it also has to be an extern "C" function
+/// more complicated, it's better to use macro to register filters
 extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     let cf_ctx = CommandFilterCtx::new(ctx);
 
@@ -93,13 +57,6 @@ extern "C" fn info_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     cf_ctx.arg_replace(0, custom_cmd);
 }
 
-// custom command that will be called instead of info
-fn info2(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    ctx.log_notice("info2 command");
-    //  do something different here
-    Ok("info2".into())
-}
-
 /// create a RedisModuleString from a &str without Context which is not present in filter functions
 fn create_module_string(arg: &str) -> *mut RedisModuleString {
     let arg_cstring = CString::new(arg).unwrap();
@@ -113,6 +70,49 @@ fn create_module_string(arg: &str) -> *mut RedisModuleString {
     arg_module_string
 }
 
+// custom command that will be called instead of info
+fn info2(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    ctx.log_notice("info2 command");
+    //  do something different here
+    Ok("info2".into())
+}
+
+/// this is just an example, please don't use this in production
+/// creating Rust fn and converting it to extern "C" function in the macro
+fn set_filter_fn(ctx: *mut RedisModuleCommandFilterCtx) {
+    let cf_ctx = CommandFilterCtx::new(ctx);
+
+    if cf_ctx.args_count() != 3 {
+        return;
+    }
+    // check if cmd (first arg) is set
+    let cmd = cf_ctx.cmd_get_as_str();
+    if !cmd.eq_ignore_ascii_case("set") {
+        return;
+    }
+    let all_args = cf_ctx.args_get_all();
+    log_notice(&format!(
+        "set_filter_fn cmd: {:?}, args: {:?}",
+        cmd, all_args
+    ));
+    let key = cf_ctx.arg_get_as_str(1).unwrap();
+    let value = cf_ctx.arg_get_as_str(2).unwrap();
+    log_notice(&format!("set key: {}, value {}", key, value));
+    // delete 2nd arg key
+    cf_ctx.arg_delete(1);
+    // insert new key
+    let new_key = create_module_string("new_key");
+    cf_ctx.arg_insert(1, new_key);
+    // replace 3rd arg value
+    let new_value = create_module_string("new_value");
+    cf_ctx.arg_replace(2, new_value);
+}
+
+/// another Rust filter function
+fn another_filter_fn(_ctx: *mut RedisModuleCommandFilterCtx) {
+    log_notice("another_filter_fn called");
+}
+
 valkey_module! {
     name: "filter",
     version: 1,
@@ -122,5 +122,11 @@ valkey_module! {
     deinit: deinit,
     commands: [
         ["info2", info2, "readonly", 0, 0, 0],
+    ],
+    // this shows how to register filters using valkey_module! macro
+    filters: [
+        [set_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF],
+        [another_filter_fn, VALKEYMODULE_CMDFILTER_NOSELF]
+
     ],
 }
