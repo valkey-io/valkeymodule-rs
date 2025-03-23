@@ -457,6 +457,25 @@ fn test_server_event() -> Result<()> {
 
     assert!(res > 0);
 
+    redis::cmd("set")
+        .arg(&["key", "value"])
+        .exec(&mut con)
+        .with_context(|| "failed to do set")?;
+
+    redis::cmd("set")
+        .arg(&["key", "new_value"])
+        .exec(&mut con)
+        .with_context(|| "failed to do set")?;
+
+    redis::cmd("del")
+        .arg(&["key"])
+        .exec(&mut con)
+        .with_context(|| "failed to do del")?;
+
+    let res: i64 = redis::cmd("num_key_events").query(&mut con)?;
+
+    assert_eq!(res, 1);
+
     Ok(())
 }
 
