@@ -1,3 +1,4 @@
+pub use crate::context::filter::{CommandFilter, CommandFilterCtx};
 pub use crate::context::InfoContext;
 extern crate num_traits;
 
