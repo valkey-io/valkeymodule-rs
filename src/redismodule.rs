@@ -4,7 +4,7 @@ use std::ffi::CString;
 use std::fmt::Display;
 use std::ops::Deref;
 use std::os::raw::{c_char, c_int, c_void};
-use std::ptr::NonNull;
+use std::ptr::{null_mut, NonNull};
 use std::slice;
 use std::str;
 use std::str::Utf8Error;
@@ -168,6 +168,13 @@ impl ValkeyString {
         };
 
         Self { ctx, inner }
+    }
+
+    /// Creates a ValkeyString from a &str and retains it.  This is useful in cases where Modules need to pass ownership of a ValkeyString to the core engine without it being freed when we drop a ValkeyString
+    pub fn create_and_retain(arg: &str) -> ValkeyString {
+        let arg = ValkeyString::create(None, arg);
+        raw::string_retain_string(null_mut(), arg.inner);
+        arg
     }
 
     pub const fn from_redis_module_string(

@@ -23,6 +23,31 @@ impl Drop for ChildGuard {
 }
 
 pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+    let module_path = get_module_path(module_name)?;
+
+    let args = &[
+        "--port",
+        &port.to_string(),
+        "--loadmodule",
+        module_path.as_str(),
+        "--enable-debug-command",
+        "yes",
+        "--enable-module-command",
+        "yes",
+    ];
+
+    let valkey_server = Command::new("valkey-server")
+        .args(args)
+        .spawn()
+        .map(|c| ChildGuard {
+            name: "server",
+            child: c,
+        })?;
+
+    Ok(valkey_server)
+}
+
+pub(crate) fn get_module_path(module_name: &str) -> Result<String> {
     let extension = if cfg!(target_os = "macos") {
         "dylib"
     } else {
@@ -49,25 +74,7 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
         .is_file());
 
     let module_path = format!("{}", module_path.display());
-
-    let args = &[
-        "--port",
-        &port.to_string(),
-        "--loadmodule",
-        module_path.as_str(),
-        "--enable-debug-command",
-        "yes",
-    ];
-
-    let valkey_server = Command::new("valkey-server")
-        .args(args)
-        .spawn()
-        .map(|c| ChildGuard {
-            name: "server",
-            child: c,
-        })?;
-
-    Ok(valkey_server)
+    Ok(module_path)
 }
 
 // Get connection to Redis

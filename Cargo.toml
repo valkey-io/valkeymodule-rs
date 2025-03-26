@@ -129,6 +129,14 @@ crate-type = ["cdylib"]
 name = "client"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "filter1"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "filter2"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -143,6 +151,7 @@ nix = "0.26"
 cfg-if = "1"
 valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.4"}
 log = "0.4"
+paste = "1.0.15"
 
 [dev-dependencies]
 anyhow = "1"
