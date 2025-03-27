@@ -38,6 +38,8 @@ impl From<ValkeyError> for ValkeyValueResult {
 
 pub const VALKEY_OK: ValkeyValueResult = Ok(ValkeyValue::SimpleStringStatic("OK"));
 pub const TYPE_METHOD_VERSION: u64 = raw::REDISMODULE_TYPE_METHOD_VERSION as u64;
+pub const AUTH_HANDLED: i32 = raw::REDISMODULE_AUTH_HANDLED as i32;
+pub const AUTH_NOT_HANDLED: i32 = raw::REDISMODULE_AUTH_NOT_HANDLED as i32;
 
 pub trait NextArg {
     fn next_arg(&mut self) -> Result<ValkeyString, ValkeyError>;
@@ -123,6 +125,10 @@ impl ValkeyString {
         let inner = self.inner;
         self.inner = std::ptr::null_mut();
         inner
+    }
+
+    pub fn into_raw(self) -> *mut raw::RedisModuleString {
+        self.take() // internally calls the private take() method
     }
 
     pub fn new(

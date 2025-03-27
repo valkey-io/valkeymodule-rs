@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 
 use redis::Connection;
+use redis::RedisResult;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -94,4 +95,48 @@ pub fn get_valkey_connection(port: u16) -> Result<Connection> {
             }
         }
     }
+}
+
+#[derive(Debug)]
+pub enum AuthExpectedResult {
+    Success,
+    Denied,
+    Aborted,
+}
+
+// Helper function to validate the authentication
+pub fn check_auth(
+    con: &mut redis::Connection,
+    username: &str,
+    password: &str,
+    expected_result: AuthExpectedResult,
+) -> Result<()> {
+    let response: RedisResult<String> = redis::cmd("AUTH").arg(&[username, password]).query(con);
+
+    match expected_result {
+        AuthExpectedResult::Success => {
+            let res =
+                response.with_context(|| format!("failed to authenticate {username} user"))?;
+            assert_eq!(res, "OK");
+        }
+        AuthExpectedResult::Denied => {
+            assert!(response.is_err());
+            let err = response.unwrap_err().to_string();
+            assert!(
+                err.contains("DENIED: Authentication credentials mismatch"),
+                "Unexpected error message: {}",
+                err
+            );
+        }
+        AuthExpectedResult::Aborted => {
+            assert!(response.is_err());
+            let err = response.unwrap_err().to_string();
+            assert!(
+                err.contains("ABORT:: Authentication aborted by server"),
+                "Unexpected error message: {}",
+                err
+            );
+        }
+    }
+    Ok(())
 }

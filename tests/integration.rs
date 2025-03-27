@@ -7,7 +7,9 @@ use anyhow::Result;
 use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
-use utils::{get_valkey_connection, start_valkey_server_with_module};
+use utils::{
+    check_auth, get_valkey_connection, start_valkey_server_with_module, AuthExpectedResult,
+};
 
 const FAILED_TO_START_SERVER: &str = "failed to start valkey server";
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
@@ -1148,6 +1150,276 @@ fn test_filter() -> Result<()> {
     let _: () = con.set("foo", "bar")?;
     let resp4: String = con.get("foo")?;
     assert_eq!(resp4, "bar");
+
+    Ok(())
+}
+
+// Tests basic non-blocking authentication functionality.
+// Verifies that:
+// - Users can be created and authenticated successfully with correct credentials
+// - Authentication fails when incorrect passwords are provided
+#[test]
+fn test_non_blocking_auth_callbacks() -> Result<()> {
+    let port = 6512;
+    let _guards =
+        vec![start_valkey_server_with_module("auth", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Set up users for regular auth callbacks
+    let users = [("user1", "pass1"), ("user2", "pass2")];
+
+    // Create users
+    for (user, pass) in users {
+        let res: String = redis::cmd("ACL")
+            .arg(&["SETUSER", user, "on", &format!(">{}", pass), "~*", "+@all"])
+            .query(&mut con)?;
+        assert_eq!(&res, "OK");
+    }
+
+    // Test successful authentications
+    check_auth(&mut con, "user1", "pass1", AuthExpectedResult::Success)?;
+    check_auth(&mut con, "user2", "pass2", AuthExpectedResult::Success)?;
+
+    // Test failed authentications
+    check_auth(&mut con, "user1", "wrong", AuthExpectedResult::Denied)?;
+    check_auth(&mut con, "user2", "wrong", AuthExpectedResult::Denied)?;
+
+    Ok(())
+}
+
+// Tests blocking authentication functionality.
+// Verifies that:
+// - Authentication requests can block for specified duration
+// - Blocked clients are correctly reported in server metrics
+// - Successful and failed authentications work as expected
+// - Authentication can be aborted
+#[test]
+fn test_blocking_auth_callbacks() -> Result<()> {
+    let port = 6513;
+    let _guards =
+        vec![start_valkey_server_with_module("auth", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con2 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con3 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Set up users for blocking auth
+    let users = [
+        ("blockUser4", "blockPass4"),
+        ("blockUser5", "blockPass5"),
+        ("blockUser6", "blockPass6"),
+    ];
+
+    // Create users
+    for (user, pass) in users {
+        let res: String = redis::cmd("ACL")
+            .arg(&["SETUSER", user, "on", &format!(">{}", pass), "~*", "+@all"])
+            .query(&mut con)?;
+        assert_eq!(&res, "OK");
+    }
+
+    // Start auth on first connection
+    let auth_handle = std::thread::spawn(move || {
+        let _: RedisResult<String> = redis::cmd("AUTH")
+            .arg(&["blockUser4", "blockPass4"])
+            .query(&mut con);
+    });
+
+    // Wait half a second (during the 2-second delay) to check blocked clients
+    // as the engine would take some time to reflect in its metrics
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // Check blocked_clients from second connection
+    let info: String = redis::cmd("INFO").arg("clients").query(&mut con2)?;
+
+    let blocked_clients = info
+        .lines()
+        .find(|line| line.starts_with("blocked_clients:"))
+        .and_then(|line| line.split(':').nth(1))
+        .and_then(|count| count.trim().parse::<i32>().ok())
+        .unwrap_or(0);
+
+    assert!(
+        blocked_clients > 0,
+        "Expected to see blocked clients during auth"
+    );
+
+    // Wait for auth to complete
+    auth_handle.join().unwrap();
+
+    // Test successful blocking authentications with third connection
+    check_auth(
+        &mut con3,
+        "blockUser4",
+        "blockPass4",
+        AuthExpectedResult::Success,
+    )?;
+    check_auth(
+        &mut con3,
+        "blockUser5",
+        "blockPass5",
+        AuthExpectedResult::Success,
+    )?;
+    check_auth(
+        &mut con3,
+        "blockUser6",
+        "blockPass6",
+        AuthExpectedResult::Success,
+    )?;
+
+    // Test failed blocking authentications
+    check_auth(&mut con3, "blockUser4", "wrong", AuthExpectedResult::Denied)?;
+    check_auth(&mut con3, "blockUser5", "wrong", AuthExpectedResult::Denied)?;
+    check_auth(&mut con3, "blockUser6", "wrong", AuthExpectedResult::Denied)?;
+    check_auth(&mut con3, "blockUser6", "wrong", AuthExpectedResult::Denied)?;
+
+    // Test abort authentication case
+    check_auth(
+        &mut con3,
+        "blockAbort",
+        "abort",
+        AuthExpectedResult::Aborted,
+    )?;
+
+    Ok(())
+}
+
+// This test verifies that multiple concurrent authentication callbacks are properly isolated
+// and the correct callback is invoked for each client, even under concurrent load.
+//
+// Test scenario:
+// 1. Sets up two groups of users:
+//    - users_auth1: Uses blocking_auth_callback_one (fast authentication)
+//    - users_auth2: Uses blocking_auth_callback_two (2-second delayed authentication)
+//
+// 2. Creates authentication requests in this order:
+//    a. Starts auth2 requests first (with 2-second delay)
+//    b. While auth2 requests are blocked, immediately starts auth1 requests
+//
+// 3. Verifies callback isolation by leveraging reply callback name in deny
+// error response in this example and ensure:
+//    - All auth1 users get errors containing "blocked_auth_reply_one" reply callback
+//    - All auth2 users get errors containing "blocked_auth_reply_two" reply callback
+//
+// This test demonstrates that:
+// - Authentication callbacks remain isolated even under concurrent load
+// - The correct callback is invoked for each user group
+// - Callbacks are not mixed up even when faster authentications (auth1)
+//   complete while slower ones (auth2) are still processing
+#[test]
+fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
+    let port = 6514;
+    let _guards =
+        vec![start_valkey_server_with_module("auth", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+
+    let mut setup_con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Set up users for both auth callbacks
+    let users_auth1 = [
+        ("blockUser1", "wrongPass1"),
+        ("blockUser2", "wrongPass2"),
+        ("blockUser3", "wrongPass3"),
+    ];
+
+    let users_auth2 = [
+        ("blockUser4", "wrongPass4"),
+        ("blockUser5", "wrongPass5"),
+        ("blockUser6", "wrongPass6"),
+    ];
+
+    // Create all users with incorrect passwords to force authentication failures
+    for (user, _pass) in users_auth1.iter().chain(users_auth2.iter()) {
+        let res: String = redis::cmd("ACL")
+            .arg(&["SETUSER", user, "on", "~*", "+@all"])
+            .query(&mut setup_con)?;
+        assert_eq!(&res, "OK");
+    }
+
+    // Start multiple auth2 connections (these will have 2-second delay)
+    let auth2_handles: Vec<_> = users_auth2
+        .iter()
+        .map(|(user, pass)| {
+            let mut con = get_valkey_connection(port)
+                .with_context(|| FAILED_TO_CONNECT_TO_SERVER)
+                .unwrap();
+            let user = user.to_string();
+            let pass = pass.to_string();
+
+            std::thread::spawn(move || {
+                let res: RedisResult<String> =
+                    redis::cmd("AUTH").arg(&[&user, &pass]).query(&mut con);
+                (user, res)
+            })
+        })
+        .collect();
+
+    // Wait a moment to ensure auth2 requests have started and are blocked
+    std::thread::sleep(std::time::Duration::from_millis(500));
+
+    // While auth2 requests are blocked, try auth1 requests
+    let auth1_handles: Vec<_> = users_auth1
+        .iter()
+        .map(|(user, pass)| {
+            let mut con = get_valkey_connection(port)
+                .with_context(|| FAILED_TO_CONNECT_TO_SERVER)
+                .unwrap();
+            let user = user.to_string();
+            let pass = pass.to_string();
+
+            std::thread::spawn(move || {
+                let res: RedisResult<String> =
+                    redis::cmd("AUTH").arg(&[&user, &pass]).query(&mut con);
+                (user, res)
+            })
+        })
+        .collect();
+
+    // Collect results
+    let auth2_results: Vec<(String, RedisResult<String>)> = auth2_handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect();
+
+    let auth1_results: Vec<(String, RedisResult<String>)> = auth1_handles
+        .into_iter()
+        .map(|handle| handle.join().unwrap())
+        .collect();
+
+    // Verify auth2 results have the correct callback error message
+    for (user, result) in auth2_results {
+        match result {
+            Ok(_) => panic!("Authentication should have failed for user {}", user),
+            Err(e) => {
+                let err_str = e.to_string();
+                assert!(
+                    err_str.contains("blocked_auth_reply_two"),
+                    "Wrong callback for user {}: expected 'blocked_auth_reply_two' in error, got: {}",
+                    user,
+                    err_str
+                );
+            }
+        }
+    }
+
+    // Verify auth1 results have the correct callback error message
+    for (user, result) in auth1_results {
+        match result {
+            Ok(_) => panic!("Authentication should have failed for user {}", user),
+            Err(e) => {
+                let err_str = e.to_string();
+                assert!(
+                    err_str.contains("blocked_auth_reply_one"),
+                    "Wrong callback for user {}: expected 'blocked_auth_reply_one' in error, got: {}",
+                    user,
+                    err_str
+                );
+            }
+        }
+    }
 
     Ok(())
 }

@@ -27,6 +27,7 @@ use self::thread_safe::ValkeyLockIndicator;
 
 mod timer;
 
+pub mod auth;
 pub mod blocked;
 pub mod call_reply;
 pub mod client;
