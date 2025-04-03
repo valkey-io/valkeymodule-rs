@@ -126,6 +126,7 @@ macro_rules! valkey_module {
         data_types: [
             $($data_type:ident),* $(,)*
         ],
+        $(preload: $preload_func:ident,)* $(,)*
         $(init: $init_func:ident,)* $(,)*
         $(deinit: $deinit_func:ident,)* $(,)*
         $(info: $info_func:ident,)?
@@ -295,6 +296,15 @@ macro_rules! valkey_module {
                 let _ = $crate::MODULE_CONTEXT.set_context(&context);
             }
             let args = $crate::decode_args(ctx, argv, argc);
+
+            // perform validation BEFORE loading the module
+            // exit if there are any issues BEFORE registering commands, data types, etc
+            // different from init_func which is done at the end and allows to take advantage of things that were done in the macro
+            $(
+                if $preload_func(&context, &args) == $crate::Status::Err {
+                    return $crate::Status::Err as c_int;
+                }
+            )*
 
             $(
                 if (&$data_type).create_data_type(ctx).is_err() {

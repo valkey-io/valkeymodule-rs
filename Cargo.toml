@@ -137,6 +137,10 @@ crate-type = ["cdylib"]
 name = "filter2"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "preload"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"

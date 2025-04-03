@@ -1151,3 +1151,19 @@ fn test_filter() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_preload() -> Result<()> {
+    let port = 6512;
+    let _guards =
+        vec![start_valkey_server_with_module("preload", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // unload the module
+    redis::cmd("MODULE")
+        .arg(&["UNLOAD", "preload"])
+        .exec(&mut con)
+        .with_context(|| "failed to unload module")?;
+
+    Ok(())
+}
