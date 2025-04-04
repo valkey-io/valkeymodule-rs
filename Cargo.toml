@@ -33,9 +33,14 @@ crate-type = ["cdylib"]
 required-features = ["min-valkey-compatibility-version-8-0"]
 
 [[example]]
+name = "auth"
+crate-type = ["cdylib"]
+required-features = ["min-valkey-compatibility-version-8-0"]
+
+[[example]]
 name = "call"
 crate-type = ["cdylib"]
-required-features = ["min-redis-compatibility-version-7-2"]
+required-features = ["min-redis-compatibility-version-7-2", "min-valkey-compatibility-version-8-0"]
 
 [[example]]
 name = "keys_pos"
