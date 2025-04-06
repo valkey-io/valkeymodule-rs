@@ -1104,11 +1104,36 @@ fn test_client() -> Result<()> {
     redis::cmd("client.id")
         .exec(&mut con)
         .with_context(|| "failed execute client.id")?;
-    // Test client.name
-    redis::cmd("client.name")
+    // test client.get_name
+    let resp: String = redis::cmd("client.get_name")
+        .query(&mut con)
+        .with_context(|| "failed execute client.get_name")?;
+    assert_eq!(resp, "(NULL string reply referenced in module)");
+    // Test client.set_name
+    redis::cmd("client.set_name")
         .arg("test_client")
         .exec(&mut con)
-        .with_context(|| "failed execute client.name")?;
+        .with_context(|| "failed execute client.set_name")?;
+    // test client.username
+    let resp: String = redis::cmd("client.username")
+        .query(&mut con)
+        .with_context(|| "failed execute client.username")?;
+    assert_eq!(resp, "default");
+    // test client.cert
+    let resp: String = redis::cmd("client.cert")
+        .query(&mut con)
+        .with_context(|| "failed execute client.cert")?;
+    assert_eq!(resp, "(NULL string reply referenced in module)");
+    // test client.info
+    let resp: String = redis::cmd("client.info")
+        .query(&mut con)
+        .with_context(|| "failed execute client.info")?;
+    assert_eq!(resp, "1");
+    // Test client.ip command
+    let resp: String = redis::cmd("client.ip")
+        .query(&mut con)
+        .with_context(|| "failed execute client.ip")?;
+    assert_eq!(resp, "127.0.0.1");
     Ok(())
 }
 
