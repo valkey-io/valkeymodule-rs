@@ -1104,11 +1104,20 @@ fn test_client() -> Result<()> {
     redis::cmd("client.id")
         .exec(&mut con)
         .with_context(|| "failed execute client.id")?;
+    // Test client.ip command
+    let resp: String = redis::cmd("client.ip")
+        .query(&mut con)
+        .with_context(|| "failed execute client.ip")?;
+    assert_eq!(resp, "127.0.0.1");
     // Test client.name
     redis::cmd("client.name")
         .arg("test_client")
         .exec(&mut con)
         .with_context(|| "failed execute client.name")?;
+    // Test client.deauth command
+    redis::cmd("client.deauth")
+        .exec(&mut con)
+        .with_context(|| "failed execute client.deauth")?;
     Ok(())
 }
 
