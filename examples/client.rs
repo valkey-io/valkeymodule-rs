@@ -8,7 +8,9 @@ valkey_module! {
     data_types: [],
     commands: [
         ["client.id", get_client_id, "readonly", 0, 0, 0],
+        ["client.ip", get_client_ip, "readonly", 0, 0, 0],
         ["client.name", set_client_name, "readonly", 0, 0, 0],
+        ["client.deauth", deauth, "readonly", 0, 0, 0],
     ]
 }
 
@@ -30,6 +32,10 @@ fn get_client_id(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok((client_id as i64).into())
 }
 
+fn get_client_ip(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ctx.get_client_ip().into())
+}
+
 fn set_client_name(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() != 2 {
         return Err(ValkeyError::WrongArity);
@@ -38,4 +44,9 @@ fn set_client_name(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let client_name = args.next_arg()?;
     let resp = ctx.set_client_name(&client_name);
     Ok(resp.into())
+}
+
+fn deauth(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    ctx.deauthenticate_and_close_client();
+    Ok("OK".into())
 }
