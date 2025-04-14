@@ -459,6 +459,28 @@ fn test_server_event() -> Result<()> {
 
     assert!(res > 0);
 
+    redis::cmd("set")
+        .arg(&["key", "value"])
+        .exec(&mut con)
+        .with_context(|| "failed to do set")?;
+
+    //overwrite the key for KeyChangeSubevent::Overwritten to fire
+    redis::cmd("set")
+        .arg(&["key", "new_value"])
+        .exec(&mut con)
+        .with_context(|| "failed to do set")?;
+
+    //delete key for KeyChangeSubevent::Deleted to fire
+    redis::cmd("del")
+        .arg(&["key"])
+        .exec(&mut con)
+        .with_context(|| "failed to do del")?;
+
+    let res: i64 = redis::cmd("num_key_events").query(&mut con)?;
+
+    //one for overwrite and one for delete
+    assert_eq!(res, 2);
+
     Ok(())
 }
 

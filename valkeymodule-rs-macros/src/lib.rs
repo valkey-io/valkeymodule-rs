@@ -262,6 +262,26 @@ pub fn cron_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream 
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called whenever a key event happened.
+/// The function must accept a [Context] and [KeyEventSubevent].
+/// Example:
+/// ```rust,no_run,ignore
+/// #[key_event_handler]
+/// fn key_event_handler(ctx: &Context, values: KeyEventSubevent) { ... }
+#[proc_macro_attribute]
+pub fn key_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::KEY_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
+
 /// The macro auto generate a [From] implementation that can convert the struct into [ValkeyValue].
 ///
 /// Example:
