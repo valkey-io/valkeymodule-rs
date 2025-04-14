@@ -1,6 +1,6 @@
 [package]
 name = "valkey-module-macros"
-version = "0.1.5"
+version = "0.1.8"
 authors = ["Dmitry Polyakovsky <dmitry.polyakovsky@oracle.com>"]
 edition = "2021"
 description = "A macros crate for valkeymodule-rs"

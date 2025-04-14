@@ -1,3 +1,4 @@
+pub use crate::context::filter::{CommandFilter, CommandFilterCtx};
 pub use crate::context::InfoContext;
 extern crate num_traits;
 
@@ -108,16 +109,13 @@ pub fn basic_info_command_handler(ctx: &InfoContext, for_crash_report: bool) {
         .for_each(|e| log::error!("Couldn't build info for the module's custom handler: {e}"));
 }
 
-/// Initialize RedisModuleAPI without register as a module.
-#[cfg(feature = "use-redismodule-api")]
+/// Initialize RedisModuleAPI or ValkeyModuleAPI without register as a module.
 pub fn init_api(ctx: &Context) {
-    unsafe { crate::raw::Export_RedisModule_InitAPI(ctx.ctx) };
-}
-
-/// Initialize ValkeyModuleAPI without register as a module.
-#[cfg(not(feature = "use-redismodule-api"))]
-pub fn init_api(ctx: &Context) {
-    unsafe { crate::raw::Export_ValkeyModule_InitAPI(ctx.ctx as *mut raw::ValkeyModuleCtx) };
+    if use_redis_module_api() {
+        unsafe { Export_RedisModule_InitAPI(ctx.ctx) };
+    } else {
+        unsafe { Export_ValkeyModule_InitAPI(ctx.ctx as *mut raw::ValkeyModuleCtx) };
+    }
 }
 
 pub(crate) unsafe fn deallocate_pointer<P>(p: *mut P) {

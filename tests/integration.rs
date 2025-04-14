@@ -1,8 +1,10 @@
 use std::thread;
 use std::time::Duration;
 
+use crate::utils::get_module_path;
 use anyhow::Context;
 use anyhow::Result;
+use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
 use utils::{get_valkey_connection, start_valkey_server_with_module};
@@ -462,7 +464,7 @@ fn test_server_event() -> Result<()> {
 
 #[test]
 fn test_client_change_event() -> Result<()> {
-    let port: u16 = 6494;
+    let port: u16 = 6511;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -1107,5 +1109,61 @@ fn test_client() -> Result<()> {
         .arg("test_client")
         .exec(&mut con)
         .with_context(|| "failed execute client.name")?;
+    Ok(())
+}
+
+#[test]
+fn test_filter() -> Result<()> {
+    let port = 6508;
+    let _guards =
+        vec![start_valkey_server_with_module("filter1", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // load filter2 module
+    redis::cmd("MODULE")
+        .arg(&["LOAD", get_module_path("filter2").unwrap().as_str()])
+        .exec(&mut con)
+        .with_context(|| "failed to filter2 module")?;
+
+    // test filter1 module filter for info command
+    let resp: String = redis::cmd("info")
+        .query(&mut con)
+        .with_context(|| "failed execute info")?;
+    assert_eq!(resp, "info2\n");
+    // test the set filter function and verify key/value were replaced
+    let _: () = con.set("foo", "bar")?;
+    let resp2: String = con.get("new_key")?;
+    assert_eq!(resp2, "new_value");
+
+    // unload the module
+    redis::cmd("MODULE")
+        .arg(&["UNLOAD", "filter1"])
+        .exec(&mut con)
+        .with_context(|| "failed to unload filter1 module")?;
+    // verify the filters are unloaded and commands work as expected
+    let resp3: String = redis::cmd("info")
+        .query(&mut con)
+        .with_context(|| "failed execute info")?;
+    assert_ne!(resp3, "info2");
+    let _: () = con.set("foo", "bar")?;
+    let resp4: String = con.get("foo")?;
+    assert_eq!(resp4, "bar");
+
+    Ok(())
+}
+
+#[test]
+fn test_preload() -> Result<()> {
+    let port = 6512;
+    let _guards =
+        vec![start_valkey_server_with_module("preload", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // unload the module
+    redis::cmd("MODULE")
+        .arg(&["UNLOAD", "preload"])
+        .exec(&mut con)
+        .with_context(|| "failed to unload module")?;
+
     Ok(())
 }

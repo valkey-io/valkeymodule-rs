@@ -99,6 +99,17 @@ macro_rules! redis_event_handler {
     }};
 }
 
+// create an extern "C" wrapper for Rust filter function passed in to the macro
+// function names must be known at compile time so using a macro to generate them
+#[macro_export]
+macro_rules! define_extern_c_filter_func {
+    ($filter_func_name:ident, $filter_func:expr) => {
+        extern "C" fn $filter_func_name(ctx: *mut valkey_module::RedisModuleCommandFilterCtx) {
+            $filter_func(ctx);
+        }
+    };
+}
+
 /// Defines a Valkey module.
 ///
 /// It registers the defined module, sets it up and initialises properly,
@@ -115,6 +126,7 @@ macro_rules! valkey_module {
         data_types: [
             $($data_type:ident),* $(,)*
         ],
+        $(preload: $preload_func:ident,)* $(,)*
         $(init: $init_func:ident,)* $(,)*
         $(deinit: $deinit_func:ident,)* $(,)*
         $(info: $info_func:ident,)?
@@ -134,6 +146,14 @@ macro_rules! valkey_module {
                 )?
             ]),* $(,)?
         ] $(,)*
+        $(
+            filters: [
+                $([
+                    $filter_func:ident,
+                    $filter_flags:expr
+                ]),* $(,)?
+            ] $(,)*
+        )?
         $(event_handlers: [
             $([
                 $(@$event_type:ident) +:
@@ -179,6 +199,9 @@ macro_rules! valkey_module {
         /// Valkey module allocator.
         #[global_allocator]
         static REDIS_MODULE_ALLOCATOR: $allocator_type = $allocator_init;
+
+        use std::sync::OnceLock;
+        static CMD_FILTERS: OnceLock<Vec<valkey_module::CommandFilter>> = OnceLock::new();
 
         // The old-style info command handler, if specified.
         $(
@@ -239,8 +262,7 @@ macro_rules! valkey_module {
             // This block of code means that when Modules are compiled without the "use-redismodule-api" feature flag,
             // we expect that ValkeyModule_Init should succeed. We do not YET utilize the ValkeyModule_Init invocation
             // because the valkeymodule-rs still references RedisModule_* APIs for calls to the server.
-            #[cfg(not(feature = "use-redismodule-api"))]
-            {
+            if !raw::use_redis_module_api() {
                 let status = unsafe {
                     raw::Export_ValkeyModule_Init(
                         ctx as *mut raw::ValkeyModuleCtx,
@@ -275,6 +297,15 @@ macro_rules! valkey_module {
             }
             let args = $crate::decode_args(ctx, argv, argc);
 
+            // perform validation BEFORE loading the module
+            // exit if there are any issues BEFORE registering commands, data types, etc
+            // different from init_func which is done at the end and allows to take advantage of things that were done in the macro
+            $(
+                if $preload_func(&context, &args) == $crate::Status::Err {
+                    return $crate::Status::Err as c_int;
+                }
+            )*
+
             $(
                 if (&$data_type).create_data_type(ctx).is_err() {
                     return raw::Status::Err as c_int;
@@ -295,6 +326,21 @@ macro_rules! valkey_module {
             if $crate::commands::register_commands(&context) == raw::Status::Err {
                 return raw::Status::Err as c_int;
             }
+
+            // register filters on module load
+            $(
+                let mut cmd_filters_vec = Vec::new();
+                $(
+                    paste::paste! {
+                        // creating a unique extern c filter function name:  __extern_c_ $filter_func
+                        $crate::define_extern_c_filter_func!([<__extern_c_ $filter_func>], $filter_func);
+                        let cmd_filter = context.register_command_filter([<__extern_c_ $filter_func>], $filter_flags);
+                        cmd_filters_vec.push(cmd_filter);
+                    }
+                )*
+                // store filters in a static variable to unregister them on module unload
+                CMD_FILTERS.get_or_init(|| cmd_filters_vec);
+            )?
 
             $(
                 $(
@@ -439,6 +485,15 @@ macro_rules! valkey_module {
                     return $crate::Status::Err as c_int;
                 }
             )*
+
+            // unregister filters on module unload
+            let cmd_filters_vec = match CMD_FILTERS.get(){
+                Some(tmp) => tmp,
+                None => &vec![]
+            };
+            for filter in cmd_filters_vec {
+                context.unregister_command_filter(&filter);
+            }
 
             $crate::raw::Status::Ok as c_int
         }
