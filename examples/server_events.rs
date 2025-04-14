@@ -1,19 +1,20 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::server_events::ClientChangeSubevent;
+use valkey_module::server_events::{ClientChangeSubevent, KeyChangeSubevent};
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler,
+    flush_event_handler, key_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
 static NUM_CONNECTS: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
+static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -49,6 +50,25 @@ fn client_changed_event_handler(ctx: &Context, client_event: ClientChangeSubeven
     }
 }
 
+#[key_event_handler]
+fn key_event_handler(ctx: &Context, key_event: KeyChangeSubevent) {
+    match key_event {
+        KeyChangeSubevent::Deleted => {
+            ctx.log_notice("Key deleted");
+        },
+        KeyChangeSubevent::Evicted => {
+            ctx.log_notice("Key evicted");
+        },
+        KeyChangeSubevent::Overwritten => {
+            ctx.log_notice("Key overwritten");
+        },
+        KeyChangeSubevent::Expired => {
+            ctx.log_notice("Key expired");
+        }
+    }
+    NUM_KEY_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -67,6 +87,10 @@ fn num_connects(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_CONNECTS.load(Ordering::SeqCst)))
 }
 
+fn num_key_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_KEY_EVENTS.load(Ordering::SeqCst)))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -79,5 +103,6 @@ valkey_module! {
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
         ["num_crons", num_crons, "readonly", 0, 0, 0],
         ["num_connects", num_connects, "readonly", 0, 0, 0],
+        ["num_key_events", num_key_events, "readonly", 0, 0, 0],
     ]
 }
