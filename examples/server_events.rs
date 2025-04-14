@@ -58,7 +58,7 @@ fn shutdown_event_handler(ctx: &Context, _event: u64) {
     // Attempt to write the log message to the file
     if let Err(e) = std::fs::write(shutdown_log_path, "Server shutdown callback event ...\n") {
         ctx.log_warning(&format!("Failed to write to shutdown log file: {}", e));
-    }    
+    }
 }
 
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
