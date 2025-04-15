@@ -7,7 +7,7 @@ use valkey_module::{
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, key_event_handler,
+    flush_event_handler, key_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -55,18 +55,30 @@ fn key_event_handler(ctx: &Context, key_event: KeyChangeSubevent) {
     match key_event {
         KeyChangeSubevent::Deleted => {
             ctx.log_notice("Key deleted");
-        },
+        }
         KeyChangeSubevent::Evicted => {
             ctx.log_notice("Key evicted");
-        },
+        }
         KeyChangeSubevent::Overwritten => {
             ctx.log_notice("Key overwritten");
-        },
+        }
         KeyChangeSubevent::Expired => {
             ctx.log_notice("Key expired");
         }
     }
     NUM_KEY_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[shutdown_event_handler]
+fn shutdown_event_handler(ctx: &Context, _event: u64) {
+    ctx.log_notice("Sever shutdown callback event ...");
+    // Check if test file shutdown_log.txt exists and wrie the above log to it
+    let shutdown_log_path = "shutdown_log.txt";
+
+    // Attempt to write the log message to the file
+    if let Err(e) = std::fs::write(shutdown_log_path, "Server shutdown callback event ...\n") {
+        ctx.log_warning(&format!("Failed to write to shutdown log file: {}", e));
+    }
 }
 
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {

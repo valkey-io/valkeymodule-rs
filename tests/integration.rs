@@ -464,7 +464,6 @@ fn test_server_event() -> Result<()> {
         .exec(&mut con)
         .with_context(|| "failed to do set")?;
 
-
     //overwrite the key for KeyChangeSubevent::Overwritten to fire
     redis::cmd("set")
         .arg(&["key", "new_value"])
@@ -481,6 +480,42 @@ fn test_server_event() -> Result<()> {
 
     //one for overwrite and one for delete
     assert_eq!(res, 2);
+
+    Ok(())
+}
+
+#[test]
+fn test_server_event_shutdown() -> Result<()> {
+    let port: u16 = 6512;
+    let _guards = vec![start_valkey_server_with_module("server_events", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Create a txt file called shutdown_log.txt
+    let shutdown_log_path = "shutdown_log.txt";
+    // If it already exists, delete it
+    if std::path::Path::new(shutdown_log_path).exists() {
+        std::fs::remove_file(shutdown_log_path)
+            .with_context(|| "failed to remove shutdown log file")?;
+    }
+
+    // Issue the SHUTDOWN command and ignore any errors
+    let _ = redis::cmd("SHUTDOWN")
+        .arg("NOSAVE")
+        .query::<String>(&mut con);
+
+    // Wait briefly to ensure the shutdown event is processed
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    // Check if the file exists and contains the string "Server shutdown callback event ..."
+    let contents = std::fs::read_to_string(shutdown_log_path)
+        .with_context(|| "failed to read shutdown log file")?;
+
+    assert!(contents.contains("Server shutdown callback event ..."));
+
+    // Delete the file
+    std::fs::remove_file(shutdown_log_path)
+        .with_context(|| "failed to remove shutdown log file")?;
 
     Ok(())
 }
