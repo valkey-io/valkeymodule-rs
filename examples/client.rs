@@ -9,21 +9,21 @@ fn get_client_id(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 }
 
 fn get_client_name(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    let client_name_by_id = ctx.get_client_name_by_id(ctx.get_client_id());
-    ctx.log_notice(&format!(
-        "client_name_by_id: {:?}",
-        client_name_by_id.to_string()
-    ));
+    // test for invalid client_id
+    match ctx.get_client_name_by_id(0) {
+        Ok(tmp) => ctx.log_notice(&format!("client_name_by_id: {:?}", tmp.to_string())),
+        Err(err) => ctx.log_notice(&format!("client_name_by_id: {:?}", err)),
+    }
     let client_name = ctx.get_client_name();
     Ok(ValkeyValue::from(client_name.to_string()))
 }
 
 fn get_client_username(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    let client_username_by_id = ctx.get_client_username_by_id(ctx.get_client_id());
-    ctx.log_notice(&format!(
-        "client_username_by_id: {:?}",
-        client_username_by_id.to_string()
-    ));
+    // test for invalid client_id
+    match ctx.get_client_username_by_id(0) {
+        Ok(tmp) => ctx.log_notice(&format!("client_username_by_id: {:?}", tmp.to_string())),
+        Err(err) => ctx.log_notice(&format!("client_username_by_id: {:?}", err)),
+    }
     let client_username = ctx.get_client_username();
     Ok(ValkeyValue::from(client_username.to_string()))
 }
@@ -34,21 +34,36 @@ fn set_client_name(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
     let mut args = args.into_iter().skip(1);
     let client_name = args.next_arg()?;
-    let resp = ctx.set_client_name(&client_name);
-    Ok(ValkeyValue::Integer(resp as i64))
+    // test for invalid client_id
+    let resp1 = ctx.set_client_name_by_id(0, &client_name);
+    ctx.log_notice(&format!("set_client_name_by_id: {:?}", resp1));
+    let resp2 = ctx.set_client_name(&client_name);
+    Ok(ValkeyValue::Integer(resp2 as i64))
 }
 
 fn get_client_cert(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    Ok(ValkeyValue::from(ctx.get_client_cert().to_string()))
+    // unless connection is made with cert, this will return Err, so just log it and return nothing
+    match ctx.get_client_cert() {
+        Ok(tmp) => ctx.log_notice(&format!("client_cert: {:?}", tmp.to_string())),
+        Err(err) => ctx.log_notice(&format!("client_cert: {:?}", err.to_string())),
+    }
+    Ok("".into())
 }
 
 fn get_client_info(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    // test for invalid client_id
+    let client_info_by_id = ctx.get_client_info_by_id(0);
+    ctx.log_notice(&format!("client_info_by_id: {:?}", client_info_by_id));
     let client_info = ctx.get_client_info();
+    ctx.log_notice(&format!("client_info: {:?}", client_info));
     // return something like this:
     Ok(ValkeyValue::from(client_info.version.to_string()))
 }
 
 fn get_client_ip(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    // test for invalid client_id
+    let client_ip_by_id = ctx.get_client_ip_by_id(0);
+    ctx.log_notice(&format!("client_ip_by_id: {:?}", client_ip_by_id));
     Ok(ctx.get_client_ip().into())
 }
 
