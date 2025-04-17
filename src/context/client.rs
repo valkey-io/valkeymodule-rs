@@ -23,12 +23,28 @@ impl RedisModuleClientInfo {
 /// after the callback (command, server event handler, ...) these ValkeyModuleString pointers will be freed automatically
 impl Context {
     pub fn get_client_id(&self) -> u64 {
-        unsafe { RedisModule_GetClientId.unwrap()(self.ctx) }
+        unsafe {
+            match RedisModule_GetClientId {
+                Some(func) => func(self.ctx),
+                None => {
+                    self.log_notice("GetClientId is not available");
+                    0
+                }
+            }
+        }
     }
 
     /// wrapper for RedisModule_GetClientNameById
     pub fn get_client_name_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
-        let client_name = unsafe { RedisModule_GetClientNameById.unwrap()(self.ctx, client_id) };
+        let client_name = unsafe {
+            match RedisModule_GetClientNameById {
+                Some(func) => func(self.ctx, client_id),
+                None => {
+                    self.log_notice("GetClientNameById is not available");
+                    std::ptr::null_mut()
+                }
+            }
+        };
         if client_name.is_null() {
             Err(ValkeyError::Str("Client name is null"))
         } else {
@@ -49,7 +65,15 @@ impl Context {
 
     /// wrapper for RedisModule_SetClientNameById
     pub fn set_client_name_by_id(&self, client_id: u64, client_name: &ValkeyString) -> Status {
-        let resp = unsafe { RedisModule_SetClientNameById.unwrap()(client_id, client_name.inner) };
+        let resp = unsafe {
+            match RedisModule_SetClientNameById {
+                Some(func) => func(client_id, client_name.inner),
+                None => {
+                    self.log_notice("SetClientNameById is not available");
+                    0
+                }
+            }
+        };
         Status::from(resp)
     }
 
@@ -60,8 +84,15 @@ impl Context {
 
     /// wrapper for RedisModule_GetClientUserNameById
     pub fn get_client_username_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
-        let client_username =
-            unsafe { RedisModule_GetClientUserNameById.unwrap()(self.ctx, client_id) };
+        let client_username = unsafe {
+            match RedisModule_GetClientUserNameById {
+                Some(func) => func(self.ctx, client_id),
+                None => {
+                    self.log_notice("GetClientUserNameById is not available");
+                    std::ptr::null_mut()
+                }
+            }
+        };
         if client_username.is_null() {
             Err(ValkeyError::Str("Client username is null"))
         } else {
@@ -83,7 +114,15 @@ impl Context {
     /// wrapper for RedisModule_GetClientCertificate
     pub fn get_client_cert(&self) -> ValkeyResult<ValkeyString> {
         let client_id = self.get_client_id();
-        let client_cert = unsafe { RedisModule_GetClientCertificate.unwrap()(self.ctx, client_id) };
+        let client_cert = unsafe {
+            match RedisModule_GetClientCertificate {
+                Some(func) => func(self.ctx, client_id),
+                None => {
+                    self.log_notice("GetClientCertificate is not available");
+                    std::ptr::null_mut()
+                }
+            }
+        };
         if client_cert.is_null() {
             Err(ValkeyError::Str("Client cert is null"))
         } else {
@@ -98,7 +137,17 @@ impl Context {
     pub fn get_client_info_by_id(&self, client_id: u64) -> ValkeyResult<RedisModuleClientInfo> {
         let mut mci = RedisModuleClientInfo::new();
         let mci_ptr: *mut c_void = &mut mci as *mut _ as *mut c_void;
-        unsafe { RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id) };
+        unsafe {
+            match RedisModule_GetClientInfoById {
+                Some(func) => {
+                    func(mci_ptr, client_id);
+                }
+                None => {
+                    self.log_notice("GetClientInfoById is not available");
+                    return Err(ValkeyError::Str("GetClientInfoById is not available"));
+                }
+            }
+        };
         if mci_ptr.is_null() {
             Err(ValkeyError::Str("Client info is null"))
         } else {
