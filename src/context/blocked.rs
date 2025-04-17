@@ -121,18 +121,20 @@ impl<T> BlockedClient<T> {
 
     /// Sets private data for the blocked client.
     ///
-    /// # Panics
-    /// This method will panic if called without first setting a free callback.
-    /// The free callback is required to properly clean up any resources associated
-    /// with the private data.
-    ///
     /// # Arguments
     /// * `data` - The private data to store
-    pub fn set_blocked_private_data(&mut self, data: T) {
+    ///
+    /// # Returns
+    /// * `Ok(())` - If the private data was successfully set
+    /// * `Err(ValkeyError)` - If setting the private data failed (e.g., no free callback)
+    pub fn set_blocked_private_data(&mut self, data: T) -> Result<(), ValkeyError> {
         if self.free_callback.is_none() {
-            panic!("Cannot set private data without a free callback - this would leak memory");
+            return Err(ValkeyError::Str(
+                "Cannot set private data without a free callback - this would leak memory",
+            ));
         }
         self.data = Some(Box::new(data));
+        Ok(())
     }
 
     /// Aborts the blocked client operation

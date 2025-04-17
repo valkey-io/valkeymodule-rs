@@ -13,6 +13,7 @@ use std::fmt;
 use std::os::raw::c_int;
 use std::thread::sleep;
 use valkey_module::alloc::ValkeyAlloc;
+use valkey_module::logging::log_notice;
 use valkey_module::{
     valkey_module, Context, Status, ValkeyError, ValkeyString, AUTH_HANDLED, AUTH_NOT_HANDLED,
 };
@@ -382,7 +383,20 @@ fn blocking_auth_common(
         }
 
         let result = auth_patterns(&username_str, &password_str);
-        blocked_client.set_blocked_private_data(AuthPrivData { result });
+        if let Err(e) = blocked_client.set_blocked_private_data(AuthPrivData { result }) {
+            log_notice(&format!(
+                "{}: Failed to set private data: {}",
+                callback_name_str, e
+            ));
+
+            // Try to abort the blocked client to clean up resources
+            if let Err(abort_err) = blocked_client.abort() {
+                log_notice(&format!(
+                    "{}: Failed to abort blocked client: {}",
+                    callback_name_str, abort_err
+                ));
+            }
+        }
     });
 
     Ok(AUTH_HANDLED)
