@@ -1165,11 +1165,36 @@ fn test_client() -> Result<()> {
     redis::cmd("client.id")
         .exec(&mut con)
         .with_context(|| "failed execute client.id")?;
-    // Test client.name
-    redis::cmd("client.name")
+    // Test client.set_name
+    redis::cmd("client.set_name")
         .arg("test_client")
         .exec(&mut con)
-        .with_context(|| "failed execute client.name")?;
+        .with_context(|| "failed execute client.set_name")?;
+    // test client.get_name
+    let resp: String = redis::cmd("client.get_name")
+        .query(&mut con)
+        .with_context(|| "failed execute client.get_name")?;
+    assert_eq!(resp, "test_client");
+    // test client.username
+    let resp: String = redis::cmd("client.username")
+        .query(&mut con)
+        .with_context(|| "failed execute client.username")?;
+    assert_eq!(resp, "default");
+    // test client.cert
+    let resp: String = redis::cmd("client.cert")
+        .query(&mut con)
+        .with_context(|| "failed execute client.cert")?;
+    assert_eq!(resp, "");
+    // test client.info
+    let resp: String = redis::cmd("client.info")
+        .query(&mut con)
+        .with_context(|| "failed execute client.info")?;
+    assert_eq!(resp, "1");
+    // Test client.ip command
+    let resp: String = redis::cmd("client.ip")
+        .query(&mut con)
+        .with_context(|| "failed execute client.ip")?;
+    assert_eq!(resp, "127.0.0.1");
     Ok(())
 }
 
@@ -1209,22 +1234,6 @@ fn test_filter() -> Result<()> {
     let _: () = con.set("foo", "bar")?;
     let resp4: String = con.get("foo")?;
     assert_eq!(resp4, "bar");
-
-    Ok(())
-}
-
-#[test]
-fn test_preload() -> Result<()> {
-    let port = 6512;
-    let _guards =
-        vec![start_valkey_server_with_module("preload", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-    // unload the module
-    redis::cmd("MODULE")
-        .arg(&["UNLOAD", "preload"])
-        .exec(&mut con)
-        .with_context(|| "failed to unload module")?;
 
     Ok(())
 }
@@ -1610,6 +1619,22 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
         module_pass,
         AuthExpectedResult::Success,
     )?;
+
+    Ok(())
+}
+
+#[test]
+fn test_preload() -> Result<()> {
+    let port = 6517;
+    let _guards =
+        vec![start_valkey_server_with_module("preload", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // unload the module
+    redis::cmd("MODULE")
+        .arg(&["UNLOAD", "preload"])
+        .exec(&mut con)
+        .with_context(|| "failed to unload module")?;
 
     Ok(())
 }
