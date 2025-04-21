@@ -117,10 +117,7 @@ impl Context {
     }
 
     /// wrapper to get the client IP address from RedisModuleClientInfo using current client ID
-    pub fn get_client_ip(&self) -> String {
-        match self.get_client_ip_by_id(self.get_client_id()) {
-            Ok(tmp) => tmp,
-            Err(_err) => "Client/IP is null".to_string(),
-        }
+    pub fn get_client_ip(&self) -> ValkeyResult<String> {
+        self.get_client_ip_by_id(self.get_client_id())
     }
 }
