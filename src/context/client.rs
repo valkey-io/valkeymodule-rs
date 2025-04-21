@@ -4,6 +4,7 @@ use crate::{
     RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, Status, ValkeyError,
     ValkeyResult, ValkeyString,
 };
+use std::ffi::CStr;
 use std::os::raw::c_void;
 
 impl RedisModuleClientInfo {
@@ -30,7 +31,7 @@ impl Context {
     pub fn get_client_name_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
         let client_name = unsafe { RedisModule_GetClientNameById.unwrap()(self.ctx, client_id) };
         if client_name.is_null() {
-            Err(ValkeyError::Str("Client name is null"))
+            Err(ValkeyError::Str("Client/Client name is null"))
         } else {
             Ok(ValkeyString::from_redis_module_string(
                 self.ctx,
@@ -40,11 +41,8 @@ impl Context {
     }
 
     /// wrapper for RedisModule_GetClientNameById using current client ID
-    pub fn get_client_name(&self) -> ValkeyString {
-        match self.get_client_name_by_id(self.get_client_id()) {
-            Ok(tmp) => tmp,
-            Err(_err) => self.create_string("Client name is null"),
-        }
+    pub fn get_client_name(&self) -> ValkeyResult<ValkeyString> {
+        self.get_client_name_by_id(self.get_client_id())
     }
 
     /// wrapper for RedisModule_SetClientNameById
@@ -63,7 +61,7 @@ impl Context {
         let client_username =
             unsafe { RedisModule_GetClientUserNameById.unwrap()(self.ctx, client_id) };
         if client_username.is_null() {
-            Err(ValkeyError::Str("Client username is null"))
+            Err(ValkeyError::Str("Client/Username is null"))
         } else {
             Ok(ValkeyString::from_redis_module_string(
                 self.ctx,
@@ -73,11 +71,8 @@ impl Context {
     }
 
     /// wrapper for RedisModule_GetClientUserNameById using current client ID
-    pub fn get_client_username(&self) -> ValkeyString {
-        match self.get_client_username_by_id(self.get_client_id()) {
-            Ok(tmp) => tmp,
-            Err(_err) => self.create_string("Client username is null"),
-        }
+    pub fn get_client_username(&self) -> ValkeyResult<ValkeyString> {
+        self.get_client_username_by_id(self.get_client_id())
     }
 
     /// wrapper for RedisModule_GetClientCertificate
@@ -85,7 +80,7 @@ impl Context {
         let client_id = self.get_client_id();
         let client_cert = unsafe { RedisModule_GetClientCertificate.unwrap()(self.ctx, client_id) };
         if client_cert.is_null() {
-            Err(ValkeyError::Str("Client cert is null"))
+            Err(ValkeyError::Str("Client/Cert is null"))
         } else {
             Ok(ValkeyString::from_redis_module_string(
                 self.ctx,
@@ -102,33 +97,22 @@ impl Context {
             RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id);
         };
         if mci_ptr.is_null() {
-            Err(ValkeyError::Str("Client info is null"))
+            Err(ValkeyError::Str("Client/Info is null"))
         } else {
             Ok(mci)
         }
     }
 
     /// wrapper for RedisModule_GetClientInfoById using current client ID
-    pub fn get_client_info(&self) -> RedisModuleClientInfo {
-        match self.get_client_info_by_id(self.get_client_id()) {
-            Ok(tmp) => tmp,
-            Err(_err) => RedisModuleClientInfo::new(),
-        }
+    pub fn get_client_info(&self) -> ValkeyResult<RedisModuleClientInfo> {
+        self.get_client_info_by_id(self.get_client_id())
     }
 
     /// wrapper to get the client IP address from RedisModuleClientInfo
     pub fn get_client_ip_by_id(&self, client_id: u64) -> ValkeyResult<String> {
-        let client_info = match self.get_client_info_by_id(client_id) {
-            Ok(tmp) => tmp,
-            Err(_err) => {
-                return Err(ValkeyError::Str("Client info is null"));
-            }
-        };
-        let addr_u8: Vec<u8> = client_info.addr.iter().map(|&x| x as u8).collect();
-        let ip_addr_as_string = String::from_utf8_lossy(&addr_u8)
-            // w/o trim it will be: "127.0.0.1\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00
-            .trim_matches(char::from(0))
-            .to_string();
+        let client_info = self.get_client_info_by_id(client_id)?;
+        let c_str_addr = unsafe { CStr::from_ptr(client_info.addr.as_ptr()) };
+        let ip_addr_as_string = c_str_addr.to_string_lossy().into_owned();
         Ok(ip_addr_as_string)
     }
 

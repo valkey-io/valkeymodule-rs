@@ -11,20 +11,26 @@ fn get_client_id(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 fn get_client_name(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     // test for invalid client_id
     match ctx.get_client_name_by_id(0) {
-        Ok(tmp) => ctx.log_notice(&format!("client_name_by_id: {:?}", tmp.to_string())),
-        Err(err) => ctx.log_notice(&format!("client_name_by_id: {:?}", err)),
+        Ok(tmp) => ctx.log_notice(&format!(
+            "client_id 0 client_name_by_id: {:?}",
+            tmp.to_string()
+        )),
+        Err(err) => ctx.log_notice(&format!("client_id 0 client_name_by_id: {:?}", err)),
     }
-    let client_name = ctx.get_client_name();
+    let client_name = ctx.get_client_name()?;
     Ok(ValkeyValue::from(client_name.to_string()))
 }
 
 fn get_client_username(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     // test for invalid client_id
     match ctx.get_client_username_by_id(0) {
-        Ok(tmp) => ctx.log_notice(&format!("client_username_by_id: {:?}", tmp.to_string())),
-        Err(err) => ctx.log_notice(&format!("client_username_by_id: {:?}", err)),
+        Ok(tmp) => ctx.log_notice(&format!(
+            "client_id 0 client_username_by_id: {:?}",
+            tmp.to_string()
+        )),
+        Err(err) => ctx.log_notice(&format!("client_id 0 client_username_by_id: {:?}", err)),
     }
-    let client_username = ctx.get_client_username();
+    let client_username = ctx.get_client_username()?;
     Ok(ValkeyValue::from(client_username.to_string()))
 }
 
@@ -36,7 +42,7 @@ fn set_client_name(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let client_name = args.next_arg()?;
     // test for invalid client_id
     let resp1 = ctx.set_client_name_by_id(0, &client_name);
-    ctx.log_notice(&format!("set_client_name_by_id: {:?}", resp1));
+    ctx.log_notice(&format!("client_id 0 set_client_name_by_id: {:?}", resp1));
     let resp2 = ctx.set_client_name(&client_name);
     Ok(ValkeyValue::Integer(resp2 as i64))
 }
@@ -53,10 +59,13 @@ fn get_client_cert(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 fn get_client_info(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     // test for invalid client_id
     let client_info_by_id = ctx.get_client_info_by_id(0);
-    ctx.log_notice(&format!("client_info_by_id: {:?}", client_info_by_id));
-    let client_info = ctx.get_client_info();
+    ctx.log_notice(&format!(
+        "client_id 0 client_info_by_id: {:?}",
+        client_info_by_id
+    ));
+    let client_info = ctx.get_client_info()?;
     ctx.log_notice(&format!("client_info: {:?}", client_info));
-    // return something like this:
+    // return version like this:
     Ok(ValkeyValue::from(client_info.version.to_string()))
 }
 
