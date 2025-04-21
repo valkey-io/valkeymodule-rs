@@ -37,6 +37,14 @@ pub enum ClientChangeSubevent {
     Disconnected,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum KeyChangeSubevent {
+    Deleted,
+    Expired,
+    Evicted,
+    Overwritten,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -44,6 +52,7 @@ pub enum ServerEventHandler {
     Flush(fn(&Context, FlushSubevent)),
     ModuleChange(fn(&Context, ModuleChangeSubevent)),
     ClientChange(fn(&Context, ClientChangeSubevent)),
+    KeyChangeSubevent(fn(&Context, KeyChangeSubevent)),
 }
 
 #[distributed_slice()]
@@ -69,6 +78,12 @@ pub static INFO_COMMAND_HANDLER_LIST: [fn(&InfoContext, bool) -> ValkeyResult<()
 
 #[distributed_slice()]
 pub static CLIENT_CHANGED_SERVER_EVENTS_LIST: [fn(&Context, ClientChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static KEY_SERVER_EVENTS_LIST: [fn(&Context, KeyChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static SHUTDOWN_SERVER_EVENT_LIST: [fn(&Context, u64)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -175,6 +190,37 @@ extern "C" fn client_change_event_callback(
         });
 }
 
+extern "C" fn key_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let key_change_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_KEY_DELETED => KeyChangeSubevent::Deleted,
+        raw::REDISMODULE_SUBEVENT_KEY_EXPIRED => KeyChangeSubevent::Expired,
+        raw::REDISMODULE_SUBEVENT_KEY_EVICTED => KeyChangeSubevent::Evicted,
+        raw::REDISMODULE_SUBEVENT_KEY_OVERWRITTEN => KeyChangeSubevent::Overwritten,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    KEY_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, key_change_sub_event);
+    });
+}
+
+extern "C" fn server_shutdown_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let ctx = Context::new(ctx);
+    SHUTDOWN_SERVER_EVENT_LIST.iter().for_each(|callback| {
+        callback(&ctx, subevent);
+    });
+}
+
 extern "C" fn config_change_event_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -271,6 +317,18 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &CRON_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_CRON_LOOP,
         Some(cron_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &KEY_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_KEY,
+        Some(key_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &SHUTDOWN_SERVER_EVENT_LIST,
+        raw::REDISMODULE_EVENT_SHUTDOWN,
+        Some(server_shutdown_callback),
     )?;
     Ok(())
 }
