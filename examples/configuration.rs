@@ -7,8 +7,8 @@ use lazy_static::lazy_static;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
     configuration::{ConfigurationContext, ConfigurationFlags},
-    enum_configuration, valkey_module, ConfigurationValue, Context, ValkeyError, ValkeyGILGuard,
-    ValkeyResult, ValkeyString, ValkeyValue,
+    enum_configuration, enum_configuration2, valkey_module, ConfigurationValue, Context,
+    ValkeyError, ValkeyGILGuard, ValkeyResult, ValkeyString, ValkeyValue,
 };
 
 enum_configuration! {
@@ -16,6 +16,14 @@ enum_configuration! {
     enum EnumConfiguration {
         Val1 = 1,
         Val2 = 2,
+    }
+}
+
+enum_configuration2! {
+    #[derive(PartialEq)]
+    enum EnumConfiguration2 {
+        Val1 = ("val_1", 1),
+        Val2 = ("val_2", 2),
     }
 }
 
@@ -39,6 +47,8 @@ lazy_static! {
         ValkeyGILGuard::new(EnumConfiguration::Val1);
     static ref CONFIGURATION_MUTEX_ENUM: Mutex<EnumConfiguration> =
         Mutex::new(EnumConfiguration::Val1);
+    static ref CONFIGURATION_ENUM2: ValkeyGILGuard<EnumConfiguration2> =
+        ValkeyGILGuard::new(EnumConfiguration2::Val1);
 }
 
 fn on_configuration_changed<G, T: ConfigurationValue<G>>(
@@ -133,6 +143,7 @@ valkey_module! {
             ["enum", &*CONFIGURATION_ENUM, EnumConfiguration::Val1, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
             ["reject_enum", &*CONFIGURATION_REJECT_ENUM, EnumConfiguration::Val1, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed)), Some(Box::new(on_enum_config_set::<ValkeyString, ValkeyGILGuard<EnumConfiguration>>))],
             ["enum_mutex", &*CONFIGURATION_MUTEX_ENUM, EnumConfiguration::Val1, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
+            ["enum2", &*CONFIGURATION_ENUM2, EnumConfiguration2::Val1, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
         ],
         module_args_as_configuration: true,
     ]
