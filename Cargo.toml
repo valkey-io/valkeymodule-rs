@@ -156,7 +156,7 @@ strum_macros = "0.26"
 backtrace = "0.3"
 linkme = "0.3"
 serde = { version = "1", features = ["derive"] }
-nix = "0.26"
+nix = "0.29"
 cfg-if = "1"
 valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.4"}
 log = "0.4"
