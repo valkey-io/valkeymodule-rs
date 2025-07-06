@@ -146,6 +146,10 @@ crate-type = ["cdylib"]
 name = "preload"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "subcmd"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"

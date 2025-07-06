@@ -72,10 +72,7 @@ fn get_client_info(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 fn get_client_ip(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     // test for invalid client_id
     let client_ip_by_id = ctx.get_client_ip_by_id(0);
-    ctx.log_notice(&format!(
-        "client_id 0 client_ip_by_id: {:?}",
-        client_ip_by_id
-    ));
+    ctx.log_notice(&format!("client_ip_by_id: {:?}", client_ip_by_id));
     Ok(ctx.get_client_ip()?.into())
 }
 
