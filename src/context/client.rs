@@ -1,8 +1,8 @@
 use crate::{
-    Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId,
-    RedisModule_GetClientInfoById, RedisModule_GetClientNameById,
-    RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, RedisModule_DeauthenticateAndCloseClient, Status, ValkeyError,
-    ValkeyResult, ValkeyString,
+    Context, RedisModuleClientInfo, RedisModule_DeauthenticateAndCloseClient,
+    RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
+    RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
+    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
@@ -121,25 +121,29 @@ impl Context {
         self.get_client_ip_by_id(self.get_client_id())
     }
 
-    pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> ValkeyResult<String> {
-        unsafe {
-            if let Some(deauth_fn) = RedisModule_DeauthenticateAndCloseClient {
-                let result = deauth_fn(self.ctx, client_id);
+    pub fn deauthenticate_and_close_client_by_id(
+        &self,
+        client_id: u64,
+    ) -> ValkeyResult<ValkeyString> {
+        match unsafe { RedisModule_DeauthenticateAndCloseClient } {
+            Some(deauth_fn) => {
+                let result = unsafe { deauth_fn(self.ctx, client_id) };
                 if result == 0 {
-                    Ok(format!("Client {} deauthenticated and closed", client_id))
+                    Ok(ValkeyString::create(None, "OK"))
                 } else {
-                    Err(ValkeyError::Str("Failed to deauthenticate and close client"))
+                    Err(ValkeyError::Str(
+                        "Failed to deauthenticate and close client",
+                    ))
                 }
-            } else {
-                // If the function is not available, return an error
-                Err(ValkeyError::Str(
-                    "RedisModule_DeauthenticateAndCloseClient function is not available",
-                ))
             }
+            None => Err(ValkeyError::Str(
+                "RedisModule_DeauthenticateAndCloseClient function is not available",
+            )),
         }
     }
 
     pub fn deauthenticate_and_close_client(&self) -> ValkeyResult<String> {
         self.deauthenticate_and_close_client_by_id(self.get_client_id())
+            .map(|valkey_str| valkey_str.to_string())
     }
 }

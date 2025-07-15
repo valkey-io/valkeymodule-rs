@@ -1195,7 +1195,7 @@ fn test_client() -> Result<()> {
         .query(&mut con)
         .with_context(|| "failed execute client.ip")?;
     assert_eq!(resp, "127.0.0.1");
-    // Test client.deauth 
+    // Test client.deauth
     let resp: String = redis::cmd("client.deauth")
         .arg(0)
         .query(&mut con)
