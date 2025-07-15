@@ -2,7 +2,7 @@ use crate::{
     Context, RedisModuleClientInfo, RedisModule_DeauthenticateAndCloseClient,
     RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
     RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
-    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString,
+    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
@@ -145,5 +145,15 @@ impl Context {
     pub fn deauthenticate_and_close_client(&self) -> ValkeyResult<String> {
         self.deauthenticate_and_close_client_by_id(self.get_client_id())
             .map(|valkey_str| valkey_str.to_string())
+    }
+
+    pub fn config_get(&self, config: String) -> ValkeyResult<ValkeyString> {
+        match self.call("CONFIG", &["GET", &config])? {
+            ValkeyValue::Array(array) if array.len() == 2 => match &array[1] {
+                ValkeyValue::SimpleString(val) => Ok(ValkeyString::create(None, val.clone())),
+                _ => Err(ValkeyError::Str("Config value is not a string")),
+            },
+            _ => Err(ValkeyError::Str("Unexpected CONFIG GET response")),
+        }
     }
 }

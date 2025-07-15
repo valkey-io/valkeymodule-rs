@@ -93,6 +93,19 @@ fn deauth_client_by_id(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
 }
 
+fn config_get(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    if args.len() != 2 {
+        return Err(ValkeyError::WrongArity);
+    }
+    let mut args = args.into_iter().skip(1);
+    let config_name: ValkeyString = args.next_arg()?;
+    let config_value = ctx.config_get(config_name.to_string());
+    match config_value {
+        Ok(value) => Ok(ValkeyValue::from(value.to_string())),
+        Err(err) => Err(err),
+    }
+}
+
 valkey_module! {
     name: "client",
     version: 1,
@@ -106,6 +119,7 @@ valkey_module! {
         ["client.cert", get_client_cert, "", 0, 0, 0],
         ["client.info", get_client_info, "", 0, 0, 0],
         ["client.ip", get_client_ip, "", 0, 0, 0],
-        ["client.deauth", deauth_client_by_id, "", 0, 0, 0]
+        ["client.deauth", deauth_client_by_id, "", 0, 0, 0],
+        ["client.config_get", config_get, "", 0, 0, 0],
     ]
 }
