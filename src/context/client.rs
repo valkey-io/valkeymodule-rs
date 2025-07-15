@@ -1,7 +1,7 @@
 use crate::{
     Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId,
     RedisModule_GetClientInfoById, RedisModule_GetClientNameById,
-    RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, Status, ValkeyError,
+    RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, RedisModule_DeauthenticateAndCloseClient, Status, ValkeyError,
     ValkeyResult, ValkeyString,
 };
 use std::ffi::CStr;
@@ -119,5 +119,27 @@ impl Context {
     /// wrapper to get the client IP address from RedisModuleClientInfo using current client ID
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
+    }
+
+    pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> ValkeyResult<String> {
+        unsafe {
+            if let Some(deauth_fn) = RedisModule_DeauthenticateAndCloseClient {
+                let result = deauth_fn(self.ctx, client_id);
+                if result == 0 {
+                    Ok(format!("Client {} deauthenticated and closed", client_id))
+                } else {
+                    Err(ValkeyError::Str("Failed to deauthenticate and close client"))
+                }
+            } else {
+                // If the function is not available, return an error
+                Err(ValkeyError::Str(
+                    "RedisModule_DeauthenticateAndCloseClient function is not available",
+                ))
+            }
+        }
+    }
+
+    pub fn deauthenticate_and_close_client(&self) -> ValkeyResult<String> {
+        self.deauthenticate_and_close_client_by_id(self.get_client_id())
     }
 }

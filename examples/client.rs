@@ -79,6 +79,20 @@ fn get_client_ip(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ctx.get_client_ip()?.into())
 }
 
+fn deauth_client_by_id(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    if args.len() != 2 {
+        return Err(ValkeyError::WrongArity);
+    }
+    let mut args = args.into_iter().skip(1);
+    let client_id_str: ValkeyString = args.next_arg()?;
+    let client_id: u64 = client_id_str.parse_integer()?.try_into().unwrap();
+    let resp = ctx.deauthenticate_and_close_client_by_id(client_id);
+    match resp {
+        Ok(msg) => Ok(ValkeyValue::from(msg)),
+        Err(err) => Err(err),
+    }
+}
+
 valkey_module! {
     name: "client",
     version: 1,
@@ -92,5 +106,6 @@ valkey_module! {
         ["client.cert", get_client_cert, "", 0, 0, 0],
         ["client.info", get_client_info, "", 0, 0, 0],
         ["client.ip", get_client_ip, "", 0, 0, 0],
+        ["client.deauth", deauth_client_by_id, "", 0, 0, 0]
     ]
 }
