@@ -1213,6 +1213,17 @@ fn test_client() -> Result<()> {
         .query(&mut con)
         .with_context(|| "failed execute client.ip")?;
     assert_eq!(resp, "127.0.0.1");
+    // Test client.deauth
+    let resp: String = redis::cmd("client.deauth")
+        .arg(0)
+        .query(&mut con)
+        .with_context(|| "failed execute client.deauth")?;
+    assert_eq!(resp, "Failed to deauthenticate and close client");
+    let resp: String = redis::cmd("client.config_get")
+        .arg("maxmemory-policy")
+        .query(&mut con)
+        .with_context(|| "failed execute client.config_get")?;
+    assert_eq!(resp, "noeviction");
     Ok(())
 }
 
