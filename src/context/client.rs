@@ -3,6 +3,7 @@ use crate::{
     RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
     RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
     RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
+    VALKEYMODULE_OK,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
@@ -120,24 +121,11 @@ impl Context {
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
     }
-
-    pub fn deauthenticate_and_close_client_by_id(
-        &self,
-        client_id: u64,
-    ) -> ValkeyResult<ValkeyString> {
-        match unsafe { RedisModule_DeauthenticateAndCloseClient } {
-            Some(deauth_fn) => {
-                let result = unsafe { deauth_fn(self.ctx, client_id) };
-                if result == 0 {
-                    Ok(ValkeyString::create(None, "OK"))
-                } else {
-                    Err(ValkeyError::Str(
-                        "Failed to deauthenticate and close client",
-                    ))
-                }
-            }
-            None => Err(ValkeyError::Str(
-                "RedisModule_DeauthenticateAndCloseClient function is not available",
+    pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
+        match unsafe { RedisModule_DeauthenticateAndCloseClient.unwrap()(self.ctx, client_id) } {
+            result if result as isize == VALKEYMODULE_OK => Ok(ValkeyString::create(None, "OK")),
+            _ => Err(ValkeyError::Str(
+                "Failed to deauthenticate and close client",
             )),
         }
     }
