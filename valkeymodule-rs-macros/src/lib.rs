@@ -281,6 +281,27 @@ pub fn key_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called whenever a persistence event happened.
+/// The function must accept a [Context] and [PersistenceSubevent].
+/// Example:
+/// ```rust,no_run,ignore
+/// #[persistence_event_handler]
+/// fn persistence_event_handler(ctx: &Context, values: PersistenceSubevent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn persistence_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::PERSISTENCE_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
+
 
 /// The macro auto generate a [From] implementation that can convert the struct into [ValkeyValue].
 ///
