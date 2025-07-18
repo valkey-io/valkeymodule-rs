@@ -484,6 +484,24 @@ fn test_server_event() -> Result<()> {
     //one for overwrite and one for delete
     assert_eq!(res, 2);
 
+    // Get initial persistence counts
+    let initial_persistence_events: i64 = redis::cmd("num_persistence_events").query(&mut con)?;
+
+    // Trigger RDB save (BGSAVE command triggers persistence events)
+    redis::cmd("bgsave")
+        .exec(&mut con)
+        .with_context(|| "failed to run bgsave")?;
+
+    // Wait a moment for background save to start and potentially complete
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    // Check that persistence events were fired
+    let persistence_events_after_rdb: i64 = redis::cmd("num_persistence_events").query(&mut con)?;
+    
+    // Should have at least one more persistence event (RDB start)
+    assert!(persistence_events_after_rdb > initial_persistence_events, 
+            "Expected persistence events to increase after BGSAVE");
+
     Ok(())
 }
 
