@@ -6,7 +6,8 @@ use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
-    client_changed_event_handler, config_changed_event_handler, cron_event_handler, flush_event_handler, key_event_handler, persistence_event_handler, shutdown_event_handler
+    client_changed_event_handler, config_changed_event_handler, cron_event_handler,
+    flush_event_handler, key_event_handler, persistence_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -129,7 +130,9 @@ fn num_key_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
 }
 
 fn num_persistence_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    Ok(ValkeyValue::Integer(NUM_PERSISTENCE_EVENTS.load(Ordering::SeqCst)))
+    Ok(ValkeyValue::Integer(
+        NUM_PERSISTENCE_EVENTS.load(Ordering::SeqCst),
+    ))
 }
 
 //////////////////////////////////////////////////////
