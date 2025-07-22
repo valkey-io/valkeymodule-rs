@@ -23,7 +23,7 @@ fn cmd1(_ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
 }
 
-/// can be called either with `cmd1 help` or just `cmd1`
+// can be called either with `cmd1 help` or just `cmd1`
 fn help_subcmd() -> ValkeyResult {
     let output = vec![
         ValkeyValue::SimpleString("cmd1 - top level command".into()),
@@ -62,6 +62,7 @@ fn info_subcmd(args: Vec<ValkeyString>) -> ValkeyResult {
         // add more sections here as needed
     ];
 
+    // using BTreeMap to maintain order
     let mut output: BTreeMap<ValkeyValueKey, ValkeyValue> = BTreeMap::new();
     for (key, value) in sections {
         if section == "all" || section == key {

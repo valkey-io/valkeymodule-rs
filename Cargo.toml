@@ -71,6 +71,10 @@ name = "data_type2"
 crate-type = ["cdylib"]
 
 [[example]]
+name = "data_type3"
+crate-type = ["cdylib"]
+
+[[example]]
 name = "load_unload"
 crate-type = ["cdylib"]
 

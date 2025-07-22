@@ -1704,3 +1704,38 @@ fn test_subcmd() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_data_type3() -> Result<()> {
+    let port = 6519;
+    let _guards = vec![start_valkey_server_with_module("data_type3", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // check empty key
+    redis::cmd("my-get")
+        .arg(&["my-data-type1"])
+        .exec(&mut con)
+        .with_context(|| "failed execute my-get")?;
+    // write data to different key elements
+    redis::cmd("my-set-string")
+        .arg(&["my-data-type1", "string1"])
+        .exec(&mut con)?;
+    redis::cmd("my-set-number")
+        .arg(&["my-data-type1", "1"])
+        .exec(&mut con)?;
+    redis::cmd("my-vec-push")
+        .arg(&["my-data-type1", "a"])
+        .exec(&mut con)?;
+    redis::cmd("my-map-insert")
+        .arg(&["my-data-type1", "k1", "v1"])
+        .exec(&mut con)?;
+    // TODO - how to test output when it returns vector of string, number, vector and map
+    let _resp: () = redis::cmd("my-get")
+        .arg(&["my-data-type1"])
+        .query(&mut con)
+        .with_context(|| "failed execute my-get")?;
+    //assert_eq!(resp, vec!["my_number", "1", "my_string", "string1"]);
+
+    Ok(())
+}
