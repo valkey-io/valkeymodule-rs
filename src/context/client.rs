@@ -1,8 +1,9 @@
 use crate::{
-    Context, RedisModuleClientInfo, RedisModule_GetClientCertificate, RedisModule_GetClientId,
-    RedisModule_GetClientInfoById, RedisModule_GetClientNameById,
-    RedisModule_GetClientUserNameById, RedisModule_SetClientNameById, Status, ValkeyError,
-    ValkeyResult, ValkeyString,
+    Context, RedisModuleClientInfo, RedisModule_DeauthenticateAndCloseClient,
+    RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
+    RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
+    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
+    VALKEYMODULE_OK,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
@@ -119,5 +120,28 @@ impl Context {
     /// wrapper to get the client IP address from RedisModuleClientInfo using current client ID
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
+    }
+    pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
+        match unsafe { RedisModule_DeauthenticateAndCloseClient.unwrap()(self.ctx, client_id) } {
+            result if result as isize == VALKEYMODULE_OK => Ok(ValkeyString::create(None, "OK")),
+            _ => Err(ValkeyError::Str(
+                "Failed to deauthenticate and close client",
+            )),
+        }
+    }
+
+    pub fn deauthenticate_and_close_client(&self) -> ValkeyResult<String> {
+        self.deauthenticate_and_close_client_by_id(self.get_client_id())
+            .map(|valkey_str| valkey_str.to_string())
+    }
+
+    pub fn config_get(&self, config: String) -> ValkeyResult<ValkeyString> {
+        match self.call("CONFIG", &["GET", &config])? {
+            ValkeyValue::Array(array) if array.len() == 2 => match &array[1] {
+                ValkeyValue::SimpleString(val) => Ok(ValkeyString::create(None, val.clone())),
+                _ => Err(ValkeyError::Str("Config value is not a string")),
+            },
+            _ => Err(ValkeyError::Str("Unexpected CONFIG GET response")),
+        }
     }
 }
