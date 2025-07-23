@@ -1739,3 +1739,14 @@ fn test_data_type3() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_crontab() -> Result<()> {
+    let port = 6520;
+    let _guards =
+        vec![start_valkey_server_with_module("crontab", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let _con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
+    Ok(())
+}

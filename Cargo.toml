@@ -154,6 +154,10 @@ crate-type = ["cdylib"]
 name = "subcmd"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "crontab"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -176,6 +180,8 @@ redis = "0.28"
 lazy_static = "1"
 valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.4" }
 valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"] }
+cron = "0.15.0"
+chrono = "0.4.41"
 
 [build-dependencies]
 bindgen = "0.70"
