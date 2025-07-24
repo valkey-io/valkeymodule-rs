@@ -120,7 +120,7 @@ impl Context {
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
     }
-
+    
     pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> Status {
         let resp =
             unsafe { RedisModule_DeauthenticateAndCloseClient.unwrap()(self.ctx, client_id) };
