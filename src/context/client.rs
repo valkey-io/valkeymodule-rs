@@ -121,7 +121,10 @@ impl Context {
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
     }
-    pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> ValkeyResult<ValkeyString> {
+    pub fn deauthenticate_and_close_client_by_id(
+        &self,
+        client_id: u64,
+    ) -> ValkeyResult<ValkeyString> {
         match unsafe { RedisModule_DeauthenticateAndCloseClient.unwrap()(self.ctx, client_id) } {
             result if result as isize == VALKEYMODULE_OK => Ok(ValkeyString::create(None, "OK")),
             _ => Err(ValkeyError::Str(

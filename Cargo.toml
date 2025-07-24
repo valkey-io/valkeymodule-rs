@@ -71,6 +71,10 @@ name = "data_type2"
 crate-type = ["cdylib"]
 
 [[example]]
+name = "data_type3"
+crate-type = ["cdylib"]
+
+[[example]]
 name = "load_unload"
 crate-type = ["cdylib"]
 
@@ -146,6 +150,14 @@ crate-type = ["cdylib"]
 name = "preload"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "subcmd"
+crate-type = ["cdylib"]
+
+[[example]]
+name = "crontab"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -168,6 +180,9 @@ redis = "0.28"
 lazy_static = "1"
 valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.4" }
 valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"] }
+cron = "0.15.0"
+chrono = "0.4.41"
+dashmap = "6.1.0"
 
 [build-dependencies]
 bindgen = "0.70"
