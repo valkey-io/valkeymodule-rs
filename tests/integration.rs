@@ -484,7 +484,6 @@ fn test_server_event() -> Result<()> {
     //one for overwrite and one for delete
     assert_eq!(res, 2);
 
-
     // Trigger RDB save (BGSAVE command triggers persistence events)
     redis::cmd("bgsave")
         .exec(&mut con)
