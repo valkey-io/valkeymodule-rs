@@ -123,5 +123,7 @@ valkey_module! {
         ["client.ip", get_client_ip, "", 0, 0, 0],
         ["client.deauth", deauth_client_by_id, "", 0, 0, 0],
         ["client.config_get", config_get, "", 0, 0, 0],
+        ["client.deauth", deauth_client_by_id, "", 0, 0, 0],
+        ["client.config_get", config_get, "", 0, 0, 0],
     ]
 }

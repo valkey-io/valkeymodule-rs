@@ -1510,7 +1510,7 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
             let user = user.to_string();
             let wrong_pass = "wrong".to_string();
 
-            std::thread::spawn(move || {
+            thread::spawn(move || {
                 let res: RedisResult<String> = redis::cmd("AUTH")
                     .arg(&[&user, &wrong_pass])
                     .query(&mut con);
@@ -1667,5 +1667,106 @@ fn test_preload() -> Result<()> {
         .exec(&mut con)
         .with_context(|| "failed to unload module")?;
 
+    Ok(())
+}
+
+#[test]
+fn test_subcmd() -> Result<()> {
+    let port = 6518;
+    let _guards =
+        vec![start_valkey_server_with_module("subcmd", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // test cmd1
+    let resp: Vec<String> = redis::cmd("cmd1")
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1")?;
+    // array([simple-string("cmd1 - top level command"), simple-string("cmd1 s1 - first level subcommand"), simple-string("cmd1 s1 s1 - second level command"), simple-string("cmd1 s1 s1 s1 - third level command"), simple-string("cmd1 help - display this message")]))
+    assert_eq!(resp.len(), 5);
+    // test cmd1 help
+    let resp: Vec<String> = redis::cmd("cmd1")
+        .arg(&["help"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 help")?;
+    assert_eq!(resp.len(), 5);
+    // test cmd1 info key
+    let resp: Vec<String> = redis::cmd("cmd1")
+        .arg(&["info", "key"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 info")?;
+    assert!(resp == vec!["key", "value"]);
+    // test cmd1 info array
+    let resp: Vec<Vec<String>> = redis::cmd("cmd1")
+        .arg(&["info", "array"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 info")?;
+    assert!(resp.len() == 2);
+    assert!(resp[1] == vec!["a", "b", "c"]);
+    // test cmd1 s1
+    let resp: String = redis::cmd("cmd1")
+        .arg(&["s1"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 s1")?;
+    assert_eq!(resp, "sub1");
+    // test cmd1 s1 s1
+    let resp: String = redis::cmd("cmd1")
+        .arg(&["s1", "s1"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 s1 s1")?;
+    assert_eq!(resp, "sub11");
+    // test cmd1 s1 s1 s1
+    let resp: String = redis::cmd("cmd1")
+        .arg(&["s1", "s1", "s1"])
+        .query(&mut con)
+        .with_context(|| "failed execute cmd1 s1 s1 s1")?;
+    assert_eq!(resp, "sub111");
+
+    Ok(())
+}
+
+#[test]
+fn test_data_type3() -> Result<()> {
+    let port = 6519;
+    let _guards = vec![start_valkey_server_with_module("data_type3", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // check empty key
+    redis::cmd("my-get")
+        .arg(&["my-data-type1"])
+        .exec(&mut con)
+        .with_context(|| "failed execute my-get")?;
+    // write data to different key elements
+    redis::cmd("my-set-string")
+        .arg(&["my-data-type1", "string1"])
+        .exec(&mut con)?;
+    redis::cmd("my-set-number")
+        .arg(&["my-data-type1", "1"])
+        .exec(&mut con)?;
+    redis::cmd("my-vec-push")
+        .arg(&["my-data-type1", "a"])
+        .exec(&mut con)?;
+    redis::cmd("my-map-insert")
+        .arg(&["my-data-type1", "k1", "v1"])
+        .exec(&mut con)?;
+    // TODO - how to test output when it returns vector of string, number, vector and map
+    let _resp: () = redis::cmd("my-get")
+        .arg(&["my-data-type1"])
+        .query(&mut con)
+        .with_context(|| "failed execute my-get")?;
+    //assert_eq!(resp, vec!["my_number", "1", "my_string", "string1"]);
+
+    Ok(())
+}
+
+#[test]
+fn test_crontab() -> Result<()> {
+    let port = 6520;
+    let _guards =
+        vec![start_valkey_server_with_module("crontab", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let _con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
     Ok(())
 }

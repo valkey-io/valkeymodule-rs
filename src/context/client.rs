@@ -4,6 +4,11 @@ use crate::{
     RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
     RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
     VALKEYMODULE_OK,
+    Context, RedisModuleClientInfo, RedisModule_DeauthenticateAndCloseClient,
+    RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
+    RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
+    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
+    VALKEYMODULE_OK,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
