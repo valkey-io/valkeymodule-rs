@@ -1,13 +1,13 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::server_events::{ClientChangeSubevent, KeyChangeSubevent};
+use valkey_module::server_events::{ClientChangeSubevent, KeyChangeSubevent, PersistenceSubevent};
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, key_event_handler, shutdown_event_handler,
+    flush_event_handler, key_event_handler, persistence_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -15,6 +15,7 @@ static NUM_CONNECTS: AtomicI64 = AtomicI64::new(0);
 static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
 static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -81,6 +82,31 @@ fn shutdown_event_handler(ctx: &Context, _event: u64) {
     }
 }
 
+#[persistence_event_handler]
+fn persistence_event_handler(ctx: &Context, persistence_event: PersistenceSubevent) {
+    match persistence_event {
+        PersistenceSubevent::RdbStart => {
+            ctx.log_notice("RDB persistence started");
+        }
+        PersistenceSubevent::AofStart => {
+            ctx.log_notice("AOF persistence started");
+        }
+        PersistenceSubevent::SyncRdbStart => {
+            ctx.log_notice("Sync RDB persistence started");
+        }
+        PersistenceSubevent::SyncAofStart => {
+            ctx.log_notice("Sync AOF persistence started");
+        }
+        PersistenceSubevent::Ended => {
+            ctx.log_notice("Persistence operation ended");
+        }
+        PersistenceSubevent::Failed => {
+            ctx.log_warning("Persistence operation failed");
+        }
+    }
+    NUM_PERSISTENCE_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -103,6 +129,12 @@ fn num_key_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_KEY_EVENTS.load(Ordering::SeqCst)))
 }
 
+fn num_persistence_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_PERSISTENCE_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -116,5 +148,6 @@ valkey_module! {
         ["num_crons", num_crons, "readonly", 0, 0, 0],
         ["num_connects", num_connects, "readonly", 0, 0, 0],
         ["num_key_events", num_key_events, "readonly", 0, 0, 0],
+        ["num_persistence_events", num_persistence_events, "readonly", 0, 0, 0],
     ]
 }
