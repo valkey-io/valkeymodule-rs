@@ -85,7 +85,7 @@ fn deauth_client_by_id(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
     let mut args = args.into_iter().skip(1);
     let client_id_str: ValkeyString = args.next_arg()?;
-    let client_id: u64 = client_id_str.parse_integer()?.try_into().unwrap();
+    let client_id: u64 = client_id_str.parse_integer()?.try_into()?;
     let resp = ctx.deauthenticate_and_close_client_by_id(client_id);
     match resp {
         Status::Ok => Ok(ValkeyValue::from("OK")),
@@ -122,8 +122,6 @@ valkey_module! {
         ["client.info", get_client_info, "", 0, 0, 0],
         ["client.ip", get_client_ip, "", 0, 0, 0],
         ["client.deauth", deauth_client_by_id, "", 0, 0, 0],
-        ["client.config_get", config_get, "", 0, 0, 0],
-        ["client.deauth", deauth_client_by_id, "", 0, 0, 0],
-        ["client.config_get", config_get, "", 0, 0, 0],
+        ["client.config_get", config_get, "", 0, 0, 0]
     ]
 }
