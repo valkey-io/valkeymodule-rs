@@ -1,13 +1,16 @@
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::server_events::{ClientChangeSubevent, KeyChangeSubevent, PersistenceSubevent};
+use valkey_module::server_events::{
+    ClientChangeSubevent, KeyChangeSubevent, MasterLinkChangeSubevent, PersistenceSubevent,
+};
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, key_event_handler, persistence_event_handler, shutdown_event_handler,
+    flush_event_handler, key_event_handler, master_link_change_event_handler,
+    persistence_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -16,6 +19,8 @@ static NUM_CRONS: AtomicI64 = AtomicI64::new(0);
 static NUM_MAX_MEMORY_CONFIGURATION_CHANGES: AtomicI64 = AtomicI64::new(0);
 static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
+static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -107,6 +112,25 @@ fn persistence_event_handler(ctx: &Context, persistence_event: PersistenceSubeve
     NUM_PERSISTENCE_EVENTS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[master_link_change_event_handler]
+fn master_link_change_event_handler(
+    ctx: &Context,
+    master_link_change_subevent: MasterLinkChangeSubevent,
+) {
+    match master_link_change_subevent {
+        MasterLinkChangeSubevent::Up => {
+            ctx.log_warning("Master link status up");
+            NUM_MASTER_LINK_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+            IS_MASTER_LINK_UP.store(true, Ordering::SeqCst);
+        }
+        MasterLinkChangeSubevent::Down => {
+            ctx.log_warning("Master link status down");
+            NUM_MASTER_LINK_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+            IS_MASTER_LINK_UP.store(false, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -129,6 +153,16 @@ fn num_key_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_KEY_EVENTS.load(Ordering::SeqCst)))
 }
 
+fn num_master_link_change_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_MASTER_LINK_CHANGE_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn is_master_link_up(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Bool(IS_MASTER_LINK_UP.load(Ordering::SeqCst)))
+}
+
 fn num_persistence_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(
         NUM_PERSISTENCE_EVENTS.load(Ordering::SeqCst),
@@ -149,5 +183,7 @@ valkey_module! {
         ["num_connects", num_connects, "readonly", 0, 0, 0],
         ["num_key_events", num_key_events, "readonly", 0, 0, 0],
         ["num_persistence_events", num_persistence_events, "readonly", 0, 0, 0],
+        ["num_master_link_change_events", num_master_link_change_events, "readonly", 0, 0, 0],
+        ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
     ]
 }
