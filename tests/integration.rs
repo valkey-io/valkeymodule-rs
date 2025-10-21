@@ -561,76 +561,6 @@ fn test_client_change_event() -> Result<()> {
 }
 
 #[test]
-fn test_master_link_change_event() -> Result<()> {
-    let primary_port: u16 = 6530;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", primary_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut primary_con =
-        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-
-    let replica_port: u16 = 6531;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", replica_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut replica_con =
-        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-
-    // set replicaof to primary_port
-    println!("Setting up replication");
-    let _: () = redis::cmd("replicaof")
-        .arg("127.0.0.1")
-        .arg(primary_port)
-        .query(&mut replica_con)?;
-
-    thread::sleep(Duration::from_secs(10));
-
-    let event_count1: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
-    let is_master_link_up1: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
-    println!(
-        "Verifying master link up event after replication setup: \
-    num_master_link_change_events {}, is_master_link_up {}",
-        event_count1, is_master_link_up1
-    );
-    assert_eq!(event_count1, 1);
-    assert!(is_master_link_up1);
-
-    // shut down server on primary port
-    println!("Shutting down primary server");
-    match redis::cmd("SHUTDOWN")
-        .arg("NOSAVE")
-        .query::<String>(&mut primary_con)
-    {
-        Ok(_) => {
-            println!("Primary server shut down successfully")
-        }
-        Err(e) if e.is_io_error() => {
-            println!("Primary server shut down successfully")
-        }
-        Err(_) => {
-            println!("Failed to shut down primary server")
-        }
-    }
-    drop(primary_con);
-
-    thread::sleep(Duration::from_secs(5));
-
-    let event_count2: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
-    let is_master_link_up2: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
-    println!(
-        "Verifying master link up event after primary shutdown: \
-    num_master_link_change_events {}, is_master_link_up {}",
-        event_count2, is_master_link_up2
-    );
-    assert_eq!(event_count2, 2);
-    assert!(!is_master_link_up2);
-
-    Ok(())
-}
-
-#[test]
 fn test_configuration() -> Result<()> {
     let port: u16 = 6495;
     let _guards = vec![start_valkey_server_with_module("configuration", port)
@@ -1838,5 +1768,75 @@ fn test_crontab() -> Result<()> {
             .with_context(|| FAILED_TO_START_SERVER)?];
     let _con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
+    Ok(())
+}
+
+#[test]
+fn test_master_link_change_event() -> Result<()> {
+    let primary_port: u16 = 6521;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", primary_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut primary_con =
+        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    let replica_port: u16 = 6522;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", replica_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut replica_con =
+        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // set replicaof to primary_port
+    println!("Setting up replication");
+    let _: () = redis::cmd("replicaof")
+        .arg("127.0.0.1")
+        .arg(primary_port)
+        .query(&mut replica_con)?;
+
+    thread::sleep(Duration::from_secs(10));
+
+    let event_count1: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
+    let is_master_link_up1: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
+    println!(
+        "Verifying master link up event after replication setup: \
+    num_master_link_change_events {}, is_master_link_up {}",
+        event_count1, is_master_link_up1
+    );
+    assert_eq!(event_count1, 1);
+    assert!(is_master_link_up1);
+
+    // shut down server on primary port
+    println!("Shutting down primary server");
+    match redis::cmd("SHUTDOWN")
+        .arg("NOSAVE")
+        .query::<String>(&mut primary_con)
+    {
+        Ok(_) => {
+            println!("Primary server shut down successfully")
+        }
+        Err(e) if e.is_io_error() => {
+            println!("Primary server shut down successfully")
+        }
+        Err(_) => {
+            println!("Failed to shut down primary server")
+        }
+    }
+    drop(primary_con);
+
+    thread::sleep(Duration::from_secs(5));
+
+    let event_count2: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
+    let is_master_link_up2: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
+    println!(
+        "Verifying master link up event after primary shutdown: \
+    num_master_link_change_events {}, is_master_link_up {}",
+        event_count2, is_master_link_up2
+    );
+    assert_eq!(event_count2, 2);
+    assert!(!is_master_link_up2);
+
     Ok(())
 }
