@@ -2,7 +2,7 @@ use crate::{
     Context, RedisModuleClientInfo, RedisModule_DeauthenticateAndCloseClient,
     RedisModule_GetClientCertificate, RedisModule_GetClientId, RedisModule_GetClientInfoById,
     RedisModule_GetClientNameById, RedisModule_GetClientUserNameById,
-    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue
+    RedisModule_SetClientNameById, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use std::ffi::CStr;
 use std::os::raw::c_void;
@@ -120,7 +120,7 @@ impl Context {
     pub fn get_client_ip(&self) -> ValkeyResult<String> {
         self.get_client_ip_by_id(self.get_client_id())
     }
-    
+
     pub fn deauthenticate_and_close_client_by_id(&self, client_id: u64) -> Status {
         let resp =
             unsafe { RedisModule_DeauthenticateAndCloseClient.unwrap()(self.ctx, client_id) };
