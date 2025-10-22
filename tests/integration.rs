@@ -621,6 +621,10 @@ fn test_configuration() -> Result<()> {
     config_set("configuration.enum_mutex", "Val2")?;
     assert_eq!(config_get("configuration.enum_mutex")?, "Val2");
 
+    assert_eq!(config_get("configuration.enum2")?, "val_1");
+    config_set("configuration.enum2", "val_2")?;
+    assert_eq!(config_get("configuration.enum2")?, "val_2");
+
     // Validate that configs can be rejected
     let value = config_set("configuration.reject_valkey_string", "rejectvalue");
     assert!(value
@@ -647,7 +651,7 @@ fn test_configuration() -> Result<()> {
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
-    assert_eq!(res, 26); // the first configuration initialisation is counted as well, so we will get 22 changes.
+    assert_eq!(res, 28); // the first configuration initialisation is counted as well, so we will get 22 changes.
 
     // Validate that configs with logic to reject values can also succeed
     assert_eq!(config_get("configuration.reject_valkey_string")?, "default");
@@ -669,7 +673,7 @@ fn test_configuration() -> Result<()> {
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
-    assert_eq!(res, 28);
+    assert_eq!(res, 30);
 
     Ok(())
 }
