@@ -296,7 +296,7 @@ pub fn call_reply_big_number(reply: *mut RedisModuleCallReply) -> Option<String>
 pub fn call_reply_verbatim_string(reply: *mut RedisModuleCallReply) -> Option<(String, Vec<u8>)> {
     unsafe {
         let mut len: size_t = 0;
-        let format: *const u8 = ptr::null();
+        let format: *const u8 = "".as_ptr();
         let reply_string: *mut u8 =
             RedisModule_CallReplyVerbatim.unwrap()(reply, &mut len, &mut (format as *const c_char))
                 as *mut u8;
