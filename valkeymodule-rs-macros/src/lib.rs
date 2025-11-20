@@ -321,6 +321,29 @@ pub fn master_link_change_event_handler(_attr: TokenStream, item: TokenStream) -
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called whenever an event-loop
+/// related subevent happens (before sleep / after sleep).
+/// The function must accept a [Context] and [EventLoopSubevent].
+///
+/// Example:
+///
+/// ```rust,no_run,ignore
+/// #[eventloop_event_handler]
+/// fn eventloop_handler(ctx: &Context, values: EventLoopSubevent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn eventloop_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::EVENTLOOP_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
 
 
 /// The macro auto generate a [From] implementation that can convert the struct into [ValkeyValue].

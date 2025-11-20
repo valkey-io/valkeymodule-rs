@@ -61,6 +61,12 @@ pub enum MasterLinkChangeSubevent {
     Down,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum EventLoopSubevent {
+    BeforeSleep,
+    AfterSleep,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -71,6 +77,7 @@ pub enum ServerEventHandler {
     KeyChangeSubevent(fn(&Context, KeyChangeSubevent)),
     PersistenceSubevent(fn(&Context, PersistenceSubevent)),
     MaterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
+    EventLoop(fn(&Context, EventLoopSubevent)),
 }
 
 #[distributed_slice()]
@@ -108,6 +115,9 @@ pub static PERSISTENCE_SERVER_EVENTS_LIST: [fn(&Context, PersistenceSubevent)] =
 
 #[distributed_slice()]
 pub static MASTER_LINK_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, MasterLinkChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static EVENTLOOP_SERVER_EVENTS_LIST: [fn(&Context, EventLoopSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -285,6 +295,23 @@ extern "C" fn master_link_change_event_callback(
         });
 }
 
+extern "C" fn eventloop_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let eventloop_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP => EventLoopSubevent::BeforeSleep,
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP => EventLoopSubevent::AfterSleep,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    EVENTLOOP_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, eventloop_sub_event);
+    });
+}
+
 extern "C" fn config_change_event_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -405,6 +432,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &MASTER_LINK_CHANGE_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_MASTER_LINK_CHANGE,
         Some(master_link_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &EVENTLOOP_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_EVENTLOOP,
+        Some(eventloop_event_callback),
     )?;
     Ok(())
 }

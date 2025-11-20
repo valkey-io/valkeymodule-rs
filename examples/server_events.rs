@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
     ClientChangeSubevent, KeyChangeSubevent, MasterLinkChangeSubevent, PersistenceSubevent,
+    EventLoopSubevent,
 };
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
@@ -11,6 +12,7 @@ use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
     flush_event_handler, key_event_handler, master_link_change_event_handler,
     persistence_event_handler, shutdown_event_handler,
+    eventloop_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -21,6 +23,8 @@ static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
+static NUM_EVENTLOOP_BEFORE: AtomicI64 = AtomicI64::new(0);
+static NUM_EVENTLOOP_AFTER: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -131,6 +135,20 @@ fn master_link_change_event_handler(
     }
 }
 
+#[eventloop_event_handler]
+fn eventloop_handler(ctx: &Context, ev: EventLoopSubevent) {
+    match ev {
+        EventLoopSubevent::BeforeSleep => {
+            ctx.log_notice("EventLoop: before sleep");
+            NUM_EVENTLOOP_BEFORE.fetch_add(1, Ordering::SeqCst);
+        }
+        EventLoopSubevent::AfterSleep => {
+            ctx.log_notice("EventLoop: after sleep");
+            NUM_EVENTLOOP_AFTER.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -169,11 +187,19 @@ fn num_persistence_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyRes
     ))
 }
 
+fn num_eventloop_before(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_EVENTLOOP_BEFORE.load(Ordering::SeqCst)))
+}
+
+fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_EVENTLOOP_AFTER.load(Ordering::SeqCst)))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
     name: "srv_events",
-    version: 1,
+    version: 2,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
@@ -185,5 +211,7 @@ valkey_module! {
         ["num_persistence_events", num_persistence_events, "readonly", 0, 0, 0],
         ["num_master_link_change_events", num_master_link_change_events, "readonly", 0, 0, 0],
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
+        ["num_eventloop_before", num_eventloop_before, "readonly", 0, 0, 0],
+        ["num_eventloop_after", num_eventloop_after, "readonly", 0, 0, 0],
     ]
 }
