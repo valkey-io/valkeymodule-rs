@@ -2,7 +2,9 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
-    ClientChangeSubevent, ForkChildSubevent, KeyChangeSubevent, LoadingProgress, MasterLinkChangeSubevent, PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent
+    ClientChangeSubevent, EventLoopSubevent, ForkChildSubevent, KeyChangeSubevent,
+    LoadingProgress, MasterLinkChangeSubevent, PersistenceSubevent, ReplAsyncLoadSubevent,
+    ReplicaChangeSubevent,
 };
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ModuleOptions, Status, ValkeyResult,
@@ -10,9 +12,10 @@ use valkey_module::{
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, fork_child_event_handler, key_event_handler,
-    master_link_change_event_handler, persistence_event_handler, repl_async_load_event_handler,
-    replica_change_event_handler, shutdown_event_handler, swapdb_event_handler, loading_progress_event_handler
+    eventloop_event_handler, flush_event_handler, fork_child_event_handler, key_event_handler,
+    loading_progress_event_handler, master_link_change_event_handler, persistence_event_handler,
+    repl_async_load_event_handler, replica_change_event_handler, shutdown_event_handler,
+    swapdb_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -29,6 +32,8 @@ static NUM_REPL_ASYNC_LOAD_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_SWAP_DB_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_LOADING_PROGRESS_RDB: AtomicI64 = AtomicI64::new(0);
 static NUM_LOADING_PROGRESS_AOF: AtomicI64 = AtomicI64::new(0);
+static NUM_EVENTLOOP_BEFORE: AtomicI64 = AtomicI64::new(0);
+static NUM_EVENTLOOP_AFTER: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -200,6 +205,18 @@ fn loading_progress_event_handler(ctx: &Context, info: LoadingProgress) {
         }
         valkey_module::server_events::LoadingProgressSubevent::Aof => {
             NUM_LOADING_PROGRESS_AOF.fetch_add(1, Ordering::SeqCst);
+=======
+#[eventloop_event_handler]
+fn eventloop_handler(ctx: &Context, ev: EventLoopSubevent) {
+    match ev {
+        EventLoopSubevent::BeforeSleep => {
+            ctx.log_notice("EventLoop: before sleep");
+            NUM_EVENTLOOP_BEFORE.fetch_add(1, Ordering::SeqCst);
+        }
+        EventLoopSubevent::AfterSleep => {
+            ctx.log_notice("EventLoop: after sleep");
+            NUM_EVENTLOOP_AFTER.fetch_add(1, Ordering::SeqCst);
+>>>>>>> 43dcf7b (added support for eventloop event)
         }
     }
 }
@@ -208,21 +225,21 @@ fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
 
-fn num_crons(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    Ok(ValkeyValue::Integer(NUM_CRONS.load(Ordering::SeqCst)))
-}
-
-fn num_maxmemory_changes(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    Ok(ValkeyValue::Integer(
-        NUM_MAX_MEMORY_CONFIGURATION_CHANGES.load(Ordering::SeqCst),
-    ))
-}
-
-fn num_connects(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    Ok(ValkeyValue::Integer(NUM_CONNECTS.load(Ordering::SeqCst)))
-}
-
 fn num_key_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+
+    #[eventloop_event_handler]
+    fn eventloop_handler(ctx: &Context, ev: EventLoopSubevent) {
+        match ev {
+            EventLoopSubevent::BeforeSleep => {
+                ctx.log_notice("EventLoop: before sleep");
+                NUM_EVENTLOOP_BEFORE.fetch_add(1, Ordering::SeqCst);
+            }
+            EventLoopSubevent::AfterSleep => {
+                ctx.log_notice("EventLoop: after sleep");
+                NUM_EVENTLOOP_AFTER.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
     Ok(ValkeyValue::Integer(NUM_KEY_EVENTS.load(Ordering::SeqCst)))
 }
 
@@ -276,17 +293,24 @@ fn num_loading_progress_aof(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyR
 
 fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
-    // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
-    // needed for repl_async_load_event_handler
-    ctx.set_module_options(ModuleOptions::HANDLE_REPL_ASYNC_LOAD);
-    Status::Ok
+}
+
+fn num_eventloop_before(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_EVENTLOOP_BEFORE.load(Ordering::SeqCst)))
+}
+
+fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_EVENTLOOP_AFTER.load(Ordering::SeqCst)))
+fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_EVENTLOOP_AFTER.load(Ordering::SeqCst)))
+>>>>>>> 43dcf7b (added support for eventloop event)
 }
 
 //////////////////////////////////////////////////////
 
 valkey_module! {
     name: "srv_events",
-    version: 1,
+    version: 2,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     init: init,
@@ -305,5 +329,7 @@ valkey_module! {
         ["num_swapdb_events", num_swapdb_events, "readonly", 0, 0, 0],
         ["num_loading_progress_rdb", num_loading_progress_rdb, "readonly", 0, 0, 0],
         ["num_loading_progress_aof", num_loading_progress_aof, "readonly", 0, 0, 0],
+    ["num_eventloop_before", num_eventloop_before, "readonly", 0, 0, 0],
+    ["num_eventloop_after", num_eventloop_after, "readonly", 0, 0, 0],
     ]
 }
