@@ -20,6 +20,19 @@ pub enum LoadingSubevent {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum LoadingProgressSubevent {
+    Rdb,
+    Aof,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LoadingProgress {
+    pub subevent: LoadingProgressSubevent,
+    pub hz: i32,
+    pub progress: i32,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum FlushSubevent {
     Started,
     Ended,
@@ -70,6 +83,7 @@ pub enum ServerEventHandler {
     ClientChange(fn(&Context, ClientChangeSubevent)),
     KeyChangeSubevent(fn(&Context, KeyChangeSubevent)),
     PersistenceSubevent(fn(&Context, PersistenceSubevent)),
+    LoadingProgress(fn(&Context, LoadingProgress)),
     MaterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
 }
 
@@ -78,6 +92,9 @@ pub static ROLE_CHANGED_SERVER_EVENTS_LIST: [fn(&Context, ServerRole)] = [..];
 
 #[distributed_slice()]
 pub static LOADING_SERVER_EVENTS_LIST: [fn(&Context, LoadingSubevent)] = [..];
+
+#[distributed_slice()]
+pub static LOADING_PROGRESS_SERVER_EVENTS_LIST: [fn(&Context, LoadingProgress)] = [..];
 
 #[distributed_slice()]
 pub static FLUSH_SERVER_EVENTS_LIST: [fn(&Context, FlushSubevent)] = [..];
@@ -156,6 +173,42 @@ extern "C" fn loading_event_callback(
     let ctx = Context::new(ctx);
     LOADING_SERVER_EVENTS_LIST.iter().for_each(|callback| {
         callback(&ctx, loading_sub_event);
+    });
+}
+
+extern "C" fn loading_progress_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    data: *mut ::std::os::raw::c_void,
+) {
+    if data.is_null() {
+        return;
+    }
+
+    // Cast to the generated raw binding for the loading progress struct
+    let info: &raw::RedisModuleLoadingProgressInfo = unsafe {
+        &*(data as *mut raw::RedisModuleLoadingProgressInfo)
+    };
+
+    let hz = info.hz as i32;
+    let progress = info.progress as i32;
+
+    let sub = match subevent {
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_RDB => LoadingProgressSubevent::Rdb,
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_AOF => LoadingProgressSubevent::Aof,
+        _ => return,
+    };
+
+    let ctx = Context::new(ctx);
+    let payload = LoadingProgress {
+        subevent: sub,
+        hz,
+        progress,
+    };
+
+    LOADING_PROGRESS_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, payload);
     });
 }
 
@@ -321,6 +374,12 @@ fn register_single_server_event_type<T>(
     inner_callback: raw::RedisModuleEventCallback,
 ) -> Result<(), ValkeyError> {
     if !callbacks.is_empty() {
+        // Log which server events we subscribe to so we can debug missing handlers
+        ctx.log_notice(&format!(
+            "Subscribing to server event id={} (callbacks={})",
+            server_event,
+            callbacks.len()
+        ));
         let res = unsafe {
             raw::RedisModule_SubscribeToServerEvent.unwrap()(
                 ctx.ctx,
@@ -340,6 +399,12 @@ fn register_single_server_event_type<T>(
 }
 
 pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
+    // Debug: print counts of registered callbacks for key server event slices so
+    // we can confirm the example handlers were wired into the distributed slices.
+    ctx.log_notice(&format!(
+        "Server event handlers counts: loading={}, loading_progress={}",
+        LOADING_SERVER_EVENTS_LIST.len(), LOADING_PROGRESS_SERVER_EVENTS_LIST.len()
+    ));
     register_single_server_event_type(
         ctx,
         &ROLE_CHANGED_SERVER_EVENTS_LIST,
@@ -351,6 +416,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &LOADING_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_LOADING,
         Some(loading_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &LOADING_PROGRESS_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_LOADING_PROGRESS,
+        Some(loading_progress_event_callback),
     )?;
     register_single_server_event_type(
         ctx,

@@ -470,6 +470,14 @@ macro_rules! valkey_module {
                 return raw::Status::Err as c_int;
             }
 
+            // Debug: also log the distributed-slice sizes from the OnLoad path so
+            // we can confirm that the example event handlers were linked in.
+            context.log_notice(&format!(
+                "OnLoad: distributed slice sizes: loading={}, loading_progress={}",
+                $crate::server_events::LOADING_SERVER_EVENTS_LIST.len(),
+                $crate::server_events::LOADING_PROGRESS_SERVER_EVENTS_LIST.len()
+            ));
+
             $(
                 if $init_func(&context, &args) == $crate::Status::Err {
                     return $crate::Status::Err as c_int;
