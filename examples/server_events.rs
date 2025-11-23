@@ -2,15 +2,27 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
-    ClientChangeSubevent, KeyChangeSubevent, MasterLinkChangeSubevent, PersistenceSubevent,
+    ClientChangeSubevent,
+    KeyChangeSubevent,
+    MasterLinkChangeSubevent,
+    PersistenceSubevent,
+    LoadingSubevent,
+    LoadingProgress,
 };
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
-    client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, key_event_handler, master_link_change_event_handler,
-    persistence_event_handler, shutdown_event_handler,
+    client_changed_event_handler,
+    config_changed_event_handler,
+    cron_event_handler,
+    flush_event_handler,
+    key_event_handler,
+    master_link_change_event_handler,
+    persistence_event_handler,
+    shutdown_event_handler,
+    loading_event_handler,
+    loading_progress_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -21,6 +33,8 @@ static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
+static NUM_LOADING_PROGRESS_RDB: AtomicI64 = AtomicI64::new(0);
+static NUM_LOADING_PROGRESS_AOF: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -112,6 +126,34 @@ fn persistence_event_handler(ctx: &Context, persistence_event: PersistenceSubeve
     NUM_PERSISTENCE_EVENTS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[loading_event_handler]
+fn loading_event_handler(ctx: &Context, ev: LoadingSubevent) {
+    match ev {
+        LoadingSubevent::RdbStarted => ctx.log_notice("Loading RDB started"),
+        LoadingSubevent::AofStarted => ctx.log_notice("Loading AOF started"),
+        LoadingSubevent::ReplStarted => ctx.log_notice("Replication loading started"),
+        LoadingSubevent::Ended => ctx.log_notice("Loading ended"),
+        LoadingSubevent::Failed => ctx.log_warning("Loading failed"),
+    }
+}
+
+#[loading_progress_event_handler]
+fn loading_progress_event_handler(ctx: &Context, info: LoadingProgress) {
+    let msg = format!(
+        "Loading progress {:?}: hz={}, progress={}",
+        info.subevent, info.hz, info.progress
+    );
+    ctx.log_notice(&msg);
+    match info.subevent {
+        valkey_module::server_events::LoadingProgressSubevent::Rdb => {
+            NUM_LOADING_PROGRESS_RDB.fetch_add(1, Ordering::SeqCst);
+        }
+        valkey_module::server_events::LoadingProgressSubevent::Aof => {
+            NUM_LOADING_PROGRESS_AOF.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 #[master_link_change_event_handler]
 fn master_link_change_event_handler(
     ctx: &Context,
@@ -169,11 +211,19 @@ fn num_persistence_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyRes
     ))
 }
 
+fn num_loading_progress_rdb(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_LOADING_PROGRESS_RDB.load(Ordering::SeqCst)))
+}
+
+fn num_loading_progress_aof(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_LOADING_PROGRESS_AOF.load(Ordering::SeqCst)))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
     name: "srv_events",
-    version: 1,
+    version: 2,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     commands: [
@@ -185,5 +235,7 @@ valkey_module! {
         ["num_persistence_events", num_persistence_events, "readonly", 0, 0, 0],
         ["num_master_link_change_events", num_master_link_change_events, "readonly", 0, 0, 0],
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
+        ["num_loading_progress_rdb", num_loading_progress_rdb, "readonly", 0, 0, 0],
+        ["num_loading_progress_aof", num_loading_progress_aof, "readonly", 0, 0, 0],
     ]
 }

@@ -129,6 +129,28 @@ pub fn loading_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStre
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called whenever a loading progress event happens.
+/// The function must accept a [Context] and [LoadingProgress].
+///
+/// Example:
+///
+/// ```rust,no_run,ignore
+/// #[loading_progress_event_handler]
+/// fn loading_progress_event_handler(ctx: &Context, values: LoadingProgress) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn loading_progress_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::LOADING_PROGRESS_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
 /// Proc macro which is set on a function that need to be called whenever a flush event happened.
 /// The function must accept a [Context] and [FlushSubevent].
 ///
