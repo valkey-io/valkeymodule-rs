@@ -321,7 +321,7 @@ pub fn master_link_change_event_handler(_attr: TokenStream, item: TokenStream) -
     gen.into()
 }
 
-/// Proc macro which is set on a function that need to be called whenever a master link change event happened.
+/// Proc macro which is set on a function that need to be called whenever a fork child event happened.
 /// The function must accept a [Context] and [ForkChildSubevent].
 /// Example:
 /// ```rust,no_run,ignore
