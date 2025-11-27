@@ -609,15 +609,15 @@ macro_rules! valkey_module_post_auth {
                         // Get previous username before auth
                         let prev_username = match context.get_client_username() {
                             Ok(u) => u.to_string_lossy(),
-                            Err(_) => "<unknown>".to_string(),
+                            Err(_) => "default".to_string(),
                         };
 
                         // schedule a post-notification job so the callback runs outside
                         // the auth handler (deferred), and can perform safe operations.
                         let _ = context.add_post_notification_job(move |ctx| {
                             let prev = $crate::ValkeyString::create_and_retain(&prev_username);
-                            let newu = $crate::ValkeyString::create_and_retain(&username_owned);
-                            $post_auth_callback(ctx, prev, newu);
+                            let new_user = $crate::ValkeyString::create_and_retain(&username_owned);
+                            $post_auth_callback(ctx, prev, new_user);
                         });
 
                         // Do not interfere with the authentication chain.
@@ -625,13 +625,13 @@ macro_rules! valkey_module_post_auth {
                     }
 
                     #[cfg(not(any(
-                        feature = "min-redis-compatibility-version-7-0",
+                        feature = "min-redis-compatibility-version-7-2",
                         feature = "min-valkey-compatibility-version-8-0"
                     )))]
-                    compile_error!("Post-auth callbacks require Redis 7.0 or Valkey 8.0 and above");
+                    compile_error!("Post-auth callbacks require Redis 7.2 or Valkey 8.0 and above");
 
                     #[cfg(any(
-                        feature = "min-redis-compatibility-version-7-0",
+                        feature = "min-redis-compatibility-version-7-2",
                         feature = "min-valkey-compatibility-version-8-0"
                     ))]
                     unsafe {
