@@ -151,6 +151,10 @@ name = "preload"
 crate-type = ["cdylib"]
 
 [[example]]
+name = "post_auth"
+crate-type = ["cdylib"]
+
+[[example]]
 name = "subcmd"
 crate-type = ["cdylib"]
 
