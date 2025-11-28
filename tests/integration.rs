@@ -1904,3 +1904,47 @@ fn test_replica_change_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_repl_asnc_load_event() -> Result<()> {
+    let primary_port: u16 = 6526;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", primary_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut primary_con =
+        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // repl-diskless-load swapdb
+    let _: () = redis::cmd("config")
+        .arg(&["set", "repl-diskless-load", "swapdb"])
+        .exec(&mut primary_con)
+        .with_context(|| "failed to run config set repl-diskless-load")?;
+
+    let replica_port: u16 = 6527;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", replica_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut replica_con =
+        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // repl-diskless-load swapdb
+    let _: () = redis::cmd("config")
+        .arg(&["set", "repl-diskless-load", "swapdb"])
+        .exec(&mut replica_con)
+        .with_context(|| "failed to run config set repl-diskless-load")?;
+
+    // setup replication
+    let _: () = redis::cmd("replicaof")
+        .arg("127.0.0.1")
+        .arg(primary_port)
+        .query(&mut replica_con)?;
+    // need to wait for replication to establish and event to fire
+    thread::sleep(Duration::from_millis(5000));
+
+    // check num_repl_async_load_events on the replica
+    let event_count1: i64 = redis::cmd("num_repl_async_load_events").query(&mut replica_con)?;
+    // started and completed fire so result is 2, aborted even tdoes not fire
+    assert_eq!(event_count1, 2);
+
+    Ok(())
+}

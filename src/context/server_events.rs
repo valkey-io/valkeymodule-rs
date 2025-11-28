@@ -73,6 +73,13 @@ pub enum ReplicaChangeSubevent {
     Offline,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ReplAsyncLoadSubevent {
+    Started,
+    Aborted,
+    Completed,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -85,6 +92,7 @@ pub enum ServerEventHandler {
     MasterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
     ForkChildSubevent(fn(&Context, ForkChildSubevent)),
     ReplicaChangeSubevent(fn(&Context, ReplicaChangeSubevent)),
+    ReplAsyncLoadSubevent(fn(&Context, ReplAsyncLoadSubevent)),
 }
 
 #[distributed_slice()]
@@ -128,6 +136,9 @@ pub static FORK_CHILD_SERVER_EVENTS_LIST: [fn(&Context, ForkChildSubevent)] = [.
 
 #[distributed_slice()]
 pub static REPLICA_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, ReplicaChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static REPL_ASYNC_LOAD_SERVER_EVENTS_LIST: [fn(&Context, ReplAsyncLoadSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -370,6 +381,26 @@ extern "C" fn replica_change_event_callback(
         });
 }
 
+extern "C" fn repl_async_load_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let repl_async_load_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_STARTED => ReplAsyncLoadSubevent::Started,
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_ABORTED => ReplAsyncLoadSubevent::Aborted,
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_COMPLETED => ReplAsyncLoadSubevent::Completed,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    REPL_ASYNC_LOAD_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, repl_async_load_sub_event);
+        });
+}
+
 fn register_single_server_event_type<T>(
     ctx: &Context,
     callbacks: &[fn(&Context, T)],
@@ -473,6 +504,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &REPLICA_CHANGE_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_REPLICA_CHANGE,
         Some(replica_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &REPL_ASYNC_LOAD_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_REPL_ASYNC_LOAD,
+        Some(repl_async_load_event_callback),
     )?;
     Ok(())
 }

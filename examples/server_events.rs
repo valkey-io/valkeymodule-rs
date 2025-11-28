@@ -3,16 +3,17 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
     ClientChangeSubevent, ForkChildSubevent, KeyChangeSubevent, MasterLinkChangeSubevent,
-    PersistenceSubevent, ReplicaChangeSubevent,
+    PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent,
 };
 use valkey_module::{
-    server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
+    server_events::FlushSubevent, valkey_module, Context, ModuleOptions, Status, ValkeyResult,
+    ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
     flush_event_handler, fork_child_event_handler, key_event_handler,
-    master_link_change_event_handler, persistence_event_handler, replica_change_event_handler,
-    shutdown_event_handler,
+    master_link_change_event_handler, persistence_event_handler, repl_async_load_event_handler,
+    replica_change_event_handler, shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -25,6 +26,7 @@ static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
 static NUM_FORK_CHILD_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_REPLICA_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_REPL_ASYNC_LOAD_EVENTS: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -140,13 +142,12 @@ fn fork_child_event_handler(ctx: &Context, fork_child_subevent: ForkChildSubeven
     match fork_child_subevent {
         ForkChildSubevent::Born => {
             ctx.log_warning("Fork child born");
-            NUM_FORK_CHILD_EVENTS.fetch_add(1, Ordering::SeqCst);
         }
         ForkChildSubevent::Died => {
             ctx.log_warning("Fork child died");
-            NUM_FORK_CHILD_EVENTS.fetch_add(1, Ordering::SeqCst);
         }
     }
+    NUM_FORK_CHILD_EVENTS.fetch_add(1, Ordering::SeqCst);
 }
 
 #[replica_change_event_handler]
@@ -154,13 +155,28 @@ fn replica_change_event_handler(ctx: &Context, replica_change_subevent: ReplicaC
     match replica_change_subevent {
         ReplicaChangeSubevent::Online => {
             ctx.log_notice("Replica online");
-            NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
         }
         ReplicaChangeSubevent::Offline => {
             ctx.log_notice("Replica offline");
-            NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
         }
     }
+    NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[repl_async_load_event_handler]
+fn repl_async_load_event_handler(ctx: &Context, repl_async_load_subevent: ReplAsyncLoadSubevent) {
+    match repl_async_load_subevent {
+        ReplAsyncLoadSubevent::Started => {
+            ctx.log_notice("Repl async load started");
+        }
+        ReplAsyncLoadSubevent::Aborted => {
+            ctx.log_notice("Repl async load aborted");
+        }
+        ReplAsyncLoadSubevent::Completed => {
+            ctx.log_notice("Repl async load completed");
+        }
+    }
+    NUM_REPL_ASYNC_LOAD_EVENTS.fetch_add(1, Ordering::SeqCst);
 }
 
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -213,6 +229,20 @@ fn num_replica_change_events(_ctx: &Context, _args: Vec<ValkeyString>) -> Valkey
     ))
 }
 
+fn num_repl_async_load_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_REPL_ASYNC_LOAD_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
+    // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
+    // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
+    // needed for repl_async_load_event_handler
+    ctx.set_module_options(ModuleOptions::HANDLE_REPL_ASYNC_LOAD);
+    Status::Ok
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -220,6 +250,7 @@ valkey_module! {
     version: 1,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
+    init: init,
     commands: [
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
@@ -231,5 +262,6 @@ valkey_module! {
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
         ["num_fork_child_events", num_fork_child_events, "readonly", 0, 0, 0],
         ["num_replica_change_events", num_replica_change_events, "readonly", 0, 0, 0],
+        ["num_repl_async_load_events", num_repl_async_load_events, "readonly", 0, 0, 0]
     ]
 }
