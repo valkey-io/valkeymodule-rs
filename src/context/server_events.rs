@@ -61,6 +61,12 @@ pub enum MasterLinkChangeSubevent {
     Down,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ForkChildSubevent {
+    Born,
+    Died,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -70,7 +76,8 @@ pub enum ServerEventHandler {
     ClientChange(fn(&Context, ClientChangeSubevent)),
     KeyChangeSubevent(fn(&Context, KeyChangeSubevent)),
     PersistenceSubevent(fn(&Context, PersistenceSubevent)),
-    MaterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
+    MasterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
+    ForkChildSubevent(fn(&Context, ForkChildSubevent)),
 }
 
 #[distributed_slice()]
@@ -108,6 +115,9 @@ pub static PERSISTENCE_SERVER_EVENTS_LIST: [fn(&Context, PersistenceSubevent)] =
 
 #[distributed_slice()]
 pub static MASTER_LINK_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, MasterLinkChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static FORK_CHILD_SERVER_EVENTS_LIST: [fn(&Context, ForkChildSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -314,6 +324,23 @@ extern "C" fn config_change_event_callback(
         });
 }
 
+extern "C" fn fork_child_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let fork_child_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_FORK_CHILD_BORN => ForkChildSubevent::Born,
+        raw::REDISMODULE_SUBEVENT_FORK_CHILD_DIED => ForkChildSubevent::Died,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    FORK_CHILD_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, fork_child_sub_event);
+    });
+}
+
 fn register_single_server_event_type<T>(
     ctx: &Context,
     callbacks: &[fn(&Context, T)],
@@ -405,6 +432,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &MASTER_LINK_CHANGE_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_MASTER_LINK_CHANGE,
         Some(master_link_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &FORK_CHILD_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_FORK_CHILD,
+        Some(fork_child_event_callback),
     )?;
     Ok(())
 }

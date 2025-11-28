@@ -1840,3 +1840,26 @@ fn test_master_link_change_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_fork_child_event() -> Result<()> {
+    let port: u16 = 6523;
+    let _guards = vec![start_valkey_server_with_module("server_events", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    redis::cmd("bgsave")
+        .exec(&mut con)
+        .with_context(|| "failed to run bgsave")?;
+
+    let num_fork_child_event1: i64 = redis::cmd("num_fork_child_events").query(&mut con)?;
+    assert_eq!(num_fork_child_event1, 1);
+
+    // Wait a moment for background save to start and potentially complete
+    thread::sleep(Duration::from_millis(100));
+
+    let num_fork_child_event2: i64 = redis::cmd("num_fork_child_events").query(&mut con)?;
+    assert_eq!(num_fork_child_event2, 2);
+
+    Ok(())
+}
