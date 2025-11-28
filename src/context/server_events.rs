@@ -67,6 +67,12 @@ pub enum ForkChildSubevent {
     Died,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ReplicaChangeSubevent {
+    Online,
+    Offline,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -78,6 +84,7 @@ pub enum ServerEventHandler {
     PersistenceSubevent(fn(&Context, PersistenceSubevent)),
     MasterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
     ForkChildSubevent(fn(&Context, ForkChildSubevent)),
+    ReplicaChangeSubevent(fn(&Context, ReplicaChangeSubevent)),
 }
 
 #[distributed_slice()]
@@ -118,6 +125,9 @@ pub static MASTER_LINK_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, MasterLinkChange
 
 #[distributed_slice()]
 pub static FORK_CHILD_SERVER_EVENTS_LIST: [fn(&Context, ForkChildSubevent)] = [..];
+
+#[distributed_slice()]
+pub static REPLICA_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, ReplicaChangeSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -341,6 +351,25 @@ extern "C" fn fork_child_event_callback(
     });
 }
 
+extern "C" fn replica_change_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let replica_change_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE => ReplicaChangeSubevent::Online,
+        raw::REDISMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE => ReplicaChangeSubevent::Offline,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    REPLICA_CHANGE_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, replica_change_sub_event);
+        });
+}
+
 fn register_single_server_event_type<T>(
     ctx: &Context,
     callbacks: &[fn(&Context, T)],
@@ -438,6 +467,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &FORK_CHILD_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_FORK_CHILD,
         Some(fork_child_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &REPLICA_CHANGE_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_REPLICA_CHANGE,
+        Some(replica_change_event_callback),
     )?;
     Ok(())
 }

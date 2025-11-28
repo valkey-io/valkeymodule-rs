@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
     ClientChangeSubevent, ForkChildSubevent, KeyChangeSubevent, MasterLinkChangeSubevent,
-    PersistenceSubevent,
+    PersistenceSubevent, ReplicaChangeSubevent,
 };
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
@@ -11,7 +11,8 @@ use valkey_module::{
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
     flush_event_handler, fork_child_event_handler, key_event_handler,
-    master_link_change_event_handler, persistence_event_handler, shutdown_event_handler,
+    master_link_change_event_handler, persistence_event_handler, replica_change_event_handler,
+    shutdown_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -23,6 +24,7 @@ static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
 static NUM_FORK_CHILD_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_REPLICA_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -147,6 +149,20 @@ fn fork_child_event_handler(ctx: &Context, fork_child_subevent: ForkChildSubeven
     }
 }
 
+#[replica_change_event_handler]
+fn replica_change_event_handler(ctx: &Context, replica_change_subevent: ReplicaChangeSubevent) {
+    match replica_change_subevent {
+        ReplicaChangeSubevent::Online => {
+            ctx.log_notice("Replica online");
+            NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+        }
+        ReplicaChangeSubevent::Offline => {
+            ctx.log_notice("Replica offline");
+            NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -191,6 +207,12 @@ fn num_fork_child_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResu
     ))
 }
 
+fn num_replica_change_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_REPLICA_CHANGE_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -208,5 +230,6 @@ valkey_module! {
         ["num_master_link_change_events", num_master_link_change_events, "readonly", 0, 0, 0],
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
         ["num_fork_child_events", num_fork_child_events, "readonly", 0, 0, 0],
+        ["num_replica_change_events", num_replica_change_events, "readonly", 0, 0, 0],
     ]
 }

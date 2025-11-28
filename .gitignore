@@ -20,3 +20,4 @@ dump.rdb
 
 venv/
 tmp/*
+shutdown_log.txt

@@ -573,3 +573,24 @@ pub fn info_command_handler(_attr: TokenStream, item: TokenStream) -> TokenStrea
 pub fn info_section(item: TokenStream) -> TokenStream {
     info_section::info_section(item)
 }
+
+
+/// Proc macro which is set on a function that need to be called whenever a replica change event happened.
+/// The function must accept a [Context] and [ReplicaChangeSubevent].
+/// Example:
+/// ```rust,no_run,ignore
+/// #[replica_change_event_handler]
+/// fn replica_change_event_handler(ctx: &Context, values: ReplicaChangeSubevent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn replica_change_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::REPLICA_CHANGE_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
