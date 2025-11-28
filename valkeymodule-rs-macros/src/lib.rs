@@ -615,3 +615,25 @@ pub fn repl_async_load_event_handler(_attr: TokenStream, item: TokenStream) -> T
     };
     gen.into()
 }
+
+/// Proc macro which is set on a function that need to be called whenever a swapdb event happens.
+/// The function must accept a [Context] and [u64].
+///
+/// Example:
+///
+/// ```rust,no_run,ignore
+/// #[swapdb_event_handler]
+/// fn swapdb_event_handler(ctx: &Context, _: u64) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn swapdb_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::SWAPDB_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}

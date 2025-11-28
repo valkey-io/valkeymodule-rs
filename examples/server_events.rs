@@ -13,7 +13,7 @@ use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
     flush_event_handler, fork_child_event_handler, key_event_handler,
     master_link_change_event_handler, persistence_event_handler, repl_async_load_event_handler,
-    replica_change_event_handler, shutdown_event_handler,
+    replica_change_event_handler, shutdown_event_handler, swapdb_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -27,6 +27,7 @@ static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
 static NUM_FORK_CHILD_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_REPLICA_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_REPL_ASYNC_LOAD_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_SWAP_DB_EVENTS: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -179,6 +180,12 @@ fn repl_async_load_event_handler(ctx: &Context, repl_async_load_subevent: ReplAs
     NUM_REPL_ASYNC_LOAD_EVENTS.fetch_add(1, Ordering::SeqCst);
 }
 
+#[swapdb_event_handler]
+fn swapdb_event_handler(ctx: &Context, _: u64) {
+    NUM_SWAP_DB_EVENTS.fetch_add(1, Ordering::SeqCst);
+    ctx.log_notice("Databases swapped");
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -235,7 +242,13 @@ fn num_repl_async_load_events(_ctx: &Context, _args: Vec<ValkeyString>) -> Valke
     ))
 }
 
-fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
+fn num_swapdb_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_SWAP_DB_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
     // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
     // needed for repl_async_load_event_handler
@@ -262,6 +275,7 @@ valkey_module! {
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
         ["num_fork_child_events", num_fork_child_events, "readonly", 0, 0, 0],
         ["num_replica_change_events", num_replica_change_events, "readonly", 0, 0, 0],
-        ["num_repl_async_load_events", num_repl_async_load_events, "readonly", 0, 0, 0]
+        ["num_repl_async_load_events", num_repl_async_load_events, "readonly", 0, 0, 0],
+        ["num_swapdb_events", num_swapdb_events, "readonly", 0, 0, 0],
     ]
 }

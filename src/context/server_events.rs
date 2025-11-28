@@ -140,6 +140,9 @@ pub static REPLICA_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, ReplicaChangeSubeven
 #[distributed_slice()]
 pub static REPL_ASYNC_LOAD_SERVER_EVENTS_LIST: [fn(&Context, ReplAsyncLoadSubevent)] = [..];
 
+#[distributed_slice()]
+pub static SWAPDB_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
+
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -401,6 +404,18 @@ extern "C" fn repl_async_load_event_callback(
         });
 }
 
+extern "C" fn swapdb_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let ctx = Context::new(ctx);
+    SWAPDB_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, subevent);
+    });
+}
+
 fn register_single_server_event_type<T>(
     ctx: &Context,
     callbacks: &[fn(&Context, T)],
@@ -510,6 +525,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &REPL_ASYNC_LOAD_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_REPL_ASYNC_LOAD,
         Some(repl_async_load_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &SWAPDB_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_SWAPDB,
+        Some(swapdb_callback),
     )?;
     Ok(())
 }
