@@ -573,3 +573,67 @@ pub fn info_command_handler(_attr: TokenStream, item: TokenStream) -> TokenStrea
 pub fn info_section(item: TokenStream) -> TokenStream {
     info_section::info_section(item)
 }
+
+
+/// Proc macro which is set on a function that need to be called whenever a replica change event happened.
+/// The function must accept a [Context] and [ReplicaChangeSubevent].
+/// Example:
+/// ```rust,no_run,ignore
+/// #[replica_change_event_handler]
+/// fn replica_change_event_handler(ctx: &Context, values: ReplicaChangeSubevent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn replica_change_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::REPLICA_CHANGE_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
+/// Proc macro which is set on a function that need to be called whenever a
+/// repl-diskless-load config is set to swapdb and a replication with a primary of same data set history occurs.
+/// The function must accept a [Context] and [ReplAsyncLoadSubevent].
+/// Example:
+/// ```rust,no_run,ignore
+/// #[repl_async_load_event_handler]
+/// fn repl_async_load_event_handler(ctx: &Context, values: ReplAsyncLoadSubevent) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn repl_async_load_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::REPL_ASYNC_LOAD_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
+/// Proc macro which is set on a function that need to be called whenever a swapdb event happens.
+/// The function must accept a [Context] and [u64].
+///
+/// Example:
+///
+/// ```rust,no_run,ignore
+/// #[swapdb_event_handler]
+/// fn swapdb_event_handler(ctx: &Context, _: u64) { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn swapdb_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::SWAPDB_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
