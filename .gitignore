@@ -13,10 +13,11 @@ src/redisraw/bindings.rs
 .vscode
 
 # Valkey database
-dump.rdb
+*.rdb
 
 # Debugger-related files:
 .gdb_history
 
 venv/
 tmp/*
+shutdown_log.txt

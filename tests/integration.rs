@@ -1863,3 +1863,110 @@ fn test_fork_child_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_replica_change_event() -> Result<()> {
+    let primary_port: u16 = 6524;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", primary_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut primary_con =
+        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    let replica_port: u16 = 6525;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", replica_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut replica_con =
+        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // setup replication
+    let _: () = redis::cmd("replicaof")
+        .arg("127.0.0.1")
+        .arg(primary_port)
+        .query(&mut replica_con)?;
+    // need to wait for replication to establish and event to fire
+    thread::sleep(Duration::from_millis(5000));
+    // check replica change event on the primary
+    let event_count1: i64 = redis::cmd("num_replica_change_events").query(&mut primary_con)?;
+    assert_eq!(event_count1, 1);
+
+    // disable replication
+    let _: () = redis::cmd("replicaof")
+        .arg("no")
+        .arg("one")
+        .query(&mut replica_con)?;
+    // check replica change event on the primary
+    let event_count2: i64 = redis::cmd("num_replica_change_events").query(&mut primary_con)?;
+    assert_eq!(event_count2, 2);
+
+    Ok(())
+}
+
+#[test]
+fn test_repl_asnc_load_event() -> Result<()> {
+    let primary_port: u16 = 6526;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", primary_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut primary_con =
+        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // repl-diskless-load swapdb
+    let _: () = redis::cmd("config")
+        .arg(&["set", "repl-diskless-load", "swapdb"])
+        .exec(&mut primary_con)
+        .with_context(|| "failed to run config set repl-diskless-load")?;
+
+    let replica_port: u16 = 6527;
+    let _guards = vec![
+        start_valkey_server_with_module("server_events", replica_port)
+            .with_context(|| FAILED_TO_START_SERVER)?,
+    ];
+    let mut replica_con =
+        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    // repl-diskless-load swapdb
+    let _: () = redis::cmd("config")
+        .arg(&["set", "repl-diskless-load", "swapdb"])
+        .exec(&mut replica_con)
+        .with_context(|| "failed to run config set repl-diskless-load")?;
+
+    // setup replication
+    let _: () = redis::cmd("replicaof")
+        .arg("127.0.0.1")
+        .arg(primary_port)
+        .query(&mut replica_con)?;
+    // need to wait for replication to establish and event to fire
+    thread::sleep(Duration::from_millis(5000));
+
+    // check num_repl_async_load_events on the replica
+    let event_count1: i64 = redis::cmd("num_repl_async_load_events").query(&mut replica_con)?;
+    // started and completed fire so result is 2, aborted event does not fire
+    assert_eq!(event_count1, 2);
+
+    Ok(())
+}
+
+#[test]
+fn test_swapdb_event() -> Result<()> {
+    let port: u16 = 6528;
+    let _guards = vec![start_valkey_server_with_module("server_events", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // run swapdb between db 0 and db 1
+    let _: () = redis::cmd("swapdb").arg(&["0", "1"]).query(&mut con)?;
+    // check swapdb event count
+    let event_count1: i64 = redis::cmd("num_swapdb_events").query(&mut con)?;
+    assert_eq!(event_count1, 1);
+
+    // run swapdb between db 1 and db 2
+    let _: () = redis::cmd("swapdb").arg(&["1", "2"]).query(&mut con)?;
+    // check swapdb event count
+    let event_count2: i64 = redis::cmd("num_swapdb_events").query(&mut con)?;
+    assert_eq!(event_count2, 2);
+
+    Ok(())
+}
