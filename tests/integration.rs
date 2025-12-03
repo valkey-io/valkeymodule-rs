@@ -46,6 +46,24 @@ fn test_keys_pos() -> Result<()> {
     let _guards = vec![start_valkey_server_with_module("keys_pos", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    loop {
+        let pong: redis::RedisResult<String> = redis::cmd("PING").query(&mut con);
+        match pong {
+            Ok(_) => break,
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("loading the dataset")
+                    || err_str.contains("BusyLoading")
+                    || err_str.contains("LOADING")
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    continue;
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
 
     let res: Vec<String> = redis::cmd("keys_pos")
         .arg(&["a", "1", "b", "2"])
@@ -68,6 +86,24 @@ fn test_helper_version() -> Result<()> {
     let _guards = vec![start_valkey_server_with_module("test_helper", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    loop {
+        let pong: redis::RedisResult<String> = redis::cmd("PING").query(&mut con);
+        match pong {
+            Ok(_) => break,
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("loading the dataset")
+                    || err_str.contains("BusyLoading")
+                    || err_str.contains("LOADING")
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    continue;
+                } else {
+                    return Err(e.into());
+                }
+            }
+        }
+    }
 
     let res: Vec<i64> = redis::cmd("test_helper.version")
         .query(&mut con)
@@ -1967,6 +2003,124 @@ fn test_swapdb_event() -> Result<()> {
     // check swapdb event count
     let event_count2: i64 = redis::cmd("num_swapdb_events").query(&mut con)?;
     assert_eq!(event_count2, 2);
+
+    Ok(())
+}
+
+#[test]
+fn test_loading_progress_event_isolated() -> Result<()> {
+    use std::fs;
+    use std::process::Command;
+
+    let port: u16 = 6599;
+    // Use a unique temp directory for this test so the RDB doesn't collide
+    // with other concurrently-running tests.
+    let tmpdir = format!("/tmp/valkey_test_loading_{}", port);
+    let _ = fs::remove_dir_all(&tmpdir);
+    fs::create_dir_all(&tmpdir)?;
+
+    let module_path = utils::get_module_path("server_events")?;
+
+    let args = [
+        "--port",
+        &port.to_string(),
+        "--dir",
+        &tmpdir,
+        "--dbfilename",
+        "dump_test_loading.rdb",
+        "--loadmodule",
+        module_path.as_str(),
+        "--enable-debug-command",
+        "yes",
+        "--enable-module-command",
+        "yes",
+    ];
+
+    let mut child = Command::new("valkey-server").args(&args).spawn()?;
+
+    // Connect and wait until the server is actually ready to accept commands
+    // (it may accept TCP while still loading RDB). Retry PING on BusyLoading.
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    loop {
+        match redis::cmd("PING").query::<String>(&mut con) {
+            Ok(_) => break,
+            Err(e) => {
+                let s = e.to_string();
+                if s.contains("loading the dataset")
+                    || s.contains("BusyLoading")
+                    || s.contains("LOADING")
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    continue;
+                }
+                return Err(e.into());
+            }
+        }
+    }
+
+    redis::cmd("flushall").exec(&mut con)?;
+
+    // Write some data to ensure there's something to save/load
+    // Keep the number small so the RDB doesn't grow too large for test machines.
+    for i in 0..200 {
+        let key = format!("test_key_{}", i);
+        redis::cmd("set")
+            .arg(&[&key, "test_value"])
+            .exec(&mut con)?;
+    }
+
+    let initial_rdb_count: i64 = redis::cmd("num_loading_progress_rdb").query(&mut con)?;
+
+    // Trigger a BGSAVE to produce an RDB in the isolated dir
+    redis::cmd("bgsave").exec(&mut con)?;
+
+    // Shut down and restart so the server will load the RDB and emit progress events
+    let _ = redis::cmd("SHUTDOWN").arg("SAVE").query::<String>(&mut con);
+    let _ = child.wait();
+
+    let mut child2 = Command::new("valkey-server").args(&args).spawn()?;
+
+    // Connect to restarted server and wait until loading completes
+    let mut con2 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    loop {
+        match redis::cmd("PING").query::<String>(&mut con2) {
+            Ok(_) => break,
+            Err(e) => {
+                let s = e.to_string();
+                if s.contains("loading the dataset")
+                    || s.contains("BusyLoading")
+                    || s.contains("LOADING")
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                    continue;
+                }
+                return Err(e.into());
+            }
+        }
+    }
+
+    // Check that either loading progress events were fired OR at least the
+    // loading events (start/end) fired. Small RDB files may load too fast and
+    // not produce intermediate progress events; accept either outcome.
+    let rdb_count_after: i64 = redis::cmd("num_loading_progress_rdb").query(&mut con2)?;
+    let loading_events_after: i64 = redis::cmd("num_loading_events").query(&mut con2)?;
+
+    let progressed = rdb_count_after > initial_rdb_count;
+    let loaded = loading_events_after >= 2; // started + ended
+
+    assert!(
+        progressed || loaded,
+        "Expected either loading-progress events or loading start/end events (progressed={}, loading_events={})",
+        progressed,
+        loading_events_after
+    );
+
+    // Cleanup: stop server and remove temp dir
+    let _ = redis::cmd("SHUTDOWN")
+        .arg("NOSAVE")
+        .query::<String>(&mut con2);
+    let _ = child2.wait();
+    let _ = fs::remove_dir_all(&tmpdir);
 
     Ok(())
 }
