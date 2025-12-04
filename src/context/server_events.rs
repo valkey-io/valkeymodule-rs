@@ -80,6 +80,19 @@ pub enum ReplAsyncLoadSubevent {
     Completed,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum LoadingProgressSubevent {
+    Rdb,
+    Aof,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LoadingProgress {
+    pub subevent: LoadingProgressSubevent,
+    pub hz: i32,
+    pub progress: i32,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -93,6 +106,7 @@ pub enum ServerEventHandler {
     ForkChildSubevent(fn(&Context, ForkChildSubevent)),
     ReplicaChangeSubevent(fn(&Context, ReplicaChangeSubevent)),
     ReplAsyncLoadSubevent(fn(&Context, ReplAsyncLoadSubevent)),
+    LoadingProgress(fn(&Context, LoadingProgress)),
 }
 
 #[distributed_slice()]
@@ -142,6 +156,9 @@ pub static REPL_ASYNC_LOAD_SERVER_EVENTS_LIST: [fn(&Context, ReplAsyncLoadSubeve
 
 #[distributed_slice()]
 pub static SWAPDB_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
+
+#[distributed_slice()]
+pub static LOADING_PROGRESS_SERVER_EVENTS_LIST: [fn(&Context, LoadingProgress)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -441,6 +458,42 @@ fn register_single_server_event_type<T>(
     Ok(())
 }
 
+extern "C" fn loading_progress_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    data: *mut ::std::os::raw::c_void,
+) {
+    if data.is_null() {
+        return;
+    }
+
+    // Cast to the generated raw binding for the loading progress struct
+    let info: &raw::RedisModuleLoadingProgressInfo = unsafe {
+        &*(data as *mut raw::RedisModuleLoadingProgressInfo)
+    };
+
+    let hz = info.hz as i32;
+    let progress = info.progress as i32;
+
+    let sub = match subevent {
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_RDB => LoadingProgressSubevent::Rdb,
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_AOF => LoadingProgressSubevent::Aof,
+        _ => return,
+    };
+
+    let ctx = Context::new(ctx);
+    let payload = LoadingProgress {
+        subevent: sub,
+        hz,
+        progress,
+    };
+
+    LOADING_PROGRESS_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, payload);
+    });
+}
+
 pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
     register_single_server_event_type(
         ctx,
@@ -531,6 +584,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &SWAPDB_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_SWAPDB,
         Some(swapdb_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &LOADING_PROGRESS_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_LOADING_PROGRESS,
+        Some(loading_progress_event_callback),
     )?;
     Ok(())
 }
