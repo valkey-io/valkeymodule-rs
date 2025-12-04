@@ -133,6 +133,9 @@ macro_rules! valkey_module {
         $(auth: [
             $($auth_callback:expr),* $(,)*
         ],)?
+        $(post_auth: [
+            $($post_auth_callback:expr),* $(,)*
+        ],)?
         $(acl_categories: [
             $($acl_category:expr),* $(,)*
         ])?
@@ -462,6 +465,10 @@ macro_rules! valkey_module {
             raw::register_info_function(ctx, Some(__info_func));
 
             $(
+                $crate::valkey_module_post_auth!($module_name, ctx, $($post_auth_callback),*);
+            )?
+
+            $(
                 $crate::valkey_module_auth!($module_name, ctx, $($auth_callback),*);
             )?
 
@@ -570,6 +577,65 @@ macro_rules! valkey_module_auth {
                     ))]
                     unsafe {
                         $crate::raw::RedisModule_RegisterAuthCallback.expect("RedisModule_RegisterAuthCallback should exist on Redis/Valkey 7.2 and above")($ctx, Some([<__do_auth_ $module_name _ $auth_callback>]));
+                    }
+                }
+            }
+        )*
+    };
+}
+
+/// Registers post-authentication callbacks with the Valkey module
+///
+/// These callbacks are invoked after the authentication chain finishes. The macro
+/// registers lightweight auth callbacks that schedule a post-notification job so
+/// the provided Rust callback runs outside the auth context. The user callback
+/// signature should be `fn(&Context, ValkeyString, ValkeyString)` (prev_user, new_user).
+#[macro_export]
+macro_rules! valkey_module_post_auth {
+    ($module_name:expr, $ctx:expr, $($post_auth_callback:expr),* $(,)*) => {
+        $(
+            {
+                paste::paste! {
+                    extern "C" fn [<__do_post_auth_ $module_name _ $post_auth_callback>] (
+                        ctx: *mut $crate::raw::RedisModuleCtx,
+                        username: *mut $crate::raw::RedisModuleString,
+                        _password: *mut $crate::raw::RedisModuleString,
+                        _err: *mut *mut $crate::raw::RedisModuleString,
+                    ) -> std::os::raw::c_int {
+                        let context = $crate::Context::new(ctx);
+                        let ctx_ptr = unsafe { std::ptr::NonNull::new_unchecked(ctx) };
+                        let username_rs = $crate::ValkeyString::new(Some(ctx_ptr), username);
+                        let username_owned = username_rs.to_string_lossy();
+                        // Get previous username before auth
+                        let prev_username = match context.get_client_username() {
+                            Ok(u) => u.to_string_lossy(),
+                            Err(_) => "default".to_string(),
+                        };
+
+                        // schedule a post-notification job so the callback runs outside
+                        // the auth handler (deferred), and can perform safe operations.
+                        let _ = context.add_post_notification_job(move |ctx| {
+                            let prev = $crate::ValkeyString::create_and_retain(&prev_username);
+                            let new_user = $crate::ValkeyString::create_and_retain(&username_owned);
+                            $post_auth_callback(ctx, prev, new_user);
+                        });
+
+                        // Do not interfere with the authentication chain.
+                        $crate::AUTH_NOT_HANDLED
+                    }
+
+                    #[cfg(not(any(
+                        feature = "min-redis-compatibility-version-7-2",
+                        feature = "min-valkey-compatibility-version-8-0"
+                    )))]
+                    compile_error!("Post-auth callbacks require Redis 7.2 or Valkey 8.0 and above");
+
+                    #[cfg(any(
+                        feature = "min-redis-compatibility-version-7-2",
+                        feature = "min-valkey-compatibility-version-8-0"
+                    ))]
+                    unsafe {
+                        $crate::raw::RedisModule_RegisterAuthCallback.expect("RedisModule_RegisterAuthCallback should exist on Redis/Valkey 7.0 and above")($ctx, Some([<__do_post_auth_ $module_name _ $post_auth_callback>]))
                     }
                 }
             }
