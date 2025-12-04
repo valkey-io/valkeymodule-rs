@@ -2,8 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
-    ClientChangeSubevent, ForkChildSubevent, KeyChangeSubevent, MasterLinkChangeSubevent,
-    PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent,
+    ClientChangeSubevent, ForkChildSubevent, KeyChangeSubevent, LoadingProgress, MasterLinkChangeSubevent, PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent
 };
 use valkey_module::{
     server_events::FlushSubevent, valkey_module, Context, ModuleOptions, Status, ValkeyResult,
@@ -13,7 +12,7 @@ use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
     flush_event_handler, fork_child_event_handler, key_event_handler,
     master_link_change_event_handler, persistence_event_handler, repl_async_load_event_handler,
-    replica_change_event_handler, shutdown_event_handler, swapdb_event_handler,
+    replica_change_event_handler, shutdown_event_handler, swapdb_event_handler, loading_progress_event_handler
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -28,6 +27,8 @@ static NUM_FORK_CHILD_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_REPLICA_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_REPL_ASYNC_LOAD_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_SWAP_DB_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_LOADING_PROGRESS_RDB: AtomicI64 = AtomicI64::new(0);
+static NUM_LOADING_PROGRESS_AOF: AtomicI64 = AtomicI64::new(0);
 
 #[flush_event_handler]
 fn flushed_event_handler(_ctx: &Context, flush_event: FlushSubevent) {
@@ -186,6 +187,23 @@ fn swapdb_event_handler(ctx: &Context, _: u64) {
     ctx.log_notice("Databases swapped");
 }
 
+#[loading_progress_event_handler]
+fn loading_progress_event_handler(ctx: &Context, info: LoadingProgress) {
+    let msg = format!(
+        "Loading progress {:?}: hz={}, progress={}",
+        info.subevent, info.hz, info.progress
+    );
+    ctx.log_notice(&msg);
+    match info.subevent {
+        valkey_module::server_events::LoadingProgressSubevent::Rdb => {
+            NUM_LOADING_PROGRESS_RDB.fetch_add(1, Ordering::SeqCst);
+        }
+        valkey_module::server_events::LoadingProgressSubevent::Aof => {
+            NUM_LOADING_PROGRESS_AOF.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -248,6 +266,14 @@ fn num_swapdb_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     ))
 }
 
+fn num_loading_progress_rdb(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_LOADING_PROGRESS_RDB.load(Ordering::SeqCst)))
+}
+
+fn num_loading_progress_aof(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(NUM_LOADING_PROGRESS_AOF.load(Ordering::SeqCst)))
+}
+
 fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
     // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
     // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
@@ -277,5 +303,7 @@ valkey_module! {
         ["num_replica_change_events", num_replica_change_events, "readonly", 0, 0, 0],
         ["num_repl_async_load_events", num_repl_async_load_events, "readonly", 0, 0, 0],
         ["num_swapdb_events", num_swapdb_events, "readonly", 0, 0, 0],
+        ["num_loading_progress_rdb", num_loading_progress_rdb, "readonly", 0, 0, 0],
+        ["num_loading_progress_aof", num_loading_progress_aof, "readonly", 0, 0, 0],
     ]
 }
