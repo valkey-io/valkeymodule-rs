@@ -2,17 +2,21 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::{
-    ClientChangeSubevent, KeyChangeSubevent, MasterLinkChangeSubevent, PersistenceSubevent,
+    ClientChangeSubevent, EventLoopSubevent, ForkChildSubevent, KeyChangeSubevent, LoadingProgress,
+    MasterLinkChangeSubevent, PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent,
     EventLoopSubevent,
 };
 use valkey_module::{
-    server_events::FlushSubevent, valkey_module, Context, ValkeyResult, ValkeyString, ValkeyValue,
+    server_events::FlushSubevent, valkey_module, Context, ModuleOptions, Status, ValkeyResult,
+    ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
-    flush_event_handler, key_event_handler, master_link_change_event_handler,
-    persistence_event_handler, shutdown_event_handler,
+    eventloop_event_handler, flush_event_handler, fork_child_event_handler, key_event_handler,
+    loading_progress_event_handler, master_link_change_event_handler, persistence_event_handler,
+    repl_async_load_event_handler, replica_change_event_handler, shutdown_event_handler,
     eventloop_event_handler,
+    swapdb_event_handler,
 };
 
 static NUM_FLUSHES: AtomicI64 = AtomicI64::new(0);
@@ -23,6 +27,14 @@ static NUM_KEY_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_PERSISTENCE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static NUM_MASTER_LINK_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
 static IS_MASTER_LINK_UP: AtomicBool = AtomicBool::new(false);
+static NUM_EVENTLOOP_BEFORE: AtomicI64 = AtomicI64::new(0);
+static NUM_EVENTLOOP_AFTER: AtomicI64 = AtomicI64::new(0);
+static NUM_FORK_CHILD_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_REPLICA_CHANGE_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_REPL_ASYNC_LOAD_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_SWAP_DB_EVENTS: AtomicI64 = AtomicI64::new(0);
+static NUM_LOADING_PROGRESS_RDB: AtomicI64 = AtomicI64::new(0);
+static NUM_LOADING_PROGRESS_AOF: AtomicI64 = AtomicI64::new(0);
 static NUM_EVENTLOOP_BEFORE: AtomicI64 = AtomicI64::new(0);
 static NUM_EVENTLOOP_AFTER: AtomicI64 = AtomicI64::new(0);
 
@@ -149,6 +161,85 @@ fn eventloop_handler(ctx: &Context, ev: EventLoopSubevent) {
     }
 }
 
+#[eventloop_event_handler]
+fn eventloop_handler(ctx: &Context, ev: EventLoopSubevent) {
+    match ev {
+        EventLoopSubevent::BeforeSleep => {
+            ctx.log_notice("EventLoop: before sleep");
+            NUM_EVENTLOOP_BEFORE.fetch_add(1, Ordering::SeqCst);
+        }
+        EventLoopSubevent::AfterSleep => {
+            ctx.log_notice("EventLoop: after sleep");
+            NUM_EVENTLOOP_AFTER.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
+#[fork_child_event_handler]
+fn fork_child_event_handler(ctx: &Context, fork_child_subevent: ForkChildSubevent) {
+    match fork_child_subevent {
+        ForkChildSubevent::Born => {
+            ctx.log_warning("Fork child born");
+        }
+        ForkChildSubevent::Died => {
+            ctx.log_warning("Fork child died");
+        }
+    }
+    NUM_FORK_CHILD_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[replica_change_event_handler]
+fn replica_change_event_handler(ctx: &Context, replica_change_subevent: ReplicaChangeSubevent) {
+    match replica_change_subevent {
+        ReplicaChangeSubevent::Online => {
+            ctx.log_notice("Replica online");
+        }
+        ReplicaChangeSubevent::Offline => {
+            ctx.log_notice("Replica offline");
+        }
+    }
+    NUM_REPLICA_CHANGE_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[repl_async_load_event_handler]
+fn repl_async_load_event_handler(ctx: &Context, repl_async_load_subevent: ReplAsyncLoadSubevent) {
+    match repl_async_load_subevent {
+        ReplAsyncLoadSubevent::Started => {
+            ctx.log_notice("Repl async load started");
+        }
+        ReplAsyncLoadSubevent::Aborted => {
+            ctx.log_notice("Repl async load aborted");
+        }
+        ReplAsyncLoadSubevent::Completed => {
+            ctx.log_notice("Repl async load completed");
+        }
+    }
+    NUM_REPL_ASYNC_LOAD_EVENTS.fetch_add(1, Ordering::SeqCst);
+}
+
+#[swapdb_event_handler]
+fn swapdb_event_handler(ctx: &Context, _: u64) {
+    NUM_SWAP_DB_EVENTS.fetch_add(1, Ordering::SeqCst);
+    ctx.log_notice("Databases swapped");
+}
+
+#[loading_progress_event_handler]
+fn loading_progress_event_handler(ctx: &Context, info: LoadingProgress) {
+    let msg = format!(
+        "Loading progress {:?}: hz={}, progress={}",
+        info.subevent, info.hz, info.progress
+    );
+    ctx.log_notice(&msg);
+    match info.subevent {
+        valkey_module::server_events::LoadingProgressSubevent::Rdb => {
+            NUM_LOADING_PROGRESS_RDB.fetch_add(1, Ordering::SeqCst);
+        }
+        valkey_module::server_events::LoadingProgressSubevent::Aof => {
+            NUM_LOADING_PROGRESS_AOF.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+}
+
 fn num_flushed(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(NUM_FLUSHES.load(Ordering::SeqCst)))
 }
@@ -195,6 +286,62 @@ fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult
     Ok(ValkeyValue::Integer(NUM_EVENTLOOP_AFTER.load(Ordering::SeqCst)))
 }
 
+fn num_eventloop_before(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_EVENTLOOP_BEFORE.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_EVENTLOOP_AFTER.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_fork_child_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_FORK_CHILD_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_replica_change_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_REPLICA_CHANGE_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_repl_async_load_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_REPL_ASYNC_LOAD_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_swapdb_events(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_SWAP_DB_EVENTS.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_loading_progress_rdb(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_LOADING_PROGRESS_RDB.load(Ordering::SeqCst),
+    ))
+}
+
+fn num_loading_progress_aof(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok(ValkeyValue::Integer(
+        NUM_LOADING_PROGRESS_AOF.load(Ordering::SeqCst),
+    ))
+}
+
+fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
+    // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
+    // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
+    // needed for repl_async_load_event_handler
+    ctx.set_module_options(ModuleOptions::HANDLE_REPL_ASYNC_LOAD);
+    Status::Ok
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -202,6 +349,7 @@ valkey_module! {
     version: 2,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
+    init: init,
     commands: [
         ["num_flushed", num_flushed, "readonly", 0, 0, 0],
         ["num_max_memory_changes", num_maxmemory_changes, "readonly", 0, 0, 0],
@@ -213,5 +361,13 @@ valkey_module! {
         ["is_master_link_up", is_master_link_up, "readonly", 0, 0, 0],
         ["num_eventloop_before", num_eventloop_before, "readonly", 0, 0, 0],
         ["num_eventloop_after", num_eventloop_after, "readonly", 0, 0, 0],
+        ["num_eventloop_before", num_eventloop_before, "readonly", 0, 0, 0],
+        ["num_eventloop_after", num_eventloop_after, "readonly", 0, 0, 0],
+        ["num_fork_child_events", num_fork_child_events, "readonly", 0, 0, 0],
+        ["num_replica_change_events", num_replica_change_events, "readonly", 0, 0, 0],
+        ["num_repl_async_load_events", num_repl_async_load_events, "readonly", 0, 0, 0],
+        ["num_swapdb_events", num_swapdb_events, "readonly", 0, 0, 0],
+        ["num_loading_progress_rdb", num_loading_progress_rdb, "readonly", 0, 0, 0],
+        ["num_loading_progress_aof", num_loading_progress_aof, "readonly", 0, 0, 0],
     ]
 }

@@ -67,6 +67,44 @@ pub enum EventLoopSubevent {
     AfterSleep,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ForkChildSubevent {
+    Born,
+    Died,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ReplicaChangeSubevent {
+    Online,
+    Offline,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum ReplAsyncLoadSubevent {
+    Started,
+    Aborted,
+    Completed,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum LoadingProgressSubevent {
+    Rdb,
+    Aof,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct LoadingProgress {
+    pub subevent: LoadingProgressSubevent,
+    pub hz: i32,
+    pub progress: i32,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum EventLoopSubevent {
+    BeforeSleep,
+    AfterSleep,
+}
+
 #[derive(Clone)]
 pub enum ServerEventHandler {
     RoleChanged(fn(&Context, ServerRole)),
@@ -76,7 +114,12 @@ pub enum ServerEventHandler {
     ClientChange(fn(&Context, ClientChangeSubevent)),
     KeyChangeSubevent(fn(&Context, KeyChangeSubevent)),
     PersistenceSubevent(fn(&Context, PersistenceSubevent)),
-    MaterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
+    MasterLinkChangeSubevent(fn(&Context, MasterLinkChangeSubevent)),
+    EventLoop(fn(&Context, EventLoopSubevent)),
+    ForkChildSubevent(fn(&Context, ForkChildSubevent)),
+    ReplicaChangeSubevent(fn(&Context, ReplicaChangeSubevent)),
+    ReplAsyncLoadSubevent(fn(&Context, ReplAsyncLoadSubevent)),
+    LoadingProgress(fn(&Context, LoadingProgress)),
     EventLoop(fn(&Context, EventLoopSubevent)),
 }
 
@@ -115,6 +158,24 @@ pub static PERSISTENCE_SERVER_EVENTS_LIST: [fn(&Context, PersistenceSubevent)] =
 
 #[distributed_slice()]
 pub static MASTER_LINK_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, MasterLinkChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static EVENTLOOP_SERVER_EVENTS_LIST: [fn(&Context, EventLoopSubevent)] = [..];
+
+#[distributed_slice()]
+pub static FORK_CHILD_SERVER_EVENTS_LIST: [fn(&Context, ForkChildSubevent)] = [..];
+
+#[distributed_slice()]
+pub static REPLICA_CHANGE_SERVER_EVENTS_LIST: [fn(&Context, ReplicaChangeSubevent)] = [..];
+
+#[distributed_slice()]
+pub static REPL_ASYNC_LOAD_SERVER_EVENTS_LIST: [fn(&Context, ReplAsyncLoadSubevent)] = [..];
+
+#[distributed_slice()]
+pub static SWAPDB_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
+
+#[distributed_slice()]
+pub static LOADING_PROGRESS_SERVER_EVENTS_LIST: [fn(&Context, LoadingProgress)] = [..];
 
 #[distributed_slice()]
 pub static EVENTLOOP_SERVER_EVENTS_LIST: [fn(&Context, EventLoopSubevent)] = [..];
@@ -312,6 +373,23 @@ extern "C" fn eventloop_event_callback(
     });
 }
 
+extern "C" fn eventloop_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let eventloop_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP => EventLoopSubevent::BeforeSleep,
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP => EventLoopSubevent::AfterSleep,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    EVENTLOOP_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, eventloop_sub_event);
+    });
+}
+
 extern "C" fn config_change_event_callback(
     ctx: *mut raw::RedisModuleCtx,
     _eid: raw::RedisModuleEvent,
@@ -341,6 +419,74 @@ extern "C" fn config_change_event_callback(
         });
 }
 
+extern "C" fn fork_child_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let fork_child_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_FORK_CHILD_BORN => ForkChildSubevent::Born,
+        raw::REDISMODULE_SUBEVENT_FORK_CHILD_DIED => ForkChildSubevent::Died,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    FORK_CHILD_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, fork_child_sub_event);
+    });
+}
+
+extern "C" fn replica_change_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let replica_change_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_REPLICA_CHANGE_ONLINE => ReplicaChangeSubevent::Online,
+        raw::REDISMODULE_SUBEVENT_REPLICA_CHANGE_OFFLINE => ReplicaChangeSubevent::Offline,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    REPLICA_CHANGE_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, replica_change_sub_event);
+        });
+}
+
+extern "C" fn repl_async_load_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let repl_async_load_sub_event = match subevent {
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_STARTED => ReplAsyncLoadSubevent::Started,
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_ABORTED => ReplAsyncLoadSubevent::Aborted,
+        raw::REDISMODULE_SUBEVENT_REPL_ASYNC_LOAD_COMPLETED => ReplAsyncLoadSubevent::Completed,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    REPL_ASYNC_LOAD_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, repl_async_load_sub_event);
+        });
+}
+
+extern "C" fn swapdb_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let ctx = Context::new(ctx);
+    SWAPDB_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, subevent);
+    });
+}
+
 fn register_single_server_event_type<T>(
     ctx: &Context,
     callbacks: &[fn(&Context, T)],
@@ -364,6 +510,43 @@ fn register_single_server_event_type<T>(
     }
 
     Ok(())
+}
+
+extern "C" fn loading_progress_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    data: *mut ::std::os::raw::c_void,
+) {
+    if data.is_null() {
+        return;
+    }
+
+    // Cast to the generated raw binding for the loading progress struct
+    let info: &raw::RedisModuleLoadingProgressInfo =
+        unsafe { &*(data as *mut raw::RedisModuleLoadingProgressInfo) };
+
+    let hz = info.hz as i32;
+    let progress = info.progress as i32;
+
+    let sub = match subevent {
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_RDB => LoadingProgressSubevent::Rdb,
+        raw::REDISMODULE_SUBEVENT_LOADING_PROGRESS_AOF => LoadingProgressSubevent::Aof,
+        _ => return,
+    };
+
+    let ctx = Context::new(ctx);
+    let payload = LoadingProgress {
+        subevent: sub,
+        hz,
+        progress,
+    };
+
+    LOADING_PROGRESS_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, payload);
+        });
 }
 
 pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
@@ -432,6 +615,42 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &MASTER_LINK_CHANGE_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_MASTER_LINK_CHANGE,
         Some(master_link_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &EVENTLOOP_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_EVENTLOOP,
+        Some(eventloop_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &FORK_CHILD_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_FORK_CHILD,
+        Some(fork_child_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &REPLICA_CHANGE_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_REPLICA_CHANGE,
+        Some(replica_change_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &REPL_ASYNC_LOAD_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_REPL_ASYNC_LOAD,
+        Some(repl_async_load_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &SWAPDB_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_SWAPDB,
+        Some(swapdb_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &LOADING_PROGRESS_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_LOADING_PROGRESS,
+        Some(loading_progress_event_callback),
     )?;
     register_single_server_event_type(
         ctx,
