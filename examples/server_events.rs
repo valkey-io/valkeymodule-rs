@@ -310,7 +310,7 @@ fn num_eventloop_after(_ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult
 
 valkey_module! {
     name: "srv_events",
-    version: 2,
+    version: 1,
     allocator: (ValkeyAlloc, ValkeyAlloc),
     data_types: [],
     init: init,
