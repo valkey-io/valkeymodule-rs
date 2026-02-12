@@ -145,6 +145,22 @@ pub fn loading_progress_event_handler(_attr: TokenStream, item: TokenStream) -> 
     gen.into()
 }
 
+/// Proc macro which is set on a function that need to be called for every
+/// event loop iteration before the server sleeps or after it wakes up.
+/// The function must accept a [Context] and [EventLoopSubevent].
+#[proc_macro_attribute]
+pub fn event_loop_event_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let ast: ItemFn = match syn::parse(item) {
+        Ok(res) => res,
+        Err(e) => return e.to_compile_error().into(),
+    };
+    let gen = quote! {
+        #[linkme::distributed_slice(valkey_module::server_events::EVENT_LOOP_SERVER_EVENTS_LIST)]
+        #ast
+    };
+    gen.into()
+}
+
 /// Proc macro which is set on a function that need to be called whenever a flush event happened.
 /// The function must accept a [Context] and [FlushSubevent].
 ///

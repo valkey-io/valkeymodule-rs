@@ -86,6 +86,12 @@ pub enum LoadingProgressSubevent {
     Aof,
 }
 
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub enum EventLoopSubevent {
+    BeforeSleep,
+    AfterSleep,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct LoadingProgress {
     pub subevent: LoadingProgressSubevent,
@@ -107,6 +113,7 @@ pub enum ServerEventHandler {
     ReplicaChangeSubevent(fn(&Context, ReplicaChangeSubevent)),
     ReplAsyncLoadSubevent(fn(&Context, ReplAsyncLoadSubevent)),
     LoadingProgress(fn(&Context, LoadingProgress)),
+    EventLoop(fn(&Context, EventLoopSubevent)),
 }
 
 #[distributed_slice()]
@@ -159,6 +166,9 @@ pub static SWAPDB_SERVER_EVENTS_LIST: [fn(&Context, u64)] = [..];
 
 #[distributed_slice()]
 pub static LOADING_PROGRESS_SERVER_EVENTS_LIST: [fn(&Context, LoadingProgress)] = [..];
+
+#[distributed_slice()]
+pub static EVENT_LOOP_SERVER_EVENTS_LIST: [fn(&Context, EventLoopSubevent)] = [..];
 
 extern "C" fn cron_callback(
     ctx: *mut raw::RedisModuleCtx,
@@ -469,9 +479,8 @@ extern "C" fn loading_progress_event_callback(
     }
 
     // Cast to the generated raw binding for the loading progress struct
-    let info: &raw::RedisModuleLoadingProgressInfo = unsafe {
-        &*(data as *mut raw::RedisModuleLoadingProgressInfo)
-    };
+    let info: &raw::RedisModuleLoadingProgressInfo =
+        unsafe { &*(data as *mut raw::RedisModuleLoadingProgressInfo) };
 
     let hz = info.hz as i32;
     let progress = info.progress as i32;
@@ -489,8 +498,27 @@ extern "C" fn loading_progress_event_callback(
         progress,
     };
 
-    LOADING_PROGRESS_SERVER_EVENTS_LIST.iter().for_each(|callback| {
-        callback(&ctx, payload);
+    LOADING_PROGRESS_SERVER_EVENTS_LIST
+        .iter()
+        .for_each(|callback| {
+            callback(&ctx, payload);
+        });
+}
+
+extern "C" fn event_loop_event_callback(
+    ctx: *mut raw::RedisModuleCtx,
+    _eid: raw::RedisModuleEvent,
+    subevent: u64,
+    _data: *mut ::std::os::raw::c_void,
+) {
+    let event_loop_subevent = match subevent {
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_BEFORE_SLEEP => EventLoopSubevent::BeforeSleep,
+        raw::REDISMODULE_SUBEVENT_EVENTLOOP_AFTER_SLEEP => EventLoopSubevent::AfterSleep,
+        _ => return,
+    };
+    let ctx = Context::new(ctx);
+    EVENT_LOOP_SERVER_EVENTS_LIST.iter().for_each(|callback| {
+        callback(&ctx, event_loop_subevent);
     });
 }
 
@@ -590,6 +618,12 @@ pub fn register_server_events(ctx: &Context) -> Result<(), ValkeyError> {
         &LOADING_PROGRESS_SERVER_EVENTS_LIST,
         raw::REDISMODULE_EVENT_LOADING_PROGRESS,
         Some(loading_progress_event_callback),
+    )?;
+    register_single_server_event_type(
+        ctx,
+        &EVENT_LOOP_SERVER_EVENTS_LIST,
+        raw::REDISMODULE_EVENT_EVENTLOOP,
+        Some(event_loop_event_callback),
     )?;
     Ok(())
 }

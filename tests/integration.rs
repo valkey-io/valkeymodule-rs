@@ -424,6 +424,19 @@ fn test_server_event() -> Result<()> {
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
+    let before_sleep_count: i64 = redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
+    let after_sleep_count: i64 = redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
+
+    thread::sleep(Duration::from_millis(50));
+
+    let before_sleep_count_after_wait: i64 =
+        redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
+    let after_sleep_count_after_wait: i64 =
+        redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
+
+    assert!(before_sleep_count_after_wait > before_sleep_count);
+    assert!(after_sleep_count_after_wait > after_sleep_count);
+
     redis::cmd("flushall")
         .exec(&mut con)
         .with_context(|| "failed to run flushall")?;
