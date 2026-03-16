@@ -185,7 +185,7 @@ chrono = "0.4.41"
 dashmap = "6.1.0"
 
 [build-dependencies]
-bindgen = "0.70"
+bindgen = "0.71"
 cc = "1"
 
 [features]
