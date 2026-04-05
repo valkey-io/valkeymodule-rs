@@ -158,6 +158,10 @@ crate-type = ["cdylib"]
 name = "crontab"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "mockctx"
+crate-type = ["cdylib"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -173,6 +177,7 @@ cfg-if = "1"
 valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.4"}
 log = "0.4"
 paste = "1.0.15"
+mockall = { version = "0.14.0", optional = true }
 
 [dev-dependencies]
 anyhow = "1"
@@ -183,6 +188,7 @@ valkey-module = { path = "./", default-features = false, features = ["min-valkey
 cron = "0.15.0"
 chrono = "0.4.41"
 dashmap = "6.1.0"
+mockall = "0.14.0"
 
 [build-dependencies]
 bindgen = "0.70"
@@ -199,3 +205,5 @@ min-redis-compatibility-version-6-0 = []
 enable-system-alloc = []
 # this is to indicate the Module wants to use RedisModule APIs for calls
 use-redismodule-api = []
+# expose mockall-generated context doubles to external tests and downstream crates
+test-mocks = ["dep:mockall"]

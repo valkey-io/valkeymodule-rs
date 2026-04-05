@@ -61,3 +61,33 @@ default = []
 ```
 cargo build --release --features use-redismodule-api
 ```
+
+3. Test Mocks
+
+This crate exposes a `ContextInterface` trait for code that wants to depend on a
+mockable view of the runtime `Context`. That lets you write unit-testable command
+logic without starting a Valkey server.
+
+`ContextInterface` is always available. The generated `MockContext` type is
+available in this crate's own tests and to downstream crates that enable the
+`test-mocks` feature:
+
+```toml
+[dev-dependencies]
+valkey-module = { version = "...", features = ["test-mocks"] }
+```
+
+```rust
+use valkey_module::{ContextInterface, MockContext};
+
+fn emit_notice(ctx: &impl ContextInterface) {
+    ctx.log_notice("ready");
+}
+
+#[test]
+fn emits_notice() {
+    let mut ctx = MockContext::new();
+    ctx.expect_log_notice().withf(|msg| msg == "ready").times(1).return_const(());
+    emit_notice(&ctx);
+}
+```

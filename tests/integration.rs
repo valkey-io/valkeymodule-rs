@@ -1983,3 +1983,30 @@ fn test_swapdb_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_mockctx() -> Result<()> {
+    let port: u16 = 6529;
+    let _guards =
+        vec![start_valkey_server_with_module("mockctx", port)
+            .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    let res: String = redis::cmd("mockctx.log")
+        .query(&mut con)
+        .with_context(|| "failed to run mockctx.log")?;
+    assert_eq!(res, "OK");
+
+    let res: String = redis::cmd("mockctx.hello")
+        .query(&mut con)
+        .with_context(|| "failed to run mockctx.hello without args")?;
+    assert_eq!(res, "Hello, World!");
+
+    let res: String = redis::cmd("mockctx.hello")
+        .arg("Alice")
+        .query(&mut con)
+        .with_context(|| "failed to run mockctx.hello Alice")?;
+    assert_eq!(res, "Hello, Alice!");
+
+    Ok(())
+}
