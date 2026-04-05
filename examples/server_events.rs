@@ -209,7 +209,7 @@ fn loading_progress_event_handler(ctx: &Context, info: LoadingProgress) {
 }
 
 #[event_loop_event_handler]
-fn event_loop_event_handler(ctx: &Context, subevent: EventLoopSubevent) {
+fn event_loop_event_handler(_ctx: &Context, subevent: EventLoopSubevent) {
     match subevent {
         EventLoopSubevent::BeforeSleep => {
             NUM_EVENT_LOOP_BEFORE_SLEEP.fetch_add(1, Ordering::SeqCst);

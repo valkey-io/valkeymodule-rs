@@ -1,13 +1,15 @@
+use std::sync::{LazyLock, Mutex};
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{logging::ValkeyLogLevel, valkey_module, Context, Status, ValkeyString};
 
-static mut GLOBAL_STATE: Option<String> = None;
+static GLOBAL_STATE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
 fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
-    let (before, after) = unsafe {
-        let before = GLOBAL_STATE.clone();
-        GLOBAL_STATE.replace(format!("Args passed: {}", args.join(", ")));
-        let after = GLOBAL_STATE.clone();
+    let (before, after) = {
+        let mut state = GLOBAL_STATE.lock().unwrap();
+        let before = state.clone();
+        state.replace(format!("Args passed: {}", args.join(", ")));
+        let after = state.clone();
         (before, after)
     };
     ctx.log(
@@ -19,9 +21,10 @@ fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
 }
 
 fn deinit(ctx: &Context) -> Status {
-    let (before, after) = unsafe {
-        let before = GLOBAL_STATE.take();
-        let after = GLOBAL_STATE.clone();
+    let (before, after) = {
+        let mut state = GLOBAL_STATE.lock().unwrap();
+        let before = state.take();
+        let after = state.clone();
         (before, after)
     };
     ctx.log(
