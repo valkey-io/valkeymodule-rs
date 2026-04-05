@@ -167,7 +167,7 @@ impl ValkeyKey {
         Ok(val)
     }
 
-    pub fn get_stream_iterator(&self, reverse: bool) -> Result<StreamIterator, ValkeyError> {
+    pub fn get_stream_iterator(&self, reverse: bool) -> Result<StreamIterator<'_>, ValkeyError> {
         StreamIterator::new(self, None, None, false, reverse)
     }
 
@@ -177,7 +177,7 @@ impl ValkeyKey {
         to: Option<raw::RedisModuleStreamID>,
         exclusive: bool,
         reverse: bool,
-    ) -> Result<StreamIterator, ValkeyError> {
+    ) -> Result<StreamIterator<'_>, ValkeyError> {
         StreamIterator::new(self, from, to, exclusive, reverse)
     }
 }
@@ -243,7 +243,7 @@ impl ValkeyKeyWritable {
         self.key_type() == KeyType::Empty
     }
 
-    pub fn as_string_dma(&self) -> Result<StringDMA, ValkeyError> {
+    pub fn as_string_dma(&self) -> Result<StringDMA<'_>, ValkeyError> {
         StringDMA::new(self)
     }
 

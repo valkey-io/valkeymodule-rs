@@ -22,3 +22,5 @@ venv/
 tmp/*
 shutdown_log.txt
 .DS_Store
+valkeymodule-rs-macros/Cargo.lock
+valkeymodule-rs-macros-internals/Cargo.lock

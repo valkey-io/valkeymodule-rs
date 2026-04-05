@@ -24,7 +24,7 @@ impl<'key> StreamIterator<'key> {
         mut to: Option<raw::RedisModuleStreamID>,
         exclusive: bool,
         reverse: bool,
-    ) -> Result<StreamIterator, ValkeyError> {
+    ) -> Result<StreamIterator<'_>, ValkeyError> {
         let mut flags = if exclusive {
             raw::REDISMODULE_STREAM_ITERATOR_EXCLUSIVE as i32
         } else {
