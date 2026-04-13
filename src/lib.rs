@@ -20,6 +20,7 @@ mod context;
 pub mod key;
 pub mod logging;
 mod macros;
+pub mod redismodule_mock;
 mod utils;
 
 pub use crate::context::blocked::BlockedClient;
@@ -54,6 +55,11 @@ pub use crate::context::{
 };
 pub use crate::raw::*;
 pub use crate::redismodule::*;
+#[cfg(any(test, feature = "test-mocks"))]
+pub use crate::redismodule_mock::MockValkeyString;
+#[cfg(any(test, feature = "test-mocks"))]
+pub use crate::redismodule_mock::MockValkeyStringInterface;
+pub use crate::redismodule_mock::ValkeyStringInterface;
 use backtrace::Backtrace;
 use context::server_events::INFO_COMMAND_HANDLER_LIST;
 
