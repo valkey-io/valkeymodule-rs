@@ -36,6 +36,11 @@ pub use crate::context::call_reply::FutureCallReply;
 pub use crate::context::call_reply::{CallReply, CallResult, ErrorReply, PromiseCallReply};
 pub use crate::context::commands;
 pub use crate::context::keys_cursor::KeysCursor;
+/// Trait abstraction over the client-related methods of [`Context`].
+pub use crate::context::mock::client::ContextInterface as ClientContextInterface;
+#[cfg(any(test, feature = "test-mocks"))]
+/// Mock generated from [`ClientContextInterface`].
+pub use crate::context::mock::client::MockContext as MockClientContext;
 /// Trait abstraction over [`Context`] used to make module logic mockable in tests.
 pub use crate::context::mock::ContextInterface;
 #[cfg(any(test, feature = "test-mocks"))]

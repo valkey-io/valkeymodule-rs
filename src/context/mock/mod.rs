@@ -1,7 +1,4 @@
-use crate::logging::ValkeyLogLevel;
-use crate::{Context, ValkeyResult, ValkeyString};
-
-/// Mockable interface for [`Context`].
+/// Mockable trait abstractions over [`Context`].
 ///
 /// This trait mirrors the `Context` methods so that module logic can be
 /// unit-tested without a running Valkey server.
@@ -11,6 +8,17 @@ use crate::{Context, ValkeyResult, ValkeyString};
 ///
 /// The corresponding `MockContext` type is only exported when compiling tests or
 /// when the crate is built with the `test-mocks` feature enabled.
+///
+/// This module mirrors the layout of [`crate::context`]: each submodule here
+/// corresponds to the like-named file under `src/context/`, and exposes a
+/// trait (plus a `mockall`-generated mock) covering that file's methods on
+/// `Context`. For example, `mock::client` mirrors `context::client`.
+///
+/// The trait in this file, [`ContextInterface`], covers the core `Context`
+/// methods (logging, string creation, `CONFIG GET`). Submodule traits scope
+/// their own method sets so handlers can depend on only the surface they
+/// actually use.
+
 ///
 /// # Examples
 ///
@@ -32,6 +40,11 @@ use crate::{Context, ValkeyResult, ValkeyString};
 /// emit_notice(&ctx);
 /// # }
 /// ```
+pub mod client;
+
+use crate::logging::ValkeyLogLevel;
+use crate::{Context, ValkeyResult, ValkeyString};
+
 #[cfg_attr(any(test, feature = "test-mocks"), mockall::automock)]
 pub trait ContextInterface {
     fn log(&self, _level: ValkeyLogLevel, _message: &str) {}
@@ -61,7 +74,7 @@ impl ContextInterface for Context {
     }
 
     fn config_get(&self, config: &str) -> ValkeyResult<ValkeyString> {
-        Context::config_get(&self, config.into())
+        Context::config_get(self, config.into())
     }
 }
 
