@@ -6,8 +6,8 @@ use valkey_module::server_events::{
     MasterLinkChangeSubevent, PersistenceSubevent, ReplAsyncLoadSubevent, ReplicaChangeSubevent,
 };
 use valkey_module::{
-    server_events::FlushSubevent, valkey_module, Context, ModuleOptions, Status, ValkeyResult,
-    ValkeyString, ValkeyValue,
+    server_events::FlushSubevent, valkey_module, Context, ContextTrait, ModuleOptions, Status,
+    ValkeyResult, ValkeyString, ValkeyValue,
 };
 use valkey_module_macros::{
     client_changed_event_handler, config_changed_event_handler, cron_event_handler,
@@ -306,7 +306,7 @@ fn num_event_loop_after_sleep(_ctx: &Context, _args: Vec<ValkeyString>) -> Valke
     ))
 }
 
-fn init(ctx: &Context, _args: &[ValkeyString]) -> Status {
+fn init(ctx: &impl ContextTrait, _args: &[ValkeyString]) -> Status {
     // https://valkey.io/topics/modules-api-ref/#ValkeyModule_SetModuleOptions
     // otherwise you get:  Skipping diskless-load because there are modules that are not aware of async replication.
     // needed for repl_async_load_event_handler
@@ -340,4 +340,22 @@ valkey_module! {
         ["num_event_loop_before_sleep", num_event_loop_before_sleep, "readonly", 0, 0, 0],
         ["num_event_loop_after_sleep", num_event_loop_after_sleep, "readonly", 0, 0, 0],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::MockContext;
+
+    #[test]
+    fn test_init_sets_module_options() {
+        let mut ctx = MockContext::new();
+        ctx.expect_set_module_options()
+            .withf(|opts| opts.bits() == ModuleOptions::HANDLE_REPL_ASYNC_LOAD.bits())
+            .times(1)
+            .return_const(());
+
+        let status = init(&ctx, &[]);
+        assert!(matches!(status, Status::Ok));
+    }
 }
