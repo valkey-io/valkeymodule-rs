@@ -35,6 +35,7 @@ pub mod commands;
 pub mod filter;
 pub mod info;
 pub mod keys_cursor;
+pub mod mock;
 pub mod server_events;
 pub mod thread_safe;
 
