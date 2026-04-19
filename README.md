@@ -61,3 +61,42 @@ default = []
 ```
 cargo build --release --features use-redismodule-api
 ```
+
+3. Mock contexts for unit tests
+
+`Context`, `CommandFilterCtx`, and `InfoContext` are thin wrappers around raw pointers that Valkey hands to the module at runtime. To unit-test module logic without a live Valkey server, `valkey-module` exposes three trait abstractions — `ContextTrait`, `CommandFilterCtxTrait`, `InfoContextTrait` — each implemented for the concrete wrapper, plus `mockall`-generated mocks behind the `test-mocks` feature.
+
+The traits are always available; only the `Mock*` types require the feature. Add `valkey-module` as a `dev-dependency` with `test-mocks` enabled:
+
+```toml
+[dev-dependencies]
+valkey-module = { version = "...", features = ["test-mocks"] }
+mockall = "0.14"
+```
+
+Write your command / filter / info handler against the trait (`&impl ContextTrait`) instead of the concrete `&Context`. Monomorphization still produces a `fn(&Context, ...)` for the `valkey_module!` macro to register.
+
+```rust
+use valkey_module::{ContextTrait, ValkeyResult, ValkeyString, ValkeyValue};
+
+fn get_client_id(ctx: &impl ContextTrait, _args: Vec<ValkeyString>) -> ValkeyResult {
+    Ok((ctx.get_client_id() as i64).into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::MockContext;
+
+    #[test]
+    fn returns_client_id_from_context() {
+        let mut ctx = MockContext::new();
+        ctx.expect_get_client_id().times(1).returning(|| 42);
+
+        let reply = get_client_id(&ctx, vec![]).unwrap();
+        assert_eq!(reply, ValkeyValue::Integer(42));
+    }
+}
+```
+
+`MockCommandFilterCtx` and `MockInfoContext` follow the same pattern. See `examples/client.rs`, `examples/preload.rs`, `examples/server_events.rs`, and `examples/info_handler_struct.rs` for full working tests.

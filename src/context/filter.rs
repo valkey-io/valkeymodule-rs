@@ -65,7 +65,7 @@ impl CommandFilterCtx {
     }
 
     /// wrapper to get Vector of all args minus the command (0th arg)
-    pub fn get_all_args_wo_cmd(&self) -> Vec<&str> {
+    pub fn get_all_args_wo_cmd<'a>(&self) -> Vec<&'a str> {
         let mut output = Vec::new();
         for pos in 1..self.args_count() {
             match self.arg_get_try_as_str(pos) {
