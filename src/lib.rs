@@ -33,6 +33,7 @@ pub use crate::configuration::EnumConfigurationValue;
 pub use crate::context::call_reply::FutureCallReply;
 pub use crate::context::call_reply::{CallReply, CallResult, ErrorReply, PromiseCallReply};
 pub use crate::context::commands;
+pub use crate::context::info::ServerInfo;
 pub use crate::context::keys_cursor::KeysCursor;
 /// Trait abstraction over [`CommandFilterCtx`] used to make filter logic
 /// mockable in tests.
