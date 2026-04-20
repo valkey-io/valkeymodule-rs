@@ -414,6 +414,16 @@ fn test_context_mutex() -> Result<()> {
     let res: String = redis::cmd("get_static_data_on_thread").query(&mut con)?;
     assert_eq!(&res, "foo");
 
+    let res: String = redis::cmd("info_field_on_thread")
+        .arg(&["server", "redis_version"])
+        .query(&mut con)?;
+    assert!(!res.is_empty());
+
+    let res: Option<String> = redis::cmd("info_field_on_thread")
+        .arg(&["server", "no_such_field"])
+        .query(&mut con)?;
+    assert_eq!(res, None);
+
     Ok(())
 }
 

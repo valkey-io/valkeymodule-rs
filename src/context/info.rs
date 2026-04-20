@@ -23,9 +23,8 @@ impl ServerInfo {
     #[must_use]
     pub fn new(section: &str) -> Self {
         let section = CString::new(section).unwrap();
-        let inner = unsafe {
-            raw::RedisModule_GetServerInfo.unwrap()(ptr::null_mut(), section.as_ptr())
-        };
+        let inner =
+            unsafe { raw::RedisModule_GetServerInfo.unwrap()(ptr::null_mut(), section.as_ptr()) };
         Self {
             ctx: ptr::null_mut(),
             inner,
@@ -55,9 +54,8 @@ impl ServerInfo {
     /// for the lifetime of this `ServerInfo`.
     pub fn field_c(&self, field: &str) -> Option<&str> {
         let field = CString::new(field).unwrap();
-        let value = unsafe {
-            raw::RedisModule_ServerInfoGetFieldC.unwrap()(self.inner, field.as_ptr())
-        };
+        let value =
+            unsafe { raw::RedisModule_ServerInfoGetFieldC.unwrap()(self.inner, field.as_ptr()) };
         if value.is_null() {
             None
         } else {
@@ -70,11 +68,7 @@ impl ServerInfo {
         let field = CString::new(field).unwrap();
         let mut err: std::os::raw::c_int = 0;
         let value = unsafe {
-            raw::RedisModule_ServerInfoGetFieldSigned.unwrap()(
-                self.inner,
-                field.as_ptr(),
-                &mut err,
-            )
+            raw::RedisModule_ServerInfoGetFieldSigned.unwrap()(self.inner, field.as_ptr(), &mut err)
         };
         if err != 0 {
             None
@@ -106,11 +100,7 @@ impl ServerInfo {
         let field = CString::new(field).unwrap();
         let mut err: std::os::raw::c_int = 0;
         let value = unsafe {
-            raw::RedisModule_ServerInfoGetFieldDouble.unwrap()(
-                self.inner,
-                field.as_ptr(),
-                &mut err,
-            )
+            raw::RedisModule_ServerInfoGetFieldDouble.unwrap()(self.inner, field.as_ptr(), &mut err)
         };
         if err != 0 {
             None

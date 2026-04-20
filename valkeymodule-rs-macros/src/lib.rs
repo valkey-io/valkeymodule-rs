@@ -606,7 +606,6 @@ pub fn info_section(item: TokenStream) -> TokenStream {
     info_section::info_section(item)
 }
 
-
 /// Proc macro which is set on a function that need to be called whenever a replica change event happened.
 /// The function must accept a [Context] and [ReplicaChangeSubevent].
 /// Example:
