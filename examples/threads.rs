@@ -4,8 +4,8 @@ use std::thread;
 use std::time::Duration;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
-    valkey_module, Context, NextArg, ThreadSafeContext, ValkeyGILGuard, ValkeyResult, ValkeyString,
-    ValkeyValue,
+    valkey_module, Context, NextArg, ServerInfo, ThreadSafeContext, ValkeyError, ValkeyGILGuard,
+    ValkeyResult, ValkeyString, ValkeyValue,
 };
 
 fn threads(_: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -58,6 +58,28 @@ fn get_static_data_on_thread(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyR
     Ok(ValkeyValue::NoReply)
 }
 
+fn info_field_on_thread(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    if args.len() < 3 {
+        return Err(ValkeyError::WrongArity);
+    }
+    let mut args = args.into_iter().skip(1);
+    let section = args.next_str()?.to_owned();
+    let field = args.next_str()?.to_owned();
+
+    let blocked_client = ctx.block_client();
+    let _ = thread::spawn(move || {
+        // `ServerInfo::new` passes a NULL ctx to the Module API, so reading an
+        // INFO field from a background thread does not require acquiring the
+        // GIL via `ThreadSafeContext::lock`.
+        let value = ServerInfo::new(&section).field_c(&field).map(str::to_owned);
+
+        let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
+        thread_ctx.reply(Ok(value.map_or(ValkeyValue::Null, ValkeyValue::BulkString)));
+    });
+
+    Ok(ValkeyValue::NoReply)
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -70,5 +92,6 @@ valkey_module! {
         ["set_static_data", set_static_data, "", 0, 0, 0],
         ["get_static_data", get_static_data, "", 0, 0, 0],
         ["get_static_data_on_thread", get_static_data_on_thread, "", 0, 0, 0],
+        ["info_field_on_thread", info_field_on_thread, "", 0, 0, 0],
     ],
 }
