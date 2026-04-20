@@ -93,7 +93,7 @@ mod tests {
         let mut ctx = MockContext::new();
         ctx.expect_get_client_id().times(1).returning(|| 42);
 
-        let reply = get_client_id(&ctx, vec![]).unwrap();
+        let reply = get_client_id(&ctx, vec![ValkeyString::create_for_test("")]).unwrap();
         assert_eq!(reply, ValkeyValue::Integer(42));
     }
 }

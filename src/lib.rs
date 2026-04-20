@@ -11,6 +11,8 @@ pub mod native_types;
 pub mod raw;
 pub mod rediserror;
 mod redismodule;
+#[cfg(any(test, feature = "test-mocks"))]
+mod redismodule_test;
 pub mod redisraw;
 pub mod redisvalue;
 pub mod stream;

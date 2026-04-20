@@ -130,12 +130,7 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ptr::null_mut;
     use valkey_module::{MockContext, RedisModuleClientInfo};
-
-    fn null_valkey_string() -> ValkeyString {
-        ValkeyString::from_redis_module_string(null_mut(), null_mut())
-    }
 
     fn module_client_info(id: u64) -> RedisModuleClientInfo {
         RedisModuleClientInfo {
@@ -189,7 +184,8 @@ mod tests {
     #[test]
     fn test_set_client_name_wrong_arity() {
         let ctx = MockContext::new();
-        let err = set_client_name(&ctx, vec![null_valkey_string()]).unwrap_err();
+        let err = set_client_name(&ctx, vec![ValkeyString::create_for_test("client.set_name")])
+            .unwrap_err();
         assert!(matches!(err, ValkeyError::WrongArity));
     }
 
@@ -199,13 +195,25 @@ mod tests {
         ctx.expect_log_notice().times(1).return_const(());
         ctx.expect_set_client_name_by_id()
             .times(1)
-            .returning(|_, _| Status::Ok);
+            .returning(|_, client_name| {
+                assert_eq!(client_name.try_as_str().unwrap(), "my-client");
+                Status::Ok
+            });
         ctx.expect_set_client_name()
             .times(1)
-            .returning(|_| Status::Ok);
+            .returning(|client_name| {
+                assert_eq!(client_name.try_as_str().unwrap(), "my-client");
+                Status::Ok
+            });
 
-        let reply =
-            set_client_name(&ctx, vec![null_valkey_string(), null_valkey_string()]).unwrap();
+        let reply = set_client_name(
+            &ctx,
+            vec![
+                ValkeyString::create_for_test("client.set_name"),
+                ValkeyString::create_for_test("my-client"),
+            ],
+        )
+        .unwrap();
         assert_eq!(reply, ValkeyValue::Integer(Status::Ok as i64));
     }
 
@@ -252,7 +260,7 @@ mod tests {
     #[test]
     fn test_deauth_client_by_id_wrong_arity() {
         let ctx = MockContext::new();
-        let err = deauth_client_by_id(&ctx, vec![null_valkey_string()]).unwrap_err();
+        let err = deauth_client_by_id(&ctx, vec![ValkeyString::create_for_test("")]).unwrap_err();
         assert!(matches!(err, ValkeyError::WrongArity));
     }
 
@@ -265,7 +273,7 @@ mod tests {
     #[test]
     fn test_config_get_wrong_arity() {
         let ctx = MockContext::new();
-        let err = config_get(&ctx, vec![null_valkey_string()]).unwrap_err();
+        let err = config_get(&ctx, vec![ValkeyString::create_for_test("")]).unwrap_err();
         assert!(matches!(err, ValkeyError::WrongArity));
     }
 
