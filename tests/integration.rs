@@ -570,13 +570,25 @@ fn test_client_change_event() -> Result<()> {
     let con2: redis::Connection =
         get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    let conn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
+    let wait_for_num_connects = |con: &mut redis::Connection, expected: i64| -> Result<i64> {
+        let mut last = -1;
+        for _ in 0..20 {
+            last = redis::cmd("num_connects").query(con)?;
+            if last == expected {
+                return Ok(last);
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+        Ok(last)
+    };
+
+    let conn_res = wait_for_num_connects(&mut con, 2)?;
     println!("Connection result: {}", conn_res);
     assert_eq!(conn_res, 2);
 
     drop(con2);
 
-    let disconn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
+    let disconn_res = wait_for_num_connects(&mut con, 1)?;
     println!("Disconnection result: {}", disconn_res);
     assert_eq!(disconn_res, 1);
 

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::{LazyLock, RwLock};
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::{valkey_module, Context, Status, ValkeyString};
+use valkey_module::{valkey_module, Context, ContextTrait, Status, ValkeyString};
 use valkey_module_macros::cron_event_handler;
 
 // struct to hold environment-specific configs, based on the environment name passed in via MODULE LOAD
@@ -86,7 +86,7 @@ fn cron_event_handler(ctx: &Context, _hz: u64) {
     }
 }
 
-fn initialize(ctx: &Context, args: &[ValkeyString]) -> Status {
+fn initialize(ctx: &impl ContextTrait, args: &[ValkeyString]) -> Status {
     // if arg passed in MODULE LOAD use it to set env_name
     let env_name = match args.get(0) {
         Some(tmp) => tmp.to_string(),
@@ -112,4 +112,42 @@ valkey_module! {
     init: initialize,
     commands: [
     ],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use valkey_module::MockContext;
+
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn initialize_uses_dev_environment_config() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let mut ctx = MockContext::new();
+        ctx.expect_log_notice().times(1).return_const(());
+        let args = vec![ValkeyString::create_for_test("dev")];
+
+        let status = initialize(&ctx, &args);
+        let config = ENV_CONFIG.read().unwrap();
+
+        assert_eq!(status, Status::Ok);
+        assert_eq!(config.cron_fn1_fn2, "*/5 * * * * * *");
+        assert_eq!(config.cron_fn3, "*/10 * * * * * *");
+    }
+
+    #[test]
+    fn initialize_uses_default_config_without_args() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        let mut ctx = MockContext::new();
+        ctx.expect_log_notice().times(1).return_const(());
+
+        let test = initialize(&ctx, &[]);
+        let config = ENV_CONFIG.read().unwrap();
+
+        assert_eq!(test, Status::Ok);
+        assert_eq!(config.cron_fn1_fn2, "*/15 * * * * * *");
+        assert_eq!(config.cron_fn3, "*/30 * * * * * *");
+    }
 }

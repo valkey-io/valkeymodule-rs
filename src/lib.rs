@@ -11,6 +11,8 @@ pub mod native_types;
 pub mod raw;
 pub mod rediserror;
 mod redismodule;
+#[cfg(any(test, feature = "test-mocks"))]
+mod redismodule_test;
 pub mod redisraw;
 pub mod redisvalue;
 pub mod stream;
@@ -35,6 +37,26 @@ pub use crate::context::call_reply::{CallReply, CallResult, ErrorReply, PromiseC
 pub use crate::context::commands;
 pub use crate::context::info::ServerInfo;
 pub use crate::context::keys_cursor::KeysCursor;
+/// Trait abstraction over [`CommandFilterCtx`] used to make filter logic
+/// mockable in tests.
+pub use crate::context::mock::CommandFilterCtxTrait;
+/// Trait abstraction over [`Context`] used to make module logic mockable in tests.
+pub use crate::context::mock::ContextTrait;
+/// Trait abstraction over [`InfoContext`] used to make info-handler logic
+/// mockable in tests.
+pub use crate::context::mock::InfoContextTrait;
+#[cfg(any(test, feature = "test-mocks"))]
+/// Mock generated from [`CommandFilterCtxTrait`]. Available in crate tests and
+/// with the `test-mocks` feature for downstream users.
+pub use crate::context::mock::MockCommandFilterCtx;
+#[cfg(any(test, feature = "test-mocks"))]
+/// Mock generated from [`ContextTrait`]. Available in crate tests and with
+/// the `test-mocks` feature for downstream users.
+pub use crate::context::mock::MockContext;
+#[cfg(any(test, feature = "test-mocks"))]
+/// Mock generated from [`InfoContextTrait`]. Available in crate tests and
+/// with the `test-mocks` feature for downstream users.
+pub use crate::context::mock::MockInfoContext;
 pub use crate::context::server_events;
 pub use crate::context::AclPermissions;
 #[cfg(all(any(

@@ -4,8 +4,9 @@ use std::sync::LazyLock;
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::server_events::ClientChangeSubevent;
 use valkey_module::{
-    valkey_module, CommandFilterCtx, Context, RedisModuleCommandFilterCtx, Status, ValkeyError,
-    ValkeyString, AUTH_HANDLED, AUTH_NOT_HANDLED, VALKEYMODULE_CMDFILTER_NOSELF,
+    valkey_module, CommandFilterCtx, CommandFilterCtxTrait, Context, RedisModuleCommandFilterCtx,
+    Status, ValkeyError, ValkeyString, AUTH_HANDLED, AUTH_NOT_HANDLED,
+    VALKEYMODULE_CMDFILTER_NOSELF,
 };
 use valkey_module_macros::client_changed_event_handler;
 
@@ -54,16 +55,18 @@ fn auth_callback(
     Ok(AUTH_NOT_HANDLED)
 }
 
+fn filter1_logic(ctx: &impl CommandFilterCtxTrait) -> String {
+    let client_id = ctx.get_client_id();
+    match CLIENT_ID_USERNAME_MAP.get(&client_id) {
+        Some(tmp) => tmp.clone(),
+        None => "default".to_string(),
+    }
+}
+
 fn filter1_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     // registered via valkey_module! macro
     // making sure that two modules can have the same filter fn name
-    let cf_ctx = CommandFilterCtx::new(ctx);
-    let client_id = cf_ctx.get_client_id();
-    // lookup username by client_id
-    let _username = match CLIENT_ID_USERNAME_MAP.get(&client_id) {
-        Some(tmp) => tmp.clone(),
-        None => "default".to_string(),
-    };
+    let _username = filter1_logic(&CommandFilterCtx::new(ctx));
     // do something with the username
 }
 
@@ -84,4 +87,34 @@ valkey_module! {
         [filter1_fn, VALKEYMODULE_CMDFILTER_NOSELF],
         [filter2_fn, VALKEYMODULE_CMDFILTER_NOSELF]
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::MockCommandFilterCtx;
+
+    #[test]
+    fn filter1_uses_default_username_when_client_is_unknown() {
+        let mut ctx = MockCommandFilterCtx::new();
+        let client_id = 100_u64;
+        CLIENT_ID_USERNAME_MAP.remove(&client_id);
+
+        ctx.expect_get_client_id().times(1).return_const(client_id);
+
+        assert_eq!(filter1_logic(&ctx), "default");
+    }
+
+    #[test]
+    fn filter1_uses_mapped_username_when_client_is_known() {
+        let mut ctx = MockCommandFilterCtx::new();
+        let client_id = 200_u64;
+        CLIENT_ID_USERNAME_MAP.insert(client_id, "alice".to_string());
+
+        ctx.expect_get_client_id().times(1).return_const(client_id);
+
+        assert_eq!(filter1_logic(&ctx), "alice");
+
+        CLIENT_ID_USERNAME_MAP.remove(&client_id);
+    }
 }
