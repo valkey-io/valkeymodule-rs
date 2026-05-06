@@ -287,6 +287,32 @@ fn test_stream_reader() -> Result<()> {
 }
 
 #[test]
+fn test_server_time() -> Result<()> {
+    let port: u16 = 6530;
+    let _guards = vec![start_valkey_server_with_module("server_time", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Wall-clock time should be close to the host's clock.
+    let host_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as i64;
+    let server_ms: i64 = redis::cmd("server_time.unix_ms").query(&mut con)?;
+    assert!(
+        (server_ms - host_ms).abs() < 5_000,
+        "server unix_ms ({server_ms}) drifted from host ({host_ms}) by >5s"
+    );
+
+    // Monotonic clock advances strictly across two reads.
+    let m1: i64 = redis::cmd("server_time.monotonic_us").query(&mut con)?;
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    let m2: i64 = redis::cmd("server_time.monotonic_us").query(&mut con)?;
+    assert!(m2 > m1, "monotonic clock did not advance: {m1} -> {m2}");
+
+    Ok(())
+}
+
+#[test]
 fn test_call() -> Result<()> {
     let port: u16 = 6488;
     let _guards =
