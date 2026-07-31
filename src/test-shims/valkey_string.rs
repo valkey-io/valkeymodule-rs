@@ -5,6 +5,8 @@ use std::ptr::null_mut;
 use std::str::FromStr;
 use std::sync::Arc;
 
+type ShimString = Vec<u8>;
+
 impl ValkeyString {
     /// Creates a binary-safe `ValkeyString` for tests that run without a Valkey server.
     ///
@@ -12,11 +14,10 @@ impl ValkeyString {
     /// used by the Valkey module API. The installed shims manage that allocation until the last
     /// owning `ValkeyString` is dropped.
     pub fn test<T: Into<Vec<u8>>>(data: T) -> ValkeyString {
-        // Install the process-wide callbacks before constructing a value that depends on them.
         super::setup_test_shims();
         let inner = into_raw_string(data.into());
         // The new allocation already represents one owner, so do not retain it again here.
-        ValkeyString::from_redis_module_string(null_mut(), inner)
+        Self::from_redis_module_string(null_mut(), inner)
     }
 }
 
@@ -44,14 +45,13 @@ pub(super) extern "C" fn free_string(
     _ctx: *mut raw::RedisModuleCtx,
     string: *mut raw::RedisModuleString,
 ) {
-    // Match the defensive behavior expected by callers that may free a null value.
     if string.is_null() {
         return;
     }
 
     // SAFETY: The pointer came from `Arc::into_raw`, and each owner releases it exactly once.
     unsafe {
-        Arc::decrement_strong_count(string.cast::<Vec<u8>>());
+        Arc::decrement_strong_count(string.cast::<ShimString>());
     }
 }
 
@@ -63,14 +63,13 @@ pub(super) extern "C" fn retain_string(
     _ctx: *mut raw::RedisModuleCtx,
     string: *mut raw::RedisModuleString,
 ) {
-    // Retaining a null pointer has no useful effect and must not touch the Arc APIs.
     if string.is_null() {
         return;
     }
 
     // SAFETY: The pointer came from `Arc::into_raw` and still has a live strong reference.
     unsafe {
-        Arc::increment_strong_count(string.cast::<Vec<u8>>());
+        Arc::increment_strong_count(string.cast::<ShimString>());
     }
 }
 
@@ -79,7 +78,6 @@ pub(super) extern "C" fn string_to_longlong(
     string: *const raw::RedisModuleString,
     value: *mut i64,
 ) -> libc::c_int {
-    // Keep status and output-pointer handling consistent across numeric conversions.
     parse_string(string, value)
 }
 
@@ -88,7 +86,6 @@ pub(super) extern "C" fn string_to_ulonglong(
     string: *const raw::RedisModuleString,
     value: *mut libc::c_ulonglong,
 ) -> libc::c_int {
-    // Negative, overflowing, and otherwise invalid inputs are rejected by unsigned parsing.
     parse_string(string, value)
 }
 
@@ -97,7 +94,6 @@ pub(super) extern "C" fn string_to_double(
     string: *const raw::RedisModuleString,
     value: *mut f64,
 ) -> libc::c_int {
-    // Use the same conversion path as the integer callbacks.
     parse_string(string, value)
 }
 
@@ -111,8 +107,7 @@ pub(super) extern "C" fn create_string_from_string(
 ) -> *mut raw::RedisModuleString {
     // SAFETY: `string` is expected to be an opaque pointer created by this shim.
     let data = unsafe { string_data(string) };
-    // Clone the bytes so the returned string can be owned and dropped independently.
-    into_raw_string(data.clone())
+    into_raw_string(data.to_vec())
 }
 
 /// Compares two shim-backed strings byte by byte.
@@ -140,11 +135,9 @@ pub(super) extern "C" fn string_compare(
 fn parse_string<T: FromStr>(string: *const raw::RedisModuleString, value: *mut T) -> libc::c_int {
     // SAFETY: Numeric callbacks receive pointers produced by `into_raw_string`.
     let data = unsafe { string_data(string) };
-    // Numeric representations accepted by Rust parsers must first be valid UTF-8.
     let Ok(data) = std::str::from_utf8(data) else {
         return raw::Status::Err as libc::c_int;
     };
-    // Parsing failure maps directly to the module API's error status.
     let Ok(data) = data.parse::<T>() else {
         return raw::Status::Err as libc::c_int;
     };
@@ -160,15 +153,15 @@ fn parse_string<T: FromStr>(string: *const raw::RedisModuleString, value: *mut T
 ///
 /// # Safety
 ///
-/// `string` must be non-null, aligned, and point to a live `Vec<u8>` previously passed through
-/// `Arc::into_raw`. The returned reference must not outlive that allocation.
-unsafe fn string_data<'a>(string: *const raw::RedisModuleString) -> &'a Vec<u8> {
+/// `string` must be non-null, aligned, and point to a live `ShimString` previously passed through
+/// `Arc::into_raw`. The returned slice must not outlive that allocation.
+unsafe fn string_data<'a>(string: *const raw::RedisModuleString) -> &'a [u8] {
     // SAFETY: The caller guarantees the pointer provenance, alignment, and lifetime above.
-    unsafe { &*string.cast::<Vec<u8>>() }
+    unsafe { (&*string.cast::<ShimString>()).as_slice() }
 }
 
 /// Allocates an independently owned byte vector and erases its type for the module API.
-fn into_raw_string(data: Vec<u8>) -> *mut raw::RedisModuleString {
+fn into_raw_string(data: ShimString) -> *mut raw::RedisModuleString {
     // Transfer one Arc strong reference into the raw pointer; `free_string` releases it later.
     Arc::into_raw(Arc::new(data))
         .cast_mut()
