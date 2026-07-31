@@ -15,6 +15,10 @@ pub mod redisraw;
 pub mod redisvalue;
 pub mod stream;
 
+#[cfg(any(test, feature = "test-shims"))]
+#[path = "test-shims/mod.rs"]
+pub mod test_shims;
+
 pub mod configuration;
 mod context;
 pub mod key;

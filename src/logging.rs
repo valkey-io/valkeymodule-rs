@@ -33,7 +33,7 @@ pub(crate) fn log_internal<L: Into<ValkeyLogLevel>>(
     level: L,
     message: &str,
 ) {
-    if cfg!(test) {
+    if cfg!(any(test, feature = "test-shims")) {
         return;
     }
 
@@ -48,7 +48,7 @@ pub(crate) fn log_internal<L: Into<ValkeyLogLevel>>(
 /// to the caller since cannot load or save the data for some critical reason.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn log_io_error(io: *mut raw::RedisModuleIO, level: ValkeyLogLevel, message: &str) {
-    if cfg!(test) {
+    if cfg!(any(test, feature = "test-shims")) {
         return;
     }
     let level = CString::new(level.as_ref()).unwrap();
