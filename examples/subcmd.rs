@@ -37,7 +37,11 @@ fn help_subcmd() -> ValkeyResult {
 
 // custom info subcommand, can be called with `cmd1 info`
 fn info_subcmd(args: Vec<ValkeyString>) -> ValkeyResult {
-    let section = args.into_iter().next_str().unwrap_or("all");
+    let section = args
+        .first()
+        .and_then(|arg| arg.try_as_str().ok())
+        .unwrap_or("all")
+        .to_owned();
 
     let sections = [
         ("key", ValkeyValue::SimpleString("value".into())),
@@ -116,4 +120,45 @@ valkey_module! {
     commands: [
         ["cmd1", cmd1, "", 0, 0, 0],
     ],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_args(args: &[&str]) -> Vec<ValkeyString> {
+        args.iter().map(|arg| ValkeyString::test(*arg)).collect()
+    }
+
+    #[test]
+    fn routes_nested_subcommands_case_insensitively() {
+        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "S1", "s1", "S1"]))
+            .expect("nested subcommand should succeed");
+
+        assert_eq!(result, ValkeyValue::BulkString("sub111".into()));
+    }
+
+    #[test]
+    fn rejects_unknown_top_level_subcommand() {
+        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "unknown"]));
+
+        assert!(matches!(
+            result,
+            Err(ValkeyError::Str("invalid subcommand"))
+        ));
+    }
+
+    #[test]
+    fn filters_info_to_requested_section() {
+        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "info", "integer"]))
+            .expect("known info section should succeed");
+
+        assert_eq!(
+            result,
+            ValkeyValue::OrderedMap(BTreeMap::from([(
+                ValkeyValueKey::String("integer".into()),
+                ValkeyValue::Integer(1),
+            )]))
+        );
+    }
 }

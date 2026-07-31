@@ -30,3 +30,43 @@ valkey_module! {
         ["hello.mul", hello_mul, "", 0, 0, 0],
     ],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::ValkeyValue;
+
+    fn test_args(args: &[&str]) -> Vec<ValkeyString> {
+        args.iter().map(|arg| ValkeyString::test(*arg)).collect()
+    }
+
+    #[test]
+    fn multiplies_integer_arguments() {
+        let result = hello_mul(&Context::dummy(), test_args(&["hello.mul", "2", "3", "4"]))
+            .expect("valid integers should be multiplied");
+
+        assert_eq!(
+            result,
+            ValkeyValue::Array(vec![
+                ValkeyValue::Integer(2),
+                ValkeyValue::Integer(3),
+                ValkeyValue::Integer(4),
+                ValkeyValue::Integer(24),
+            ])
+        );
+    }
+
+    #[test]
+    fn rejects_missing_arguments() {
+        let result = hello_mul(&Context::dummy(), test_args(&["hello.mul"]));
+
+        assert!(matches!(result, Err(ValkeyError::WrongArity)));
+    }
+
+    #[test]
+    fn rejects_non_integer_arguments() {
+        let result = hello_mul(&Context::dummy(), test_args(&["hello.mul", "2", "invalid"]));
+
+        assert!(matches!(result, Err(ValkeyError::Str(_))));
+    }
+}

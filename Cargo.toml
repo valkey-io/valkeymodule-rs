@@ -179,7 +179,7 @@ anyhow = "1"
 redis = "0.28"
 lazy_static = "1"
 valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.4" }
-valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"] }
+valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2", "test-shims"] }
 cron = "0.15.0"
 chrono = "0.4.41"
 dashmap = "6.1.0"
