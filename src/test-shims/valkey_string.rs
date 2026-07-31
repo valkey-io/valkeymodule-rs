@@ -174,3 +174,137 @@ fn into_raw_string(data: Vec<u8>) -> *mut raw::RedisModuleString {
         .cast_mut()
         .cast::<raw::RedisModuleString>()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructs_reads_and_drops_string() {
+        let string = ValkeyString::test("value");
+
+        assert_eq!(string.as_slice(), b"value");
+        assert_eq!(string.len(), 5);
+
+        drop(string);
+    }
+
+    #[test]
+    fn preserves_arbitrary_binary_data() {
+        let bytes = vec![0x00, 0xff, b'a'];
+        let string = ValkeyString::test(bytes.clone());
+
+        assert_eq!(string.as_slice(), bytes);
+    }
+
+    #[test]
+    fn reports_multibyte_utf8_length_in_bytes() {
+        let data = "é日";
+        let string = ValkeyString::test(data);
+
+        assert_eq!(string.len(), data.len());
+        assert_eq!(string.as_slice(), data.as_bytes());
+    }
+
+    #[test]
+    fn retained_string_survives_original_drop() {
+        let original = ValkeyString::test("value");
+        let retained = ValkeyString::new(None, original.inner);
+
+        drop(original);
+
+        assert_eq!(retained.as_slice(), b"value");
+    }
+
+    #[test]
+    fn original_string_survives_retained_drop() {
+        let original = ValkeyString::test("value");
+        let retained = ValkeyString::new(None, original.inner);
+
+        drop(retained);
+
+        assert_eq!(original.as_slice(), b"value");
+    }
+
+    #[test]
+    fn clone_has_independent_allocation() {
+        let original = ValkeyString::test("value");
+        let cloned = original.clone();
+
+        assert_ne!(original.inner, cloned.inner);
+        drop(original);
+
+        assert_eq!(cloned.as_slice(), b"value");
+    }
+
+    #[test]
+    fn compares_strings_by_binary_value() {
+        let lower = ValkeyString::test([0x00, 0xff]);
+        let equal = ValkeyString::test([0x00, 0xff]);
+        let greater = ValkeyString::test([0x01]);
+
+        assert_eq!(lower, equal);
+        assert!(lower < greater);
+        assert!(greater > lower);
+    }
+
+    #[test]
+    fn parses_signed_integer() {
+        let string = ValkeyString::test("-42");
+
+        assert_eq!(string.parse_integer().expect("integer should parse"), -42);
+    }
+
+    #[test]
+    fn parses_full_unsigned_integer_range() {
+        let string = ValkeyString::test(u64::MAX.to_string());
+        let mut value = 0;
+
+        let status =
+            unsafe { raw::RedisModule_StringToULongLong.unwrap()(string.inner, &mut value) };
+
+        assert_eq!(status, raw::Status::Ok as libc::c_int);
+        assert_eq!(value, u64::MAX);
+    }
+
+    #[test]
+    fn parses_double() {
+        let string = ValkeyString::test("42.5");
+
+        assert_eq!(string.parse_float().expect("double should parse"), 42.5);
+    }
+
+    #[test]
+    fn parse_failure_leaves_output_unchanged() {
+        let string = ValkeyString::test([0xff]);
+        let mut value = 7;
+
+        let status =
+            unsafe { raw::RedisModule_StringToLongLong.unwrap()(string.inner, &mut value) };
+
+        assert_eq!(status, raw::Status::Err as libc::c_int);
+        assert_eq!(value, 7);
+    }
+
+    #[test]
+    fn invalid_numeric_syntax_leaves_output_unchanged() {
+        let string = ValkeyString::test("not-a-number");
+        let mut value = 7;
+
+        let status =
+            unsafe { raw::RedisModule_StringToLongLong.unwrap()(string.inner, &mut value) };
+
+        assert_eq!(status, raw::Status::Err as libc::c_int);
+        assert_eq!(value, 7);
+    }
+
+    #[test]
+    fn free_string_accepts_null() {
+        free_string(null_mut(), null_mut());
+    }
+
+    #[test]
+    fn retain_string_accepts_null() {
+        retain_string(null_mut(), null_mut());
+    }
+}
