@@ -341,3 +341,15 @@ valkey_module! {
         ["num_event_loop_after_sleep", num_event_loop_after_sleep, "readonly", 0, 0, 0],
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initializes_with_module_options_in_test_context() {
+        let context = Context::test();
+
+        assert_eq!(init(&context, &[]), Status::Ok);
+    }
+}

@@ -85,3 +85,26 @@ valkey_module! {
         [filter2_fn, VALKEYMODULE_CMDFILTER_NOSELF]
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authenticates_configured_acl_user() {
+        let mut context = Context::test();
+        context.expect_authenticate_client_with_acl_user("alice");
+        let username = context.create_string("alice");
+        let password = context.create_string("password");
+
+        let result = auth_callback(&context, username, password)
+            .expect("configured ACL user should authenticate");
+        let client_id = context.get_client_id();
+
+        assert_eq!(result, AUTH_HANDLED);
+        let (_, username) = CLIENT_ID_USERNAME_MAP
+            .remove(&client_id)
+            .expect("authenticated client should be tracked");
+        assert_eq!(username, "alice");
+    }
+}

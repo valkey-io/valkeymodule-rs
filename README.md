@@ -47,33 +47,46 @@ For integration tests with `ValkeyAlloc` use this:
 cargo test
 ```
 
-### Testing `ValkeyString` without a Valkey server
+### Unit testing without a Valkey server
 
-The `test-shims` feature provides `ValkeyString::test()`, which creates a binary-safe `ValkeyString` for unit tests without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
+The `test-shims` feature provides `Context::test()` and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
 
 ```toml
 [dev-dependencies]
 valkey-module = { version = "...", features = ["test-shims"] }
 ```
 
-The feature automatically enables the system allocator required by tests. It is available only to development and test builds when configured as a dev dependency.
+The feature automatically enables the system allocator required by tests. When configured as a development dependency, the test-only APIs are available to unit tests without enabling them in production builds.
 
-`ValkeyString::test()` accepts any value implementing `Into<Vec<u8>>`, including strings and arbitrary bytes:
+Use `Context::test()` when a command handler needs a context. Its `expect_*` methods configure values returned by supported context APIs. Use `ValkeyString::test()` to construct binary-safe command arguments; it accepts any value implementing `Into<Vec<u8>>`, including strings and arbitrary bytes:
 
 ```rust
 #[cfg(test)]
 mod tests {
-    use valkey_module::ValkeyString;
+    use valkey_module::{Context, ValkeyString};
 
     #[test]
-    fn creates_strings_without_valkey() {
+    fn uses_test_context_and_strings_without_valkey() {
+        let mut context = Context::test();
+        context.expect_get_client_id(42);
+
         let text = ValkeyString::test("hello");
         let binary = ValkeyString::test(vec![0x00, 0xff]);
 
+        assert_eq!(context.get_client_id(), 42);
         assert_eq!(text.as_slice(), b"hello");
         assert_eq!(binary.as_slice(), &[0x00, 0xff]);
     }
 }
+```
+
+The test context currently supports configuring client IDs, client names, client usernames, the current user, ACL-user authentication, and client deauthentication. Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
+
+```rust
+let context = Context::test();
+let value = context.create_string("hello");
+
+assert_eq!(value.as_slice(), b"hello");
 ```
 
 Run these tests normally:
@@ -82,7 +95,7 @@ Run these tests normally:
 cargo test
 ```
 
-The first call installs process-wide test callbacks for string reading, cloning, comparison, numeric parsing, retaining, and freeing. Do not enable or invoke the test shims in code running inside a Valkey process. The setup rejects installation after the real Valkey API has been initialized. APIs without a shim, such as `ValkeyString::create()` and `ValkeyString::append()`, still require a running Valkey server.
+The first call to `Context::test()` or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `ValkeyString::append()`, still require a running server.
 
 ### Redis Compatibility
 

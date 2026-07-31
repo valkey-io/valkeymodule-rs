@@ -48,3 +48,22 @@ valkey_module! {
         ["existing_categories", existing_categories, "write", 0, 0, 0, "read fast admin"],
     ],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_current_user() {
+        let mut context = Context::test();
+        context.expect_get_current_user("alice");
+
+        let result = get_current_user(&context, Vec::new())
+            .expect("configured current user should be returned");
+
+        assert_eq!(
+            result,
+            ValkeyValue::BulkValkeyString(ValkeyString::test("alice"))
+        );
+    }
+}

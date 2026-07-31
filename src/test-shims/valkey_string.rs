@@ -97,6 +97,25 @@ pub(super) extern "C" fn string_to_double(
     parse_string(string, value)
 }
 
+/// Creates a shim-backed module string by copying `len` bytes from `ptr`.
+pub(super) extern "C" fn create_string(
+    _ctx: *mut raw::RedisModuleCtx,
+    ptr: *const c_char,
+    len: usize,
+) -> *mut raw::RedisModuleString {
+    if ptr.is_null() {
+        return if len == 0 {
+            into_raw_string(Vec::new())
+        } else {
+            null_mut()
+        };
+    }
+
+    // SAFETY: The callback contract requires `ptr` to reference at least `len` readable bytes.
+    let data = unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) };
+    into_raw_string(data.to_vec())
+}
+
 /// Creates an independently owned copy of a shim-backed module string.
 ///
 /// This models `RedisModule_CreateStringFromString`, which creates a new string rather than
@@ -188,6 +207,38 @@ mod tests {
         let string = ValkeyString::test(bytes.clone());
 
         assert_eq!(string.as_slice(), bytes);
+    }
+
+    #[test]
+    fn context_creates_string() {
+        let context = crate::Context::test();
+        let data = "é日";
+        let string = context.create_string(data);
+
+        assert_eq!(string.as_slice(), data.as_bytes());
+        assert_eq!(string.len(), data.len());
+    }
+
+    #[test]
+    fn create_string_copies_binary_input() {
+        let data = [0x00, 0xff, b'a'];
+        let inner = create_string(null_mut(), data.as_ptr().cast::<c_char>(), data.len());
+        let string = ValkeyString::from_redis_module_string(null_mut(), inner);
+
+        assert_eq!(string.as_slice(), data);
+    }
+
+    #[test]
+    fn create_string_accepts_null_for_empty_input() {
+        let inner = create_string(null_mut(), std::ptr::null(), 0);
+        let string = ValkeyString::from_redis_module_string(null_mut(), inner);
+
+        assert!(string.is_empty());
+    }
+
+    #[test]
+    fn create_string_rejects_null_for_nonempty_input() {
+        assert!(create_string(null_mut(), std::ptr::null(), 1).is_null());
     }
 
     #[test]
