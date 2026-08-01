@@ -1,6 +1,8 @@
+mod command_filter_ctx;
 mod context;
 mod valkey_string;
 
+pub use command_filter_ctx::TestCommandFilterCtx;
 pub use context::TestContext;
 
 use crate::raw;
@@ -28,7 +30,7 @@ fn setup_test_shims() {
             raw::RedisModule_CreateStringFromString =
                 Some(valkey_string::create_string_from_string);
             raw::RedisModule_StringCompare = Some(valkey_string::string_compare);
-            // context
+            // Context
             raw::RedisModule_GetClientId = Some(context::get_client_id);
             raw::RedisModule_GetClientNameById = Some(context::get_client_name_by_id);
             raw::RedisModule_GetClientUserNameById = Some(context::get_client_username_by_id);
@@ -38,6 +40,18 @@ fn setup_test_shims() {
             raw::RedisModule_SetModuleOptions = Some(context::set_module_options);
             raw::RedisModule_AuthenticateClientWithACLUser =
                 Some(context::authenticate_client_with_acl_user);
+            // CommandFilterCtx
+            raw::RedisModule_CommandFilterArgsCount =
+                Some(command_filter_ctx::command_filter_args_count);
+            raw::RedisModule_CommandFilterArgGet = Some(command_filter_ctx::command_filter_arg_get);
+            raw::RedisModule_CommandFilterArgReplace =
+                Some(command_filter_ctx::command_filter_arg_replace);
+            raw::RedisModule_CommandFilterArgInsert =
+                Some(command_filter_ctx::command_filter_arg_insert);
+            raw::RedisModule_CommandFilterArgDelete =
+                Some(command_filter_ctx::command_filter_arg_delete);
+            raw::RedisModule_CommandFilterGetClientId =
+                Some(command_filter_ctx::command_filter_get_client_id);
         }
     });
 }

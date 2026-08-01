@@ -49,7 +49,7 @@ cargo test
 
 ### Unit testing without a Valkey server
 
-The `test-shims` feature provides `Context::test()` and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
+The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
 
 ```toml
 [dev-dependencies]
@@ -89,13 +89,43 @@ let value = context.create_string("hello");
 assert_eq!(value.as_slice(), b"hello");
 ```
 
+Use `CommandFilterCtx::test()` to create a `TestCommandFilterCtx` for testing command-filter logic. The test wrapper dereferences to `CommandFilterCtx`, so it can be passed directly to a helper that contains the filter behavior:
+
+```rust
+use valkey_module::CommandFilterCtx;
+
+fn rewrite_set(context: &CommandFilterCtx) {
+    if context.args_count() == 3
+        && context.cmd_get_try_as_str() == Ok("SET")
+    {
+        context.arg_replace(1, "new-key");
+    }
+}
+
+let mut context = CommandFilterCtx::test();
+context
+    .expect_args_count(3)
+    .expect_arg_get(0, "SET")
+    .expect_arg_get(1, "key")
+    .expect_arg_get(2, "value")
+    .expect_get_client_id(42);
+
+rewrite_set(&context);
+
+assert_eq!(context.args_count(), 3);
+assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+assert_eq!(context.get_client_id(), 42);
+```
+
+`expect_args_count()` configures the reported number of arguments, while `expect_arg_get()` configures the binary-safe value at an individual position. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
+
 Run these tests normally:
 
 ```sh
 cargo test
 ```
 
-The first call to `Context::test()` or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `ValkeyString::append()`, still require a running server.
+The first call to `Context::test()`, `CommandFilterCtx::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `ValkeyString::append()`, still require a running server.
 
 ### Redis Compatibility
 
