@@ -1,8 +1,11 @@
 use crate::{raw, Context, ValkeyString};
 use std::ops::Deref;
 use std::ptr::null_mut;
+use std::sync::atomic::{AtomicI32, Ordering};
 
 const DEFAULT_CLIENT_ID: u64 = 1;
+
+static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 
 impl Context {
     /// Creates a test context whose API return values can be configured with `expect_*` methods.
@@ -21,6 +24,19 @@ struct ContextData {
     deauthentication_expected: bool,
 }
 
+impl Default for ContextData {
+    fn default() -> Self {
+        Self {
+            client_id: DEFAULT_CLIENT_ID,
+            client_name: None,
+            client_username: None,
+            current_user: None,
+            acl_user: None,
+            deauthentication_expected: false,
+        }
+    }
+}
+
 /// Owns a test-only [`Context`] that can be used without a running Valkey server.
 pub struct TestContext {
     context: Context,
@@ -31,14 +47,7 @@ impl TestContext {
     fn new() -> Self {
         super::setup_test_shims();
 
-        let mut data = Box::new(ContextData {
-            client_id: DEFAULT_CLIENT_ID,
-            client_name: None,
-            client_username: None,
-            current_user: None,
-            acl_user: None,
-            deauthentication_expected: false,
-        });
+        let mut data = Box::new(ContextData::default());
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
         Self {
@@ -78,6 +87,15 @@ impl TestContext {
     /// Configures the username returned by [`Context::get_current_user`].
     pub fn expect_get_current_user<T: Into<Vec<u8>>>(&mut self, current_user: T) -> &mut Self {
         self.data.current_user = Some(current_user.into());
+        self
+    }
+
+    /// Configures the server version returned by the test shim.
+    pub fn expect_get_server_version(&mut self, major: u8, minor: u8, patch: u8) -> &mut Self {
+        let version = (libc::c_int::from(major) << 16)
+            | (libc::c_int::from(minor) << 8)
+            | libc::c_int::from(patch);
+        SERVER_VERSION.store(version, Ordering::Relaxed);
         self
     }
 
@@ -190,6 +208,10 @@ pub(super) extern "C" fn deauthenticate_and_close_client(
 
 /// Accepts module options in tests without applying server-wide behavior.
 pub(super) extern "C" fn set_module_options(_ctx: *mut raw::RedisModuleCtx, _options: libc::c_int) {
+}
+
+pub(super) extern "C" fn get_server_version() -> libc::c_int {
+    SERVER_VERSION.load(Ordering::Relaxed)
 }
 
 pub(super) extern "C" fn authenticate_client_with_acl_user(
@@ -319,6 +341,23 @@ mod tests {
         context.expect_get_current_user("alice");
 
         assert_eq!(context.get_current_user().as_slice(), b"alice");
+    }
+
+    #[test]
+    fn returns_configured_server_version() {
+        let mut context = Context::test();
+        context.expect_get_server_version(8, 1, 2);
+
+        assert_eq!(
+            context
+                .get_server_version()
+                .expect("configured server version should be returned"),
+            raw::Version {
+                major: 8,
+                minor: 1,
+                patch: 2,
+            }
+        );
     }
 
     #[test]

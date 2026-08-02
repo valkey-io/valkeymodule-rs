@@ -21,3 +21,17 @@ valkey_module! {
     preload: preload,
     commands: [],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_configured_server_version() {
+        let mut context = Context::test();
+        context.expect_get_server_version(8, 1, 2);
+        let args = [ValkeyString::test("arg1")];
+
+        assert_eq!(preload(&context, &args), Status::Ok);
+    }
+}

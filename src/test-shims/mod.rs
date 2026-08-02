@@ -38,6 +38,7 @@ fn setup_test_shims() {
             raw::RedisModule_DeauthenticateAndCloseClient =
                 Some(context::deauthenticate_and_close_client);
             raw::RedisModule_SetModuleOptions = Some(context::set_module_options);
+            raw::RedisModule_GetServerVersion = Some(context::get_server_version);
             raw::RedisModule_AuthenticateClientWithACLUser =
                 Some(context::authenticate_client_with_acl_user);
             // CommandFilterCtx

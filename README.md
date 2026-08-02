@@ -68,19 +68,25 @@ mod tests {
     #[test]
     fn uses_test_context_and_strings_without_valkey() {
         let mut context = Context::test();
-        context.expect_get_client_id(42);
+        context
+            .expect_get_client_id(42)
+            .expect_get_server_version(8, 1, 2);
 
         let text = ValkeyString::test("hello");
         let binary = ValkeyString::test(vec![0x00, 0xff]);
+        let version = context
+            .get_server_version()
+            .expect("configured server version should be returned");
 
         assert_eq!(context.get_client_id(), 42);
+        assert_eq!((version.major, version.minor, version.patch), (8, 1, 2));
         assert_eq!(text.as_slice(), b"hello");
         assert_eq!(binary.as_slice(), &[0x00, 0xff]);
     }
 }
 ```
 
-The test context currently supports configuring client IDs, client names, client usernames, the current user, ACL-user authentication, and client deauthentication. Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
+The test context currently supports configuring the server version, client IDs, client names, client usernames, the current user, ACL-user authentication, and client deauthentication. Configure `Context::get_server_version()` with `expect_get_server_version(major, minor, patch)`. Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust
 let context = Context::test();
