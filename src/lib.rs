@@ -1,3 +1,6 @@
+#[cfg(all(feature = "test-shims", not(debug_assertions)))]
+compile_error!("the `test-shims` feature is not supported by release builds");
+
 pub use crate::context::filter::{CommandFilter, CommandFilterCtx};
 pub use crate::context::InfoContext;
 extern crate num_traits;

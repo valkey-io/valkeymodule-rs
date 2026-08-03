@@ -1,5 +1,5 @@
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::utils::get_module_path;
 use anyhow::Context;
@@ -14,6 +14,8 @@ use utils::{
 
 const FAILED_TO_START_SERVER: &str = "failed to start valkey server";
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
+const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
+const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 mod utils;
 
@@ -1910,22 +1912,37 @@ fn test_replica_change_event() -> Result<()> {
         .arg("127.0.0.1")
         .arg(primary_port)
         .query(&mut replica_con)?;
-    // need to wait for replication to establish and event to fire
-    thread::sleep(Duration::from_millis(5000));
-    // check replica change event on the primary
-    let event_count1: i64 = redis::cmd("num_replica_change_events").query(&mut primary_con)?;
-    assert_eq!(event_count1, 1);
+    wait_for_replica_change_events(&mut primary_con, 1)?;
 
     // disable replication
     let _: () = redis::cmd("replicaof")
         .arg("no")
         .arg("one")
         .query(&mut replica_con)?;
-    // check replica change event on the primary
-    let event_count2: i64 = redis::cmd("num_replica_change_events").query(&mut primary_con)?;
-    assert_eq!(event_count2, 2);
+    wait_for_replica_change_events(&mut primary_con, 2)?;
 
     Ok(())
+}
+
+fn wait_for_replica_change_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd("num_replica_change_events").query(con)?;
+        if actual == expected {
+            return Ok(());
+        }
+        if actual > expected {
+            anyhow::bail!("expected {expected} replica change events, but observed {actual}");
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected} replica change events; last observed {actual}"
+            );
+        }
+
+        thread::sleep(EVENT_POLL_INTERVAL);
+    }
 }
 
 #[test]
