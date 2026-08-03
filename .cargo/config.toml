@@ -1,0 +1,31 @@
+[alias]
+test-shims = [
+    "test",
+    "--lib",
+    "--examples",
+    "--no-default-features",
+    "--features",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2,test-shims",
+]
+build-examples = [
+    "build",
+    "--examples",
+    "--no-default-features",
+    "--features",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2",
+]
+test-integration = [
+    "test",
+    "--test",
+    "integration",
+    "--no-default-features",
+    "--features",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2",
+]
+test-docs = [
+    "test",
+    "--doc",
+    "--no-default-features",
+    "--features",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2",
+]
