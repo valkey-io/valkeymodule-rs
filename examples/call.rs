@@ -174,3 +174,28 @@ valkey_module! {
         ["call.blocking_from_detached_ctx", call_blocking_from_detach_ctx, "", 0, 0, 0],
     ],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_creates_string() {
+        let context = Context::test();
+        let data = "test-string";
+
+        let string = context.create_string(data);
+
+        assert_eq!(string.as_slice(), data.as_bytes());
+        assert_eq!(string.len(), data.len());
+    }
+
+    #[test]
+    fn context_creates_empty_string() {
+        let context = Context::test();
+
+        let string = context.create_string("");
+
+        assert!(string.is_empty());
+    }
+}

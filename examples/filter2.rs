@@ -58,13 +58,17 @@ fn filter1_fn(ctx: *mut RedisModuleCommandFilterCtx) {
     // registered via valkey_module! macro
     // making sure that two modules can have the same filter fn name
     let cf_ctx = CommandFilterCtx::new(ctx);
+    let _username = filter_username(&cf_ctx);
+    // do something with the username
+}
+
+fn filter_username(cf_ctx: &CommandFilterCtx) -> String {
     let client_id = cf_ctx.get_client_id();
     // lookup username by client_id
-    let _username = match CLIENT_ID_USERNAME_MAP.get(&client_id) {
+    match CLIENT_ID_USERNAME_MAP.get(&client_id) {
         Some(tmp) => tmp.clone(),
         None => "default".to_string(),
-    };
-    // do something with the username
+    }
 }
 
 fn filter2_fn(_ctx: *mut RedisModuleCommandFilterCtx) {
@@ -84,4 +88,47 @@ valkey_module! {
         [filter1_fn, VALKEYMODULE_CMDFILTER_NOSELF],
         [filter2_fn, VALKEYMODULE_CMDFILTER_NOSELF]
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn authenticates_configured_acl_user() {
+        let mut context = Context::test();
+        context.expect_authenticate_client_with_acl_user("alice");
+        let username = context.create_string("alice");
+        let password = context.create_string("password");
+
+        let result = auth_callback(&context, username, password)
+            .expect("configured ACL user should authenticate");
+        let client_id = context.get_client_id();
+
+        assert_eq!(result, AUTH_HANDLED);
+        let (_, username) = CLIENT_ID_USERNAME_MAP
+            .remove(&client_id)
+            .expect("authenticated client should be tracked");
+        assert_eq!(username, "alice");
+    }
+
+    #[test]
+    fn returns_username_for_command_filter_client() {
+        let client_id = 42;
+        CLIENT_ID_USERNAME_MAP.insert(client_id, "alice".to_string());
+        let mut context = CommandFilterCtx::test();
+        context.expect_get_client_id(client_id);
+
+        assert_eq!(filter_username(&context), "alice");
+
+        CLIENT_ID_USERNAME_MAP.remove(&client_id);
+    }
+
+    #[test]
+    fn defaults_username_for_unknown_command_filter_client() {
+        let mut context = CommandFilterCtx::test();
+        context.expect_get_client_id(99);
+
+        assert_eq!(filter_username(&context), "default");
+    }
 }

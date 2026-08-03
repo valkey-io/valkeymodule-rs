@@ -58,3 +58,27 @@ valkey_module! {
         ["test_helper.err", test_helper_err, "", 0, 0, 0],
     ],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::ValkeyValue;
+
+    #[test]
+    fn returns_server_version_from_test_context() {
+        let mut context = Context::test();
+        context.expect_get_server_version(8, 1, 2);
+
+        let result = test_helper_version(&context, Vec::new())
+            .expect("configured server version should be returned");
+
+        assert_eq!(
+            result,
+            ValkeyValue::Array(vec![
+                ValkeyValue::Integer(8),
+                ValkeyValue::Integer(1),
+                ValkeyValue::Integer(2),
+            ])
+        );
+    }
+}

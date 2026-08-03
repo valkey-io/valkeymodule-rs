@@ -125,3 +125,55 @@ valkey_module! {
         ["client.config_get", config_get, "", 0, 0, 0]
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_id(42);
+
+        let result = get_client_id(&context, Vec::new()).expect("client ID should be returned");
+
+        assert_eq!(result, ValkeyValue::Integer(42));
+    }
+
+    #[test]
+    fn returns_client_name() {
+        let mut context = Context::test();
+        context.expect_get_client_name_by_id(42, "alice");
+
+        let result = get_client_name(&context, Vec::new())
+            .expect("configured client name should be returned");
+
+        assert_eq!(result, ValkeyValue::BulkString("alice".into()));
+    }
+
+    #[test]
+    fn returns_client_username() {
+        let mut context = Context::test();
+        context.expect_get_client_username_by_id(42, "alice");
+
+        let result = get_client_username(&context, Vec::new())
+            .expect("configured client username should be returned");
+
+        assert_eq!(result, ValkeyValue::BulkString("alice".into()));
+    }
+
+    #[test]
+    fn deauthenticates_client_by_id() {
+        let mut context = Context::test();
+        context.expect_deauthenticate_and_close_client_by_id(42);
+        let args = vec![
+            context.create_string("client.deauth"),
+            context.create_string("42"),
+        ];
+
+        let result = deauth_client_by_id(&context, args)
+            .expect("configured client should be deauthenticated");
+
+        assert_eq!(result, ValkeyValue::BulkString("OK".into()));
+    }
+}
