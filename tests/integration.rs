@@ -8,11 +8,10 @@ use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
 use utils::{
-    check_auth, check_blocked_clients, get_available_port, get_valkey_connection, setup_acl_users,
-    start_valkey_server_with_module, AuthExpectedResult,
+    check_auth, check_blocked_clients, get_valkey_connection, setup_acl_users,
+    start_server_w_module_get_connection, AuthExpectedResult,
 };
 
-const FAILED_TO_START_SERVER: &str = "failed to start valkey server";
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
 const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -21,11 +20,7 @@ mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("hello", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("hello")?;
 
     let res: Vec<i32> = redis::cmd("hello.mul")
         .arg(&[3, 4])
@@ -44,10 +39,7 @@ fn test_hello() -> Result<()> {
 
 #[test]
 fn test_keys_pos() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("keys_pos", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("keys_pos")?;
 
     let res: Vec<String> = redis::cmd("keys_pos")
         .arg(&["a", "1", "b", "2"])
@@ -66,10 +58,7 @@ fn test_keys_pos() -> Result<()> {
 
 #[test]
 fn test_helper_version() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("test_helper", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("test_helper")?;
 
     let res: Vec<i64> = redis::cmd("test_helper.version")
         .query(&mut con)
@@ -96,10 +85,7 @@ fn test_helper_version() -> Result<()> {
 fn test_command_name() -> Result<()> {
     use valkey_module::ValkeyValue;
 
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("test_helper", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("test_helper")?;
 
     // Call the tested command
     let res: Result<String, RedisError> = redis::cmd("test_helper.name").query(&mut con);
@@ -140,11 +126,7 @@ fn test_helper_info() -> Result<()> {
     MODULES
         .into_iter()
         .try_for_each(|(module, has_dictionary)| {
-            let port = get_available_port()?;
-            let _guards = vec![start_valkey_server_with_module(module, port)
-                .with_context(|| FAILED_TO_START_SERVER)?];
-            let mut con =
-                get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+            let mut con = start_server_w_module_get_connection(module)?;
 
             let res: String = redis::cmd("INFO")
                 .arg(module)
@@ -165,10 +147,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     const MODULES: [&str; 1] = ["info_handler_multiple_sections"];
 
     MODULES.into_iter().try_for_each(|module| {
-        let port = get_available_port()?;
-        let _guards = vec![start_valkey_server_with_module(module, port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-        let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        let mut con = start_server_w_module_get_connection(module)?;
 
         let res: String = redis::cmd("INFO")
             .arg(format!("{module}_InfoSection2"))
@@ -184,10 +163,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
 
 #[test]
 fn test_test_helper_err() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("test_helper", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("test_helper")?;
 
     // Make sure embedded nulls do not cause a crash and are returned as errors.
     for message in ["\x00\x00", "no crash\x00"] {
@@ -204,11 +180,7 @@ fn test_test_helper_err() -> Result<()> {
 
 #[test]
 fn test_string() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("string", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("string")?;
 
     redis::cmd("string.set")
         .arg(&["key", "value"])
@@ -224,10 +196,7 @@ fn test_string() -> Result<()> {
 
 #[test]
 fn test_scan() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("scan_keys", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("scan_keys")?;
 
     redis::cmd("set")
         .arg(&["x", "1"])
@@ -249,11 +218,7 @@ fn test_scan() -> Result<()> {
 
 #[test]
 fn test_stream_reader() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("stream", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("stream")?;
 
     let _: String = redis::cmd("XADD")
         .arg(&["s", "1-1", "foo", "bar"])
@@ -289,11 +254,7 @@ fn test_stream_reader() -> Result<()> {
 
 #[test]
 fn test_call() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("call", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("call")?;
 
     let res: String = redis::cmd("call.test")
         .query(&mut con)
@@ -306,10 +267,7 @@ fn test_call() -> Result<()> {
 
 #[test]
 fn test_ctx_flags() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("ctx_flags", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("ctx_flags")?;
 
     let res: String = redis::cmd("my_role").query(&mut con)?;
 
@@ -320,10 +278,7 @@ fn test_ctx_flags() -> Result<()> {
 
 #[test]
 fn test_get_current_user() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("acl")?;
 
     let res: String = redis::cmd("get_current_user").query(&mut con)?;
 
@@ -334,10 +289,7 @@ fn test_get_current_user() -> Result<()> {
 
 #[test]
 fn test_verify_acl_on_user() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("acl")?;
 
     let res: String = redis::cmd("verify_key_access_for_user")
         .arg(&["default", "x"])
@@ -374,11 +326,7 @@ fn test_verify_acl_on_user() -> Result<()> {
 
 #[test]
 fn test_key_space_notifications() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("events", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("events")?;
 
     let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
     assert_eq!(res, 0);
@@ -398,11 +346,7 @@ fn test_key_space_notifications() -> Result<()> {
 
 #[test]
 fn test_context_mutex() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("threads", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("threads")?;
 
     let res: String = redis::cmd("set_static_data")
         .arg(&["foo"])
@@ -430,10 +374,7 @@ fn test_context_mutex() -> Result<()> {
 
 #[test]
 fn test_server_event() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("server_events")?;
 
     let before_sleep_count: i64 = redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
     let after_sleep_count: i64 = redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
@@ -528,12 +469,8 @@ fn test_server_event() -> Result<()> {
 
 #[test]
 fn test_server_event_shutdown() -> Result<()> {
-    let port = get_available_port()?;
-    let guard = start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?;
-    let shutdown_log_path = guard.data_dir().join("shutdown_log.txt");
-    let _guards = vec![guard];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("server_events")?;
+    let shutdown_log_path = con.data_dir().join("shutdown_log.txt");
 
     if shutdown_log_path.exists() {
         std::fs::remove_file(&shutdown_log_path)
@@ -551,7 +488,9 @@ fn test_server_event_shutdown() -> Result<()> {
             break contents;
         }
         if Instant::now() >= deadline {
-            return Err(anyhow::Error::msg("timed out waiting for shutdown log file"));
+            return Err(anyhow::Error::msg(
+                "timed out waiting for shutdown log file",
+            ));
         }
         thread::sleep(EVENT_POLL_INTERVAL);
     };
@@ -566,12 +505,9 @@ fn test_server_event_shutdown() -> Result<()> {
 
 #[test]
 fn test_client_change_event() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("server_events")?;
     let con2: redis::Connection =
-        get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        get_valkey_connection(con.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     let conn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
     println!("Connection result: {}", conn_res);
@@ -588,9 +524,8 @@ fn test_client_change_event() -> Result<()> {
 
 #[test]
 fn test_configuration() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("configuration", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = start_server_w_module_get_connection("configuration")?;
+    let port = con.port;
 
     let config_get = |config: &str| -> Result<String> {
         let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -669,7 +604,6 @@ fn test_configuration() -> Result<()> {
         .to_string()
         .contains("Rejected from custom enum validation"));
 
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
@@ -691,7 +625,6 @@ fn test_configuration() -> Result<()> {
     assert_eq!(config_get("configuration.reject_enum")?, "Val1");
     config_set("configuration.reject_enum", "Val1")?;
     assert_eq!(config_get("configuration.reject_enum")?, "Val1");
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
@@ -702,10 +635,7 @@ fn test_configuration() -> Result<()> {
 
 #[test]
 fn test_response() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("response", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("response")?;
 
     redis::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
@@ -733,10 +663,7 @@ fn test_response() -> Result<()> {
 
 #[test]
 fn test_command_proc_macro() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("proc_macro_commands")?;
 
     let res: Vec<String> = redis::cmd("COMMAND")
         .arg(&["GETKEYS", "classic_keys", "x", "foo", "y", "bar"])
@@ -771,10 +698,7 @@ fn test_command_proc_macro() -> Result<()> {
 
 #[test]
 fn test_valkey_value_derive() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("proc_macro_commands")?;
 
     let res: Value = redis::cmd("valkey_value_derive")
         .query(&mut con)
@@ -794,11 +718,7 @@ fn test_valkey_value_derive() -> Result<()> {
 
 #[test]
 fn test_call_blocking() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("call", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("call")?;
 
     let res: Option<String> = redis::cmd("call.blocking")
         .query(&mut con)
@@ -817,10 +737,7 @@ fn test_call_blocking() -> Result<()> {
 
 #[test]
 fn test_open_key_with_flags() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("open_key_with_flags", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("open_key_with_flags")?;
 
     // Avoid active expriation
     redis::cmd("DEBUG")
@@ -872,11 +789,7 @@ fn test_open_key_with_flags() -> Result<()> {
 
 #[test]
 fn test_expire() -> Result<()> {
-    let port = get_available_port()?;
-    let _guards =
-        vec![start_valkey_server_with_module("expire", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("expire")?;
 
     // Create a key without TTL
     redis::cmd("set")
@@ -910,10 +823,7 @@ fn test_expire() -> Result<()> {
 
 #[test]
 fn test_alloc() -> Result<()> {
-    let port: u16 = 6509;
-    let _guards = vec![start_valkey_server_with_module("data_type", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("data_type")?;
 
     // Test set to verify allocation
     let res: i64 = redis::cmd("alloc.set")
@@ -960,10 +870,7 @@ fn test_alloc() -> Result<()> {
 
 #[test]
 fn test_debug() -> Result<()> {
-    let port: u16 = 6504;
-    let _guards = vec![start_valkey_server_with_module("data_type", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("data_type")?;
 
     let _: i64 = redis::cmd("alloc.set")
         .arg(&["test_key", "10"])
@@ -1005,16 +912,10 @@ fn test_debug() -> Result<()> {
     // Start testing add_long_long
 
     // DB1
-    let port: u16 = 6505;
-    let _guards = vec![start_valkey_server_with_module("data_type2", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con1 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con1 = start_server_w_module_get_connection("data_type2")?;
 
     // DB2
-    let port2: u16 = 6506;
-    let _guards = vec![start_valkey_server_with_module("data_type2", port2)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con2 = get_valkey_connection(port2).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con2 = start_server_w_module_get_connection("data_type2")?;
 
     // Set on DB1
     let _: i64 = redis::cmd("alloc2.set")
@@ -1105,10 +1006,7 @@ fn test_debug() -> Result<()> {
 
 #[test]
 fn test_acl_categories() -> Result<()> {
-    let port = 6503;
-    let _guards =
-        vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("acl")?;
     // Get all commands that have the ACL read
     let response_data: Vec<String> = redis::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "read"])
@@ -1143,10 +1041,7 @@ fn test_acl_categories() -> Result<()> {
 
 #[test]
 fn test_defrag() -> Result<()> {
-    let port = 6510;
-    let _guards = vec![start_valkey_server_with_module("data_type", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("data_type")?;
     // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
     // with not the default allocator we then exit this test early and don't test defrag
     let memory_info: String = redis::cmd("info")
@@ -1197,11 +1092,7 @@ fn test_defrag() -> Result<()> {
 
 #[test]
 fn test_client() -> Result<()> {
-    let port = 6507;
-    let _guards =
-        vec![start_valkey_server_with_module("client", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("client")?;
     // Test client.id command
     redis::cmd("client.id")
         .exec(&mut con)
@@ -1257,11 +1148,7 @@ fn test_client() -> Result<()> {
 
 #[test]
 fn test_filter() -> Result<()> {
-    let port = 6508;
-    let _guards =
-        vec![start_valkey_server_with_module("filter1", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("filter1")?;
     // load filter2 module
     redis::cmd("MODULE")
         .arg(&["LOAD", get_module_path("filter2").unwrap().as_str()])
@@ -1301,12 +1188,7 @@ fn test_filter() -> Result<()> {
 // - Authentication fails when incorrect passwords are provided
 #[test]
 fn test_non_blocking_auth_callbacks() -> Result<()> {
-    let port = 6513;
-    let _guards =
-        vec![start_valkey_server_with_module("auth", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("auth")?;
 
     // Module users - these are handled by the module
     let module_users = [("user1", "module_pass1"), ("user2", "module_pass2")];
@@ -1360,12 +1242,9 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 // - Authentication can be aborted
 #[test]
 fn test_blocking_auth_callbacks() -> Result<()> {
-    let port = 6514;
-    let _guards =
-        vec![start_valkey_server_with_module("auth", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let server = start_server_w_module_get_connection("auth")?;
+    let port = server.port;
+    let (_guard, mut con) = server.into_parts();
     let mut con2 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let mut con3 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
@@ -1470,12 +1349,8 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 //   complete while slower ones (auth2 with delay) are still processing
 #[test]
 fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
-    let port = 6515;
-    let _guards =
-        vec![start_valkey_server_with_module("auth", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-
-    let mut setup_con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut setup_con = start_server_w_module_get_connection("auth")?;
+    let port = setup_con.port;
 
     // Set up users for both auth callbacks with (username, module_pass)
     let users_auth1 = [
@@ -1602,12 +1477,9 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 // such as network issues or client termination.
 #[test]
 fn test_disconnect_client_during_blocking_auth() -> Result<()> {
-    let port = 6516;
-    let _guards =
-        vec![start_valkey_server_with_module("auth", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let server = start_server_w_module_get_connection("auth")?;
+    let port = server.port;
+    let (_guard, mut con) = server.into_parts();
     let mut monitor_con =
         get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
@@ -1682,11 +1554,7 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
 
 #[test]
 fn test_preload() -> Result<()> {
-    let port = 6517;
-    let _guards =
-        vec![start_valkey_server_with_module("preload", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("preload")?;
     // unload the module
     redis::cmd("MODULE")
         .arg(&["UNLOAD", "preload"])
@@ -1698,11 +1566,7 @@ fn test_preload() -> Result<()> {
 
 #[test]
 fn test_subcmd() -> Result<()> {
-    let port = 6518;
-    let _guards =
-        vec![start_valkey_server_with_module("subcmd", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("subcmd")?;
 
     // test cmd1
     let resp: Vec<String> = redis::cmd("cmd1")
@@ -1753,10 +1617,7 @@ fn test_subcmd() -> Result<()> {
 
 #[test]
 fn test_data_type3() -> Result<()> {
-    let port = 6519;
-    let _guards = vec![start_valkey_server_with_module("data_type3", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("data_type3")?;
 
     // check empty key
     redis::cmd("my-get")
@@ -1788,32 +1649,17 @@ fn test_data_type3() -> Result<()> {
 
 #[test]
 fn test_crontab() -> Result<()> {
-    let port = 6520;
-    let _guards =
-        vec![start_valkey_server_with_module("crontab", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
-    let _con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let _con = start_server_w_module_get_connection("crontab")?;
     // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
     Ok(())
 }
 
 #[test]
 fn test_master_link_change_event() -> Result<()> {
-    let primary_port: u16 = 6521;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", primary_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut primary_con =
-        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut primary_con = start_server_w_module_get_connection("server_events")?;
+    let primary_port = primary_con.port;
 
-    let replica_port: u16 = 6522;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", replica_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut replica_con =
-        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut replica_con = start_server_w_module_get_connection("server_events")?;
 
     // set replicaof to primary_port
     println!("Setting up replication");
@@ -1869,10 +1715,7 @@ fn test_master_link_change_event() -> Result<()> {
 
 #[test]
 fn test_fork_child_event() -> Result<()> {
-    let port: u16 = 6523;
-    let _guards = vec![start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("server_events")?;
 
     redis::cmd("bgsave")
         .exec(&mut con)
@@ -1892,21 +1735,10 @@ fn test_fork_child_event() -> Result<()> {
 
 #[test]
 fn test_replica_change_event() -> Result<()> {
-    let primary_port: u16 = 6524;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", primary_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut primary_con =
-        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut primary_con = start_server_w_module_get_connection("server_events")?;
+    let primary_port = primary_con.port;
 
-    let replica_port: u16 = 6525;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", replica_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut replica_con =
-        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut replica_con = start_server_w_module_get_connection("server_events")?;
 
     // setup replication
     let _: () = redis::cmd("replicaof")
@@ -1956,26 +1788,15 @@ fn wait_for_event_count(con: &mut redis::Connection, command: &str, expected: i6
 
 #[test]
 fn test_repl_asnc_load_event() -> Result<()> {
-    let primary_port: u16 = 6526;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", primary_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut primary_con =
-        get_valkey_connection(primary_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut primary_con = start_server_w_module_get_connection("server_events")?;
+    let primary_port = primary_con.port;
     // repl-diskless-load swapdb
     let _: () = redis::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
         .exec(&mut primary_con)
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
-    let replica_port: u16 = 6527;
-    let _guards = vec![
-        start_valkey_server_with_module("server_events", replica_port)
-            .with_context(|| FAILED_TO_START_SERVER)?,
-    ];
-    let mut replica_con =
-        get_valkey_connection(replica_port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut replica_con = start_server_w_module_get_connection("server_events")?;
     // repl-diskless-load swapdb
     let _: () = redis::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
@@ -1996,10 +1817,7 @@ fn test_repl_asnc_load_event() -> Result<()> {
 
 #[test]
 fn test_swapdb_event() -> Result<()> {
-    let port: u16 = 6528;
-    let _guards = vec![start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
-    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let mut con = start_server_w_module_get_connection("server_events")?;
 
     // run swapdb between db 0 and db 1
     let _: () = redis::cmd("swapdb").arg(&["0", "1"]).query(&mut con)?;
