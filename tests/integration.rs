@@ -1757,35 +1757,6 @@ fn test_replica_change_event() -> Result<()> {
     Ok(())
 }
 
-fn wait_for_replica_change_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
-    wait_for_event_count(con, "num_replica_change_events", expected)
-}
-
-fn wait_for_repl_async_load_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
-    wait_for_event_count(con, "num_repl_async_load_events", expected)
-}
-
-fn wait_for_event_count(con: &mut redis::Connection, command: &str, expected: i64) -> Result<()> {
-    let start = Instant::now();
-
-    loop {
-        let actual: i64 = redis::cmd(command).query(con)?;
-        if actual == expected {
-            return Ok(());
-        }
-        if actual > expected {
-            anyhow::bail!("expected {expected} events from {command}, but observed {actual}");
-        }
-        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
-            anyhow::bail!(
-                "timed out waiting for {expected} events from {command}; last observed {actual}"
-            );
-        }
-
-        thread::sleep(EVENT_POLL_INTERVAL);
-    }
-}
-
 #[test]
 fn test_repl_asnc_load_event() -> Result<()> {
     let mut primary_con = start_server_w_module_get_connection("server_events")?;
@@ -1832,4 +1803,33 @@ fn test_swapdb_event() -> Result<()> {
     assert_eq!(event_count2, 2);
 
     Ok(())
+}
+
+fn wait_for_replica_change_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
+    wait_for_event_count(con, "num_replica_change_events", expected)
+}
+
+fn wait_for_repl_async_load_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
+    wait_for_event_count(con, "num_repl_async_load_events", expected)
+}
+
+fn wait_for_event_count(con: &mut redis::Connection, command: &str, expected: i64) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd(command).query(con)?;
+        if actual == expected {
+            return Ok(());
+        }
+        if actual > expected {
+            anyhow::bail!("expected {expected} events from {command}, but observed {actual}");
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected} events from {command}; last observed {actual}"
+            );
+        }
+
+        thread::sleep(EVENT_POLL_INTERVAL);
+    }
 }
