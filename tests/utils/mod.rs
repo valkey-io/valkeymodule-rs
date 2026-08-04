@@ -321,6 +321,27 @@ pub(super) fn wait_for_no_blocked_clients(con: &mut redis::Connection) -> Result
     wait_for_blocked_client_count(con, |count| count == 0, "no blocked clients")
 }
 
+pub(super) fn wait_for_client_connection_count(
+    con: &mut redis::Connection,
+    expected: i64,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd("num_connects").query(con)?;
+        if actual == expected {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected} connected clients; last observed {actual}"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
 fn wait_for_blocked_client_count(
     con: &mut redis::Connection,
     predicate: impl Fn(i32) -> bool,

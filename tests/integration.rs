@@ -9,9 +9,10 @@ use redis::Value;
 use redis::{RedisError, RedisResult};
 use utils::{
     check_auth, get_valkey_connection, setup_acl_users, start_server_w_module_get_connection,
-    wait_for_blocked_clients, wait_for_event_count, wait_for_event_count_greater_than,
-    wait_for_file_contents, wait_for_master_link_state, wait_for_no_blocked_clients,
-    wait_for_repl_async_load_events, wait_for_replica_change_events, AuthExpectedResult,
+    wait_for_blocked_clients, wait_for_client_connection_count, wait_for_event_count,
+    wait_for_event_count_greater_than, wait_for_file_contents, wait_for_master_link_state,
+    wait_for_no_blocked_clients, wait_for_repl_async_load_events, wait_for_replica_change_events,
+    AuthExpectedResult,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
@@ -502,15 +503,11 @@ fn test_client_change_event() -> Result<()> {
     let con2: redis::Connection =
         get_valkey_connection(con.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    let conn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
-    println!("Connection result: {}", conn_res);
-    assert_eq!(conn_res, 2);
+    wait_for_client_connection_count(&mut con, 2)?;
 
     drop(con2);
 
-    let disconn_res: i64 = redis::cmd("num_connects").query(&mut con)?;
-    println!("Disconnection result: {}", disconn_res);
-    assert_eq!(disconn_res, 1);
+    wait_for_client_connection_count(&mut con, 1)?;
 
     Ok(())
 }
