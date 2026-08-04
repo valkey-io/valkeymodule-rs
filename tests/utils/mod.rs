@@ -83,6 +83,11 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
     Ok(valkey_server)
 }
 
+pub fn get_available_port() -> Result<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    Ok(listener.local_addr()?.port())
+}
+
 pub(crate) fn get_module_path(module_name: &str) -> Result<String> {
     let extension = if cfg!(target_os = "macos") {
         "dylib"

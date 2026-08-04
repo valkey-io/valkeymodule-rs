@@ -8,7 +8,7 @@ use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
 use utils::{
-    check_auth, check_blocked_clients, get_valkey_connection, setup_acl_users,
+    check_auth, check_blocked_clients, get_available_port, get_valkey_connection, setup_acl_users,
     start_valkey_server_with_module, AuthExpectedResult,
 };
 
@@ -21,7 +21,7 @@ mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
-    let port: u16 = 6479;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("hello", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -44,7 +44,7 @@ fn test_hello() -> Result<()> {
 
 #[test]
 fn test_keys_pos() -> Result<()> {
-    let port: u16 = 6480;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("keys_pos", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -66,7 +66,7 @@ fn test_keys_pos() -> Result<()> {
 
 #[test]
 fn test_helper_version() -> Result<()> {
-    let port: u16 = 6481;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("test_helper", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -96,7 +96,7 @@ fn test_helper_version() -> Result<()> {
 fn test_command_name() -> Result<()> {
     use valkey_module::ValkeyValue;
 
-    let port: u16 = 6482;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("test_helper", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -140,7 +140,7 @@ fn test_helper_info() -> Result<()> {
     MODULES
         .into_iter()
         .try_for_each(|(module, has_dictionary)| {
-            let port: u16 = 6483;
+            let port = get_available_port()?;
             let _guards = vec![start_valkey_server_with_module(module, port)
                 .with_context(|| FAILED_TO_START_SERVER)?];
             let mut con =
@@ -165,7 +165,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     const MODULES: [&str; 1] = ["info_handler_multiple_sections"];
 
     MODULES.into_iter().try_for_each(|module| {
-        let port: u16 = 6500;
+        let port = get_available_port()?;
         let _guards = vec![start_valkey_server_with_module(module, port)
             .with_context(|| FAILED_TO_START_SERVER)?];
         let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -184,7 +184,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
 
 #[test]
 fn test_test_helper_err() -> Result<()> {
-    let port: u16 = 6484;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("test_helper", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -204,7 +204,7 @@ fn test_test_helper_err() -> Result<()> {
 
 #[test]
 fn test_string() -> Result<()> {
-    let port: u16 = 6485;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("string", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -224,7 +224,7 @@ fn test_string() -> Result<()> {
 
 #[test]
 fn test_scan() -> Result<()> {
-    let port: u16 = 6486;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("scan_keys", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -249,7 +249,7 @@ fn test_scan() -> Result<()> {
 
 #[test]
 fn test_stream_reader() -> Result<()> {
-    let port: u16 = 6487;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("stream", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -289,7 +289,7 @@ fn test_stream_reader() -> Result<()> {
 
 #[test]
 fn test_call() -> Result<()> {
-    let port: u16 = 6488;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("call", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -306,7 +306,7 @@ fn test_call() -> Result<()> {
 
 #[test]
 fn test_ctx_flags() -> Result<()> {
-    let port: u16 = 6489;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("ctx_flags", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -320,7 +320,7 @@ fn test_ctx_flags() -> Result<()> {
 
 #[test]
 fn test_get_current_user() -> Result<()> {
-    let port: u16 = 6490;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -334,7 +334,7 @@ fn test_get_current_user() -> Result<()> {
 
 #[test]
 fn test_verify_acl_on_user() -> Result<()> {
-    let port: u16 = 6491;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("acl", port).with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -374,7 +374,7 @@ fn test_verify_acl_on_user() -> Result<()> {
 
 #[test]
 fn test_key_space_notifications() -> Result<()> {
-    let port: u16 = 6492;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("events", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -398,7 +398,7 @@ fn test_key_space_notifications() -> Result<()> {
 
 #[test]
 fn test_context_mutex() -> Result<()> {
-    let port: u16 = 6493;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("threads", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -430,7 +430,7 @@ fn test_context_mutex() -> Result<()> {
 
 #[test]
 fn test_server_event() -> Result<()> {
-    let port: u16 = 6494;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -528,7 +528,7 @@ fn test_server_event() -> Result<()> {
 
 #[test]
 fn test_server_event_shutdown() -> Result<()> {
-    let port: u16 = 6512;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -564,7 +564,7 @@ fn test_server_event_shutdown() -> Result<()> {
 
 #[test]
 fn test_client_change_event() -> Result<()> {
-    let port: u16 = 6511;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("server_events", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -586,7 +586,7 @@ fn test_client_change_event() -> Result<()> {
 
 #[test]
 fn test_configuration() -> Result<()> {
-    let port: u16 = 6495;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("configuration", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
 
@@ -700,7 +700,7 @@ fn test_configuration() -> Result<()> {
 
 #[test]
 fn test_response() -> Result<()> {
-    let port: u16 = 6496;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("response", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -731,7 +731,7 @@ fn test_response() -> Result<()> {
 
 #[test]
 fn test_command_proc_macro() -> Result<()> {
-    let port: u16 = 6497;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -769,7 +769,7 @@ fn test_command_proc_macro() -> Result<()> {
 
 #[test]
 fn test_valkey_value_derive() -> Result<()> {
-    let port: u16 = 6498;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("proc_macro_commands", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -792,7 +792,7 @@ fn test_valkey_value_derive() -> Result<()> {
 
 #[test]
 fn test_call_blocking() -> Result<()> {
-    let port: u16 = 6499;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("call", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
@@ -815,7 +815,7 @@ fn test_call_blocking() -> Result<()> {
 
 #[test]
 fn test_open_key_with_flags() -> Result<()> {
-    let port: u16 = 6501;
+    let port = get_available_port()?;
     let _guards = vec![start_valkey_server_with_module("open_key_with_flags", port)
         .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -870,7 +870,7 @@ fn test_open_key_with_flags() -> Result<()> {
 
 #[test]
 fn test_expire() -> Result<()> {
-    let port: u16 = 6502;
+    let port = get_available_port()?;
     let _guards =
         vec![start_valkey_server_with_module("expire", port)
             .with_context(|| FAILED_TO_START_SERVER)?];
