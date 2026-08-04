@@ -5,20 +5,54 @@ use redis::RedisResult;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+const SHUTDOWN_CONNECTION_TIMEOUT: Duration = Duration::from_millis(250);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
+const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 pub struct ChildGuard {
     name: &'static str,
+    port: u16,
     child: std::process::Child,
 }
 
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if let Err(e) = self.child.kill() {
-            println!("Could not kill {}: {e}", self.name);
+        let client = redis::Client::open(format!("redis://127.0.0.1:{}/", self.port));
+        if let Ok(client) = client {
+            if let Ok(mut connection) =
+                client.get_connection_with_timeout(SHUTDOWN_CONNECTION_TIMEOUT)
+            {
+                let _: RedisResult<()> =
+                    redis::cmd("SHUTDOWN").arg("NOSAVE").query(&mut connection);
+            }
         }
-        if let Err(e) = self.child.wait() {
-            println!("Could not wait for {}: {e}", self.name);
+
+        let shutdown_deadline = Instant::now() + SHUTDOWN_TIMEOUT;
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => return,
+                Ok(None) if Instant::now() < shutdown_deadline => {
+                    std::thread::sleep(SHUTDOWN_POLL_INTERVAL);
+                }
+                Ok(None) => {
+                    if let Err(e) = self.child.kill() {
+                        println!("Could not kill {} after shutdown timeout: {e}", self.name);
+                    }
+                    if let Err(e) = self.child.wait() {
+                        println!(
+                            "Could not wait for {} after shutdown timeout: {e}",
+                            self.name
+                        );
+                    }
+                    return;
+                }
+                Err(e) => {
+                    println!("Could not check whether {} exited: {e}", self.name);
+                    return;
+                }
+            }
         }
     }
 }
@@ -42,6 +76,7 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
         .spawn()
         .map(|c| ChildGuard {
             name: "server",
+            port,
             child: c,
         })?;
 
