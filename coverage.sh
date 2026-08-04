@@ -2,7 +2,7 @@
 set -eu
 
 cleanup_profraw() {
-    find . -type f -name '*.profraw' -delete || true
+    rm -f *.profraw
 }
 
 # Raw LLVM profiles are intermediate artifacts. Remove them whether coverage
