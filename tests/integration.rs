@@ -529,15 +529,14 @@ fn test_server_event() -> Result<()> {
 #[test]
 fn test_server_event_shutdown() -> Result<()> {
     let port = get_available_port()?;
-    let _guards = vec![start_valkey_server_with_module("server_events", port)
-        .with_context(|| FAILED_TO_START_SERVER)?];
+    let guard = start_valkey_server_with_module("server_events", port)
+        .with_context(|| FAILED_TO_START_SERVER)?;
+    let shutdown_log_path = guard.data_dir().join("shutdown_log.txt");
+    let _guards = vec![guard];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    // Create a txt file called shutdown_log.txt
-    let shutdown_log_path = "shutdown_log.txt";
-    // If it already exists, delete it
-    if std::path::Path::new(shutdown_log_path).exists() {
-        std::fs::remove_file(shutdown_log_path)
+    if shutdown_log_path.exists() {
+        std::fs::remove_file(&shutdown_log_path)
             .with_context(|| "failed to remove shutdown log file")?;
     }
 
@@ -546,17 +545,20 @@ fn test_server_event_shutdown() -> Result<()> {
         .arg("NOSAVE")
         .query::<String>(&mut con);
 
-    // Wait briefly to ensure the shutdown event is processed
-    std::thread::sleep(std::time::Duration::from_secs(1));
-
-    // Check if the file exists and contains the string "Server shutdown callback event ..."
-    let contents = std::fs::read_to_string(shutdown_log_path)
-        .with_context(|| "failed to read shutdown log file")?;
+    let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
+    let contents = loop {
+        if let Ok(contents) = std::fs::read_to_string(&shutdown_log_path) {
+            break contents;
+        }
+        if Instant::now() >= deadline {
+            return Err(anyhow::Error::msg("timed out waiting for shutdown log file"));
+        }
+        thread::sleep(EVENT_POLL_INTERVAL);
+    };
 
     assert!(contents.contains("Server shutdown callback event ..."));
 
-    // Delete the file
-    std::fs::remove_file(shutdown_log_path)
+    std::fs::remove_file(&shutdown_log_path)
         .with_context(|| "failed to remove shutdown log file")?;
 
     Ok(())

@@ -14,6 +14,7 @@ const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 pub struct ChildGuard {
     name: &'static str,
     port: u16,
+    data_dir: PathBuf,
     child: std::process::Child,
 }
 
@@ -32,7 +33,10 @@ impl Drop for ChildGuard {
         let shutdown_deadline = Instant::now() + SHUTDOWN_TIMEOUT;
         loop {
             match self.child.try_wait() {
-                Ok(Some(_)) => return,
+                Ok(Some(_)) => {
+                    self.cleanup_data_dir();
+                    return;
+                }
                 Ok(None) if Instant::now() < shutdown_deadline => {
                     std::thread::sleep(SHUTDOWN_POLL_INTERVAL);
                 }
@@ -46,6 +50,7 @@ impl Drop for ChildGuard {
                             self.name
                         );
                     }
+                    self.cleanup_data_dir();
                     return;
                 }
                 Err(e) => {
@@ -57,12 +62,35 @@ impl Drop for ChildGuard {
     }
 }
 
+impl ChildGuard {
+    pub fn data_dir(&self) -> &std::path::Path {
+        &self.data_dir
+    }
+
+    fn cleanup_data_dir(&self) {
+        if let Err(e) = fs::remove_dir_all(&self.data_dir) {
+            println!("Could not remove Valkey data directory: {e}");
+        }
+    }
+}
+
 pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let module_path = get_module_path(module_name)?;
+    let data_dir =
+        std::env::temp_dir().join(format!("valkeymodule-rs-{}-{port}", std::process::id()));
+    fs::create_dir(&data_dir)?;
+    let port_arg = port.to_string();
+    let data_dir_arg = data_dir
+        .to_str()
+        .context("Valkey data directory is not valid UTF-8")?;
 
     let args = &[
         "--port",
-        &port.to_string(),
+        port_arg.as_str(),
+        "--dir",
+        data_dir_arg,
+        "--dbfilename",
+        "dump.rdb",
         "--loadmodule",
         module_path.as_str(),
         "--enable-debug-command",
@@ -71,16 +99,24 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
         "yes",
     ];
 
-    let valkey_server = Command::new("valkey-server")
+    let child = Command::new("valkey-server")
         .args(args)
-        .spawn()
-        .map(|c| ChildGuard {
-            name: "server",
-            port,
-            child: c,
-        })?;
+        .current_dir(&data_dir)
+        .spawn();
+    let child = match child {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&data_dir);
+            return Err(error.into());
+        }
+    };
 
-    Ok(valkey_server)
+    Ok(ChildGuard {
+        name: "server",
+        port,
+        data_dir,
+        child,
+    })
 }
 
 pub fn get_available_port() -> Result<u16> {
