@@ -11,6 +11,8 @@ use std::time::{Duration, Instant};
 const SHUTDOWN_CONNECTION_TIMEOUT: Duration = Duration::from_millis(250);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
+const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Owns a Valkey test process and the connection used to communicate with it.
 pub(super) struct TestServer {
@@ -309,4 +311,88 @@ pub(super) fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> 
         .unwrap_or(0);
 
     Ok(blocked_clients)
+}
+
+pub(super) fn wait_for_replica_change_events(
+    con: &mut redis::Connection,
+    expected: i64,
+) -> Result<()> {
+    wait_for_event_count(con, "num_replica_change_events", expected)
+}
+
+pub(super) fn wait_for_repl_async_load_events(
+    con: &mut redis::Connection,
+    expected: i64,
+) -> Result<()> {
+    wait_for_event_count(con, "num_repl_async_load_events", expected)
+}
+
+pub(super) fn wait_for_event_count(
+    con: &mut redis::Connection,
+    command: &str,
+    expected: i64,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd(command).query(con)?;
+        if actual == expected {
+            return Ok(());
+        }
+        if actual > expected {
+            anyhow::bail!("expected {expected} events from {command}, but observed {actual}");
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected} events from {command}; last observed {actual}"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+pub(super) fn wait_for_event_count_greater_than(
+    con: &mut redis::Connection,
+    command: &str,
+    previous: i64,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd(command).query(con)?;
+        if actual > previous {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {command} to exceed {previous}; last observed {actual}"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        match fs::read_to_string(path) {
+            Ok(contents) if expected.iter().all(|expected| contents.contains(expected)) => {
+                return Ok(())
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("failed to read {}", path.display())),
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for expected contents in {}",
+                path.display()
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
 }
