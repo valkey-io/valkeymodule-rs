@@ -327,6 +327,30 @@ pub(super) fn wait_for_repl_async_load_events(
     wait_for_event_count(con, "num_repl_async_load_events", expected)
 }
 
+pub(super) fn wait_for_master_link_state(
+    con: &mut redis::Connection,
+    expected_up: bool,
+    minimum_events: i64,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let event_count: i64 = redis::cmd("num_master_link_change_events").query(con)?;
+        let is_up: bool = redis::cmd("is_master_link_up").query(con)?;
+        if is_up == expected_up && event_count >= minimum_events {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for master link up={expected_up} with at least {minimum_events} \
+                 events; last observed up={is_up}, events={event_count}"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
 pub(super) fn wait_for_event_count(
     con: &mut redis::Connection,
     command: &str,

@@ -10,8 +10,8 @@ use redis::{RedisError, RedisResult};
 use utils::{
     check_auth, check_blocked_clients, get_valkey_connection, setup_acl_users,
     start_server_w_module_get_connection, wait_for_event_count, wait_for_event_count_greater_than,
-    wait_for_file_contents, wait_for_repl_async_load_events, wait_for_replica_change_events,
-    AuthExpectedResult,
+    wait_for_file_contents, wait_for_master_link_state, wait_for_repl_async_load_events,
+    wait_for_replica_change_events, AuthExpectedResult,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
@@ -1661,17 +1661,7 @@ fn test_master_link_change_event() -> Result<()> {
         .arg(primary_port)
         .query(&mut replica_con)?;
 
-    thread::sleep(Duration::from_secs(10));
-
-    let event_count1: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
-    let is_master_link_up1: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
-    println!(
-        "Verifying master link up event after replication setup: \
-    num_master_link_change_events {}, is_master_link_up {}",
-        event_count1, is_master_link_up1
-    );
-    assert_eq!(event_count1, 1);
-    assert!(is_master_link_up1);
+    wait_for_master_link_state(&mut replica_con, true, 1)?;
 
     // shut down server on primary port
     println!("Shutting down primary server");
@@ -1691,17 +1681,7 @@ fn test_master_link_change_event() -> Result<()> {
     }
     drop(primary_con);
 
-    thread::sleep(Duration::from_secs(5));
-
-    let event_count2: i64 = redis::cmd("num_master_link_change_events").query(&mut replica_con)?;
-    let is_master_link_up2: bool = redis::cmd("is_master_link_up").query(&mut replica_con)?;
-    println!(
-        "Verifying master link up event after primary shutdown: \
-    num_master_link_change_events {}, is_master_link_up {}",
-        event_count2, is_master_link_up2
-    );
-    assert_eq!(event_count2, 2);
-    assert!(!is_master_link_up2);
+    wait_for_master_link_state(&mut replica_con, false, 2)?;
 
     Ok(())
 }
