@@ -3,6 +3,7 @@ use anyhow::{Context, Result};
 use redis::Connection;
 use redis::RedisResult;
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -11,13 +12,49 @@ const SHUTDOWN_CONNECTION_TIMEOUT: Duration = Duration::from_millis(250);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-pub struct ChildGuard {
+/// Owns a Valkey test process and the connection used to communicate with it.
+pub(super) struct TestServer {
+    pub(super) port: u16,
+    _guard: ChildGuard,
+    connection: Connection,
+}
+
+// Allows TestServer to be used where an immutable Redis connection is expected.
+impl Deref for TestServer {
+    type Target = Connection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.connection
+    }
+}
+
+// Allows TestServer to be used where a mutable Redis connection is expected.
+impl DerefMut for TestServer {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.connection
+    }
+}
+
+// Exposes only the lifecycle operations that integration tests need.
+impl TestServer {
+    pub(super) fn data_dir(&self) -> &std::path::Path {
+        self._guard.data_dir()
+    }
+
+    pub(super) fn into_parts(self) -> (ChildGuard, Connection) {
+        (self._guard, self.connection)
+    }
+}
+
+/// Shuts down the child Valkey process and removes its temporary data directory on drop.
+pub(super) struct ChildGuard {
     name: &'static str,
     port: u16,
     data_dir: PathBuf,
     child: std::process::Child,
 }
 
+// Gracefully stops the child process before removing its isolated data directory.
 impl Drop for ChildGuard {
     fn drop(&mut self) {
         let client = redis::Client::open(format!("redis://127.0.0.1:{}/", self.port));
@@ -62,8 +99,9 @@ impl Drop for ChildGuard {
     }
 }
 
+// Contains cleanup behavior used by the child process lifecycle.
 impl ChildGuard {
-    pub fn data_dir(&self) -> &std::path::Path {
+    fn data_dir(&self) -> &std::path::Path {
         &self.data_dir
     }
 
@@ -74,7 +112,21 @@ impl ChildGuard {
     }
 }
 
-pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
+    let port = get_available_port()?;
+    let guard = start_valkey_server_with_module(module_name, port)
+        .with_context(|| "failed to start valkey server")?;
+    let connection =
+        get_valkey_connection(port).with_context(|| "failed to connect to valkey server")?;
+
+    Ok(TestServer {
+        port,
+        _guard: guard,
+        connection,
+    })
+}
+
+fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let module_path = get_module_path(module_name)?;
     let data_dir =
         std::env::temp_dir().join(format!("valkeymodule-rs-{}-{port}", std::process::id()));
@@ -119,12 +171,12 @@ pub fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<C
     })
 }
 
-pub fn get_available_port() -> Result<u16> {
+fn get_available_port() -> Result<u16> {
     let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
     Ok(listener.local_addr()?.port())
 }
 
-pub(crate) fn get_module_path(module_name: &str) -> Result<String> {
+pub(super) fn get_module_path(module_name: &str) -> Result<String> {
     let extension = if cfg!(target_os = "macos") {
         "dylib"
     } else {
@@ -155,7 +207,7 @@ pub(crate) fn get_module_path(module_name: &str) -> Result<String> {
 }
 
 // Get connection to Redis
-pub fn get_valkey_connection(port: u16) -> Result<Connection> {
+pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
     let client = redis::Client::open(format!("redis://127.0.0.1:{port}/"))?;
     loop {
         let res = client.get_connection();
@@ -174,7 +226,7 @@ pub fn get_valkey_connection(port: u16) -> Result<Connection> {
 }
 
 #[derive(Debug)]
-pub enum AuthExpectedResult {
+pub(super) enum AuthExpectedResult {
     Success,
     Denied,
     EngineDenied,
@@ -182,7 +234,7 @@ pub enum AuthExpectedResult {
 }
 
 // Helper function to validate the authentication
-pub fn check_auth(
+pub(super) fn check_auth(
     con: &mut redis::Connection,
     username: &str,
     password: &str,
@@ -227,7 +279,10 @@ pub fn check_auth(
     Ok(())
 }
 
-pub fn setup_acl_users(con: &mut redis::Connection, users: &[(&str, Option<&str>)]) -> Result<()> {
+pub(super) fn setup_acl_users(
+    con: &mut redis::Connection,
+    users: &[(&str, Option<&str>)],
+) -> Result<()> {
     for (user, maybe_pass) in users {
         let res: String = if let Some(pass) = maybe_pass {
             redis::cmd("ACL")
@@ -243,7 +298,7 @@ pub fn setup_acl_users(con: &mut redis::Connection, users: &[(&str, Option<&str>
     Ok(())
 }
 
-pub fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> {
+pub(super) fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> {
     let info: String = redis::cmd("INFO").arg("clients").query(con)?;
 
     let blocked_clients = info
