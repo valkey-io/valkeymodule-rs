@@ -25,3 +25,4 @@ shutdown_log.txt
 valkeymodule-rs-macros/Cargo.lock
 valkeymodule-rs-macros-internals/Cargo.lock
 docs/superpowers/*
+*.profraw
