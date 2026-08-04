@@ -182,23 +182,22 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     })
 }
 
-#[allow(unused_must_use)]
 #[test]
 fn test_test_helper_err() -> Result<()> {
     let port: u16 = 6484;
-    let _guards =
-        vec![start_valkey_server_with_module("hello", port)
-            .with_context(|| FAILED_TO_START_SERVER)?];
+    let _guards = vec![start_valkey_server_with_module("test_helper", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
     let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    // Make sure embedded nulls do not cause a crash
-    redis::cmd("test_helper.err")
-        .arg(&["\x00\x00"])
-        .query::<()>(&mut con);
+    // Make sure embedded nulls do not cause a crash and are returned as errors.
+    for message in ["\x00\x00", "no crash\x00"] {
+        let error = redis::cmd("test_helper.err")
+            .arg(message)
+            .query::<()>(&mut con)
+            .expect_err("test_helper.err should return an error");
 
-    redis::cmd("test_helper.err")
-        .arg(&["no crash\x00"])
-        .query::<()>(&mut con);
+        assert_eq!(error.kind(), redis::ErrorKind::ExtensionError);
+    }
 
     Ok(())
 }
@@ -1925,19 +1924,27 @@ fn test_replica_change_event() -> Result<()> {
 }
 
 fn wait_for_replica_change_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
+    wait_for_event_count(con, "num_replica_change_events", expected)
+}
+
+fn wait_for_repl_async_load_events(con: &mut redis::Connection, expected: i64) -> Result<()> {
+    wait_for_event_count(con, "num_repl_async_load_events", expected)
+}
+
+fn wait_for_event_count(con: &mut redis::Connection, command: &str, expected: i64) -> Result<()> {
     let start = Instant::now();
 
     loop {
-        let actual: i64 = redis::cmd("num_replica_change_events").query(con)?;
+        let actual: i64 = redis::cmd(command).query(con)?;
         if actual == expected {
             return Ok(());
         }
         if actual > expected {
-            anyhow::bail!("expected {expected} replica change events, but observed {actual}");
+            anyhow::bail!("expected {expected} events from {command}, but observed {actual}");
         }
         if start.elapsed() >= EVENT_WAIT_TIMEOUT {
             anyhow::bail!(
-                "timed out waiting for {expected} replica change events; last observed {actual}"
+                "timed out waiting for {expected} events from {command}; last observed {actual}"
             );
         }
 
@@ -1978,13 +1985,9 @@ fn test_repl_asnc_load_event() -> Result<()> {
         .arg("127.0.0.1")
         .arg(primary_port)
         .query(&mut replica_con)?;
-    // need to wait for replication to establish and event to fire
-    thread::sleep(Duration::from_millis(5000));
-
-    // check num_repl_async_load_events on the replica
-    let event_count1: i64 = redis::cmd("num_repl_async_load_events").query(&mut replica_con)?;
-    // started and completed fire so result is 2, aborted event does not fire
-    assert_eq!(event_count1, 2);
+    // The primary delays the diskless BGSAVE before the replica receives the
+    // RDB. Wait for the started and completed callbacks instead of racing it.
+    wait_for_repl_async_load_events(&mut replica_con, 2)?;
 
     Ok(())
 }
