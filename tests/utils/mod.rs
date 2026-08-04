@@ -313,6 +313,36 @@ pub(super) fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> 
     Ok(blocked_clients)
 }
 
+pub(super) fn wait_for_blocked_clients(con: &mut redis::Connection) -> Result<()> {
+    wait_for_blocked_client_count(con, |count| count > 0, "at least one blocked client")
+}
+
+pub(super) fn wait_for_no_blocked_clients(con: &mut redis::Connection) -> Result<()> {
+    wait_for_blocked_client_count(con, |count| count == 0, "no blocked clients")
+}
+
+fn wait_for_blocked_client_count(
+    con: &mut redis::Connection,
+    predicate: impl Fn(i32) -> bool,
+    expected: &str,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let blocked_clients = check_blocked_clients(con)?;
+        if predicate(blocked_clients) {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected}; last observed {blocked_clients} blocked clients"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
 pub(super) fn wait_for_replica_change_events(
     con: &mut redis::Connection,
     expected: i64,

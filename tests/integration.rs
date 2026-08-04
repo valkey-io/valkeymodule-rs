@@ -8,10 +8,10 @@ use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
 use utils::{
-    check_auth, check_blocked_clients, get_valkey_connection, setup_acl_users,
-    start_server_w_module_get_connection, wait_for_event_count, wait_for_event_count_greater_than,
-    wait_for_file_contents, wait_for_master_link_state, wait_for_repl_async_load_events,
-    wait_for_replica_change_events, AuthExpectedResult,
+    check_auth, get_valkey_connection, setup_acl_users, start_server_w_module_get_connection,
+    wait_for_blocked_clients, wait_for_event_count, wait_for_event_count_greater_than,
+    wait_for_file_contents, wait_for_master_link_state, wait_for_no_blocked_clients,
+    wait_for_repl_async_load_events, wait_for_replica_change_events, AuthExpectedResult,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
@@ -1277,16 +1277,7 @@ fn test_blocking_auth_callbacks() -> Result<()> {
             .query(&mut con);
     });
 
-    // Wait half a second (during the 2-second delay) to check blocked clients
-    // as the engine would take some time to reflect in its metrics
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    // Check blocked_clients from second connection
-    let blocked_clients = check_blocked_clients(&mut con2)?;
-    assert!(
-        blocked_clients > 0,
-        "Expected to see blocked clients during auth"
-    );
+    wait_for_blocked_clients(&mut con2)?;
 
     // Wait for auth to complete
     auth_handle.join().unwrap();
@@ -1504,27 +1495,14 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
         }
     });
 
-    // Wait to ensure auth is blocked and reflected in server metrics
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    // Verify client is blocked
-    let blocked_clients = check_blocked_clients(&mut monitor_con)?;
-    assert!(
-        blocked_clients > 0,
-        "Expected to see blocked clients during auth"
-    );
+    wait_for_blocked_clients(&mut monitor_con)?;
 
     // Force disconnect all clients except our monitoring connection
     redis::cmd("CLIENT")
         .arg(&["KILL", "SKIPME", "YES"])
         .query::<()>(&mut monitor_con)?;
 
-    // Verify blocked clients count is now 0
-    let blocked_clients_after = check_blocked_clients(&mut monitor_con)?;
-    assert_eq!(
-        blocked_clients_after, 0,
-        "Expected no blocked clients after disconnect"
-    );
+    wait_for_no_blocked_clients(&mut monitor_con)?;
 
     // Wait for auth thread to complete and handle any panics
     auth_handle.join().unwrap_or_else(|e| {
