@@ -2,6 +2,7 @@
 set -eu
 
 rm -f dump.rdb
+rm -f *.profraw
 
 cargo test-shims
 cargo build-examples --release
