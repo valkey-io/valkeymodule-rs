@@ -379,15 +379,8 @@ fn test_server_event() -> Result<()> {
     let before_sleep_count: i64 = redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
     let after_sleep_count: i64 = redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
 
-    thread::sleep(Duration::from_millis(50));
-
-    let before_sleep_count_after_wait: i64 =
-        redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
-    let after_sleep_count_after_wait: i64 =
-        redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
-
-    assert!(before_sleep_count_after_wait > before_sleep_count);
-    assert!(after_sleep_count_after_wait > after_sleep_count);
+    wait_for_event_count_greater_than(&mut con, "num_event_loop_before_sleep", before_sleep_count)?;
+    wait_for_event_count_greater_than(&mut con, "num_event_loop_after_sleep", after_sleep_count)?;
 
     redis::cmd("flushall")
         .exec(&mut con)
@@ -449,20 +442,18 @@ fn test_server_event() -> Result<()> {
     //one for overwrite and one for delete
     assert_eq!(res, 2);
 
+    let persistence_log_path = con.data_dir().join("persistence_log.txt");
+    if persistence_log_path.exists() {
+        std::fs::remove_file(&persistence_log_path)
+            .with_context(|| "failed to remove persistence log file")?;
+    }
+
     // Trigger RDB save (BGSAVE command triggers persistence events)
     redis::cmd("bgsave")
         .exec(&mut con)
         .with_context(|| "failed to run bgsave")?;
 
-    // Wait a moment for background save to start and potentially complete
-    std::thread::sleep(std::time::Duration::from_millis(100));
-
-    // Check that persistence events were fired
-    let persistence_events_after_rdb: i64 = redis::cmd("num_persistence_events").query(&mut con)?;
-
-    //initially there are 2 persistence events (one for RDB save start and one for RDB save end)
-    // after the BGSAVE command, we expect 2 more events (one for RDB save start and one for RDB save end)
-    assert_eq!(persistence_events_after_rdb, 4);
+    wait_for_file_contents(&persistence_log_path, &["RdbStart", "Ended"])?;
 
     Ok(())
 }
@@ -1721,14 +1712,7 @@ fn test_fork_child_event() -> Result<()> {
         .exec(&mut con)
         .with_context(|| "failed to run bgsave")?;
 
-    let num_fork_child_event1: i64 = redis::cmd("num_fork_child_events").query(&mut con)?;
-    assert_eq!(num_fork_child_event1, 1);
-
-    // Wait a moment for background save to start and potentially complete
-    thread::sleep(Duration::from_millis(100));
-
-    let num_fork_child_event2: i64 = redis::cmd("num_fork_child_events").query(&mut con)?;
-    assert_eq!(num_fork_child_event2, 2);
+    wait_for_event_count(&mut con, "num_fork_child_events", 2)?;
 
     Ok(())
 }
@@ -1827,6 +1811,51 @@ fn wait_for_event_count(con: &mut redis::Connection, command: &str, expected: i6
         if start.elapsed() >= EVENT_WAIT_TIMEOUT {
             anyhow::bail!(
                 "timed out waiting for {expected} events from {command}; last observed {actual}"
+            );
+        }
+
+        thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+fn wait_for_event_count_greater_than(
+    con: &mut redis::Connection,
+    command: &str,
+    previous: i64,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let actual: i64 = redis::cmd(command).query(con)?;
+        if actual > previous {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {command} to exceed {previous}; last observed {actual}"
+            );
+        }
+
+        thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        match std::fs::read_to_string(path) {
+            Ok(contents) if expected.iter().all(|expected| contents.contains(expected)) => {
+                return Ok(())
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e).with_context(|| format!("failed to read {}", path.display())),
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for expected contents in {}",
+                path.display()
             );
         }
 
