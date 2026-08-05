@@ -7,6 +7,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
+use tempfile::TempDir;
 
 const SHUTDOWN_CONNECTION_TIMEOUT: Duration = Duration::from_millis(250);
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -52,11 +53,11 @@ impl TestServer {
 pub(super) struct ChildGuard {
     name: &'static str,
     port: u16,
-    data_dir: PathBuf,
+    data_dir: TempDir,
     child: std::process::Child,
 }
 
-// Gracefully stops the child process before removing its isolated data directory.
+// Gracefully stops the child process before its isolated data directory is removed.
 impl Drop for ChildGuard {
     fn drop(&mut self) {
         let client = redis::Client::open(format!("redis://127.0.0.1:{}/", self.port));
@@ -73,7 +74,6 @@ impl Drop for ChildGuard {
         loop {
             match self.child.try_wait() {
                 Ok(Some(_)) => {
-                    self.cleanup_data_dir();
                     return;
                 }
                 Ok(None) if Instant::now() < shutdown_deadline => {
@@ -89,7 +89,6 @@ impl Drop for ChildGuard {
                             self.name
                         );
                     }
-                    self.cleanup_data_dir();
                     return;
                 }
                 Err(e) => {
@@ -104,13 +103,7 @@ impl Drop for ChildGuard {
 // Contains cleanup behavior used by the child process lifecycle.
 impl ChildGuard {
     fn data_dir(&self) -> &std::path::Path {
-        &self.data_dir
-    }
-
-    fn cleanup_data_dir(&self) {
-        if let Err(e) = fs::remove_dir_all(&self.data_dir) {
-            println!("Could not remove Valkey data directory: {e}");
-        }
+        self.data_dir.path()
     }
 }
 
@@ -130,11 +123,10 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
 
 fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let module_path = get_module_path(module_name)?;
-    let data_dir =
-        std::env::temp_dir().join(format!("valkeymodule-rs-{}-{port}", std::process::id()));
-    fs::create_dir(&data_dir)?;
+    let data_dir = create_data_dir()?;
     let port_arg = port.to_string();
     let data_dir_arg = data_dir
+        .path()
         .to_str()
         .context("Valkey data directory is not valid UTF-8")?;
 
@@ -155,14 +147,11 @@ fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<Child
 
     let child = Command::new("valkey-server")
         .args(args)
-        .current_dir(&data_dir)
+        .current_dir(data_dir.path())
         .spawn();
     let child = match child {
         Ok(child) => child,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&data_dir);
-            return Err(error.into());
-        }
+        Err(error) => return Err(error.into()),
     };
 
     Ok(ChildGuard {
@@ -171,6 +160,13 @@ fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<Child
         data_dir,
         child,
     })
+}
+
+fn create_data_dir() -> Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix("valkeymodule-rs-")
+        .tempdir()
+        .context("failed to create Valkey data directory")
 }
 
 fn get_available_port() -> Result<u16> {
