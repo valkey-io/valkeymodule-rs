@@ -251,8 +251,9 @@ pub(super) fn check_auth(
             assert_eq!(res, "OK");
         }
         AuthExpectedResult::Denied => {
-            assert!(response.is_err());
-            let err = response.unwrap_err().to_string();
+            let err = response
+                .expect_err("authentication should be denied")
+                .to_string();
             assert!(
                 err.contains("DENIED: Authentication credentials mismatch"),
                 "Unexpected error message: {}",
@@ -260,8 +261,9 @@ pub(super) fn check_auth(
             );
         }
         AuthExpectedResult::EngineDenied => {
-            assert!(response.is_err());
-            let err = response.unwrap_err().to_string();
+            let err = response
+                .expect_err("authentication engine should deny the request")
+                .to_string();
             assert!(
                 err.contains("WRONGPASS: invalid username-password pair or user is disabled"),
                 "Unexpected error message: {}",
@@ -269,8 +271,9 @@ pub(super) fn check_auth(
             );
         }
         AuthExpectedResult::Aborted => {
-            assert!(response.is_err());
-            let err = response.unwrap_err().to_string();
+            let err = response
+                .expect_err("authentication should be aborted by the server")
+                .to_string();
             assert!(
                 err.contains("ABORT: Authentication aborted by server"),
                 "Unexpected error message: {}",
