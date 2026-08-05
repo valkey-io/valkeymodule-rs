@@ -144,6 +144,57 @@ fn test_load_unload() -> Result<()> {
 }
 
 #[test]
+fn test_timer() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("timer")?;
+
+    let active_timer_id: String = redis::cmd("timer.create")
+        .arg(&["60000", "active"])
+        .query(&mut con)
+        .with_context(|| "failed to create a live timer")?;
+    let info: String = redis::cmd("timer.info")
+        .arg(&active_timer_id)
+        .query(&mut con)
+        .with_context(|| "failed to inspect a live timer")?;
+    assert!(info.contains("data: \"active\""));
+
+    let stopped: String = redis::cmd("timer.stop")
+        .arg(&active_timer_id)
+        .query(&mut con)
+        .with_context(|| "failed to stop a live timer")?;
+    assert_eq!(stopped, "Data: \"active\"");
+
+    let expired_timer_id: String = redis::cmd("timer.create")
+        .arg(&["1", "expired"])
+        .query(&mut con)
+        .with_context(|| "failed to create an expiring timer")?;
+    thread::sleep(Duration::from_millis(50));
+
+    let expired: RedisResult<String> = redis::cmd("timer.info")
+        .arg(&expired_timer_id)
+        .query(&mut con);
+    let expired_error = expired
+        .expect_err("timer.info should reject an expired timer")
+        .to_string();
+    assert_eq!(
+        expired_error,
+        "RedisModule_GetTimerInfo: failed, timer may not exist"
+    );
+
+    let invalid: RedisResult<String> = redis::cmd("timer.info")
+        .arg(u64::MAX.to_string())
+        .query(&mut con);
+    let invalid_error = invalid
+        .expect_err("timer.info should reject an invalid timer ID")
+        .to_string();
+    assert_eq!(
+        invalid_error,
+        "RedisModule_GetTimerInfo: failed, timer may not exist"
+    );
+
+    Ok(())
+}
+
+#[test]
 fn test_keys_pos() -> Result<()> {
     let mut con = start_server_w_module_get_connection("keys_pos")?;
 

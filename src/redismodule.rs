@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::convert::TryFrom;
 use std::ffi::CString;
 use std::fmt::Display;
 use std::ops::Deref;
@@ -240,9 +239,11 @@ impl ValkeyString {
     }
 
     pub fn parse_unsigned_integer(&self) -> Result<u64, ValkeyError> {
-        let val = self.parse_integer()?;
-        u64::try_from(val)
-            .map_err(|_| ValkeyError::Str("Couldn't parse negative number as unsigned integer"))
+        let mut val: u64 = 0;
+        match raw::string_to_ulonglong(self.inner, &mut val) {
+            raw::Status::Ok => Ok(val),
+            raw::Status::Err => Err(ValkeyError::Str("Couldn't parse as unsigned integer")),
+        }
     }
 
     pub fn parse_integer(&self) -> Result<i64, ValkeyError> {
