@@ -40,6 +40,110 @@ fn test_hello() -> Result<()> {
 }
 
 #[test]
+fn test_block() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("block")?;
+
+    let response: i64 = redis::cmd("block")
+        .query(&mut con)
+        .with_context(|| "failed to run block")?;
+
+    assert_eq!(response, 42);
+    Ok(())
+}
+
+#[test]
+fn test_info() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("info")?;
+
+    let redis_version: String = redis::cmd("infoex")
+        .arg(&["server", "redis_version"])
+        .query(&mut con)
+        .with_context(|| "failed to query the redis_version info field")?;
+    assert!(!redis_version.is_empty());
+
+    let missing_field: Option<String> = redis::cmd("infoex")
+        .arg(&["server", "not_a_real_field"])
+        .query(&mut con)
+        .with_context(|| "failed to query a missing info field")?;
+    assert_eq!(missing_field, None);
+
+    let wrong_arity: RedisResult<String> = redis::cmd("infoex").query(&mut con);
+    let error = wrong_arity.expect_err("infoex should require a section and field");
+    assert!(error.to_string().contains("wrong number of arguments"));
+
+    Ok(())
+}
+
+#[test]
+fn test_lists() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("lists")?;
+
+    let _: i64 = redis::cmd("RPUSH")
+        .arg(&["source", "first", "second"])
+        .query(&mut con)?;
+    let moved: String = redis::cmd("LPOPRPUSH")
+        .arg(&["source", "destination"])
+        .query(&mut con)?;
+    assert_eq!(moved, "first");
+    let destination: Vec<String> = redis::cmd("LRANGE")
+        .arg(&["destination", "0", "-1"])
+        .query(&mut con)?;
+    assert_eq!(destination, vec!["first"]);
+
+    let empty: Option<String> = redis::cmd("LPOPRPUSH")
+        .arg(&["empty", "destination"])
+        .query(&mut con)?;
+    assert_eq!(empty, None);
+
+    let _: String = redis::cmd("SET")
+        .arg(&["string-source", "value"])
+        .query(&mut con)?;
+    let source_error: RedisResult<String> = redis::cmd("LPOPRPUSH")
+        .arg(&["string-source", "destination"])
+        .query(&mut con);
+    assert!(source_error
+        .expect_err("LPOPRPUSH should reject a non-list source")
+        .to_string()
+        .contains("WRONGTYPE"));
+
+    let _: String = redis::cmd("SET")
+        .arg(&["string-destination", "value"])
+        .query(&mut con)?;
+    let destination_error: RedisResult<String> = redis::cmd("LPOPRPUSH")
+        .arg(&["source", "string-destination"])
+        .query(&mut con);
+    assert!(destination_error
+        .expect_err("LPOPRPUSH should reject a non-list destination")
+        .to_string()
+        .contains("WRONGTYPE"));
+
+    Ok(())
+}
+
+#[test]
+fn test_load_unload() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("hello")?;
+    let module_path = get_module_path("load_unload")?;
+
+    let loaded: String = redis::cmd("MODULE")
+        .arg(&["LOAD", &module_path, "first", "second"])
+        .query(&mut con)?;
+    assert_eq!(loaded, "OK");
+
+    let unloaded: String = redis::cmd("MODULE")
+        .arg(&["UNLOAD", "load_unload"])
+        .query(&mut con)?;
+    assert_eq!(unloaded, "OK");
+
+    let reloaded: String = redis::cmd("MODULE")
+        .arg(&["LOAD", &module_path, "replacement"])
+        .query(&mut con)?;
+    assert_eq!(reloaded, "OK");
+
+    Ok(())
+}
+
+#[test]
 fn test_keys_pos() -> Result<()> {
     let mut con = start_server_w_module_get_connection("keys_pos")?;
 

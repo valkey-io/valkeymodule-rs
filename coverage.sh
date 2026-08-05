@@ -15,8 +15,8 @@ eval "$(cargo llvm-cov show-env --sh)"
 
 cargo llvm-cov clean --workspace
 cargo test-shims
-cargo build-examples
-cargo test-integration
+cargo build-examples --release
+cargo test-integration --release
 
 # show-env uses the project's existing target directory instead of
 # cargo-llvm-cov's default report directory.
