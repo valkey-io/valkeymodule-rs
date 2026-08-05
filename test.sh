@@ -1,8 +1,10 @@
-#!/usr/bin/env sh
+#!/usr/bin/env zsh
 set -eu
 
+setopt NULL_GLOB
+
 rm -f dump.rdb
-rm -f *.profraw
+rm -f **/*.profraw
 
 cargo test-shims
 cargo build-examples --release
