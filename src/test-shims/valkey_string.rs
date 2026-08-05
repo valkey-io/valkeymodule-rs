@@ -302,13 +302,13 @@ mod tests {
     #[test]
     fn parses_full_unsigned_integer_range() {
         let string = ValkeyString::test(u64::MAX.to_string());
-        let mut value = 0;
 
-        let status =
-            unsafe { raw::RedisModule_StringToULongLong.unwrap()(string.inner, &mut value) };
-
-        assert_eq!(status, raw::Status::Ok as libc::c_int);
-        assert_eq!(value, u64::MAX);
+        assert_eq!(
+            string
+                .parse_unsigned_integer()
+                .expect("unsigned integer should parse"),
+            u64::MAX
+        );
     }
 
     #[test]
