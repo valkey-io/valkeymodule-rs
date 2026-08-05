@@ -1,8 +1,10 @@
-#!/usr/bin/env sh
+#!/usr/bin/env zsh
 set -eu
 
+setopt NULL_GLOB
+
 cleanup_profraw() {
-    rm -f *.profraw
+    rm -f **/*.profraw
 }
 
 # Raw LLVM profiles are intermediate artifacts. Remove them whether coverage
