@@ -33,9 +33,8 @@ fn test_hello() -> Result<()> {
 
     let res: Result<Vec<i32>, RedisError> =
         redis::cmd("hello.mul").arg(&["3", "xx"]).query(&mut con);
-    if res.is_ok() {
-        return Err(anyhow::Error::msg("Should return an error"));
-    }
+    let error = res.expect_err("hello.mul should reject non-integer arguments");
+    assert_eq!(error.to_string(), "Couldn't: parse as integer");
 
     Ok(())
 }
@@ -52,9 +51,8 @@ fn test_keys_pos() -> Result<()> {
 
     let res: Result<Vec<String>, RedisError> =
         redis::cmd("keys_pos").arg(&["a", "1", "b"]).query(&mut con);
-    if res.is_ok() {
-        return Err(anyhow::Error::msg("Should return an error"));
-    }
+    let error = res.expect_err("keys_pos should reject an incomplete key-value pair");
+    assert!(error.to_string().contains("wrong number of arguments"));
 
     Ok(())
 }
@@ -99,19 +97,22 @@ fn test_command_name() -> Result<()> {
         .query(&mut con)
         .with_context(|| "failed to run test_helper.name")?;
 
-    if let Ok(ver) = valkey_module::Context::version_from_info(ValkeyValue::SimpleString(info)) {
-        if ver.major > 6
-            || (ver.major == 6 && ver.minor > 2)
-            || (ver.major == 6 && ver.minor == 2 && ver.patch >= 5)
-        {
-            assert_eq!(res.unwrap(), String::from("test_helper.name"));
-        } else {
-            assert!(res
-                .err()
-                .unwrap()
-                .to_string()
-                .contains("RedisModule_GetCurrentCommandName is not available"));
-        }
+    let ver = valkey_module::Context::version_from_info(ValkeyValue::SimpleString(info)).map_err(
+        |error| anyhow::anyhow!("failed to parse Valkey version from INFO SERVER: {error}"),
+    )?;
+    if ver.major > 6
+        || (ver.major == 6 && ver.minor > 2)
+        || (ver.major == 6 && ver.minor == 2 && ver.patch >= 5)
+    {
+        assert_eq!(
+            res.context("test_helper.name should be available on this Valkey version")?,
+            "test_helper.name"
+        );
+    } else {
+        let error = res.expect_err("test_helper.name should be unavailable on this Valkey version");
+        assert!(error
+            .to_string()
+            .contains("RedisModule_GetCurrentCommandName is not available"));
     }
 
     Ok(())
@@ -316,13 +317,11 @@ fn test_verify_acl_on_user() -> Result<()> {
         .arg(&["alice", "not_allow"])
         .query(&mut con);
 
-    assert!(res.is_err());
-    if let Err(res) = res {
-        assert_eq!(
-            res.to_string(),
-            "Err: User does not have permissions on key"
-        );
-    }
+    let error = res.expect_err("alice should not access keys outside the cached namespace");
+    assert_eq!(
+        error.to_string(),
+        "Err: User does not have permissions on key"
+    );
 
     Ok(())
 }
