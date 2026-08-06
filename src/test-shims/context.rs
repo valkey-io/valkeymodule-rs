@@ -110,6 +110,24 @@ impl TestContext {
         self
     }
 
+    /// Configures the client IP address returned for a client ID.
+    pub fn expect_get_client_ip_by_id(&mut self, client_id: u64, client_ip: &str) -> &mut Self {
+        assert!(
+            client_ip.len() < 46,
+            "client IP must fit in RedisModuleClientInfo::addr"
+        );
+
+        let mut client_info = RedisModuleClientInfo {
+            id: client_id,
+            ..RedisModuleClientInfo::default()
+        };
+        for (address_byte, ip_byte) in client_info.addr.iter_mut().zip(client_ip.bytes()) {
+            *address_byte = ip_byte as libc::c_char;
+        }
+
+        self.expect_get_client_info_by_id(client_info)
+    }
+
     /// Configures the username returned by [`Context::get_current_user`].
     pub fn expect_get_current_user<T: Into<Vec<u8>>>(&mut self, current_user: T) -> &mut Self {
         self.data.current_user = Some(current_user.into());
@@ -601,6 +619,19 @@ mod tests {
         assert_eq!(
             get_client_info_by_id((&mut client_info as *mut RedisModuleClientInfo).cast(), 42,),
             raw::Status::Err as libc::c_int
+        );
+    }
+
+    #[test]
+    fn returns_configured_client_ip() {
+        let mut context = Context::test();
+        context.expect_get_client_ip_by_id(42, "127.0.0.1");
+
+        assert_eq!(
+            context
+                .get_client_ip()
+                .expect("configured client IP should be returned"),
+            "127.0.0.1"
         );
     }
 }

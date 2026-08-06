@@ -192,4 +192,15 @@ mod tests {
 
         assert_eq!(result, ValkeyValue::BulkString("7".into()));
     }
+
+    #[test]
+    fn returns_client_ip() {
+        let mut context = Context::test();
+        context.expect_get_client_ip_by_id(42, "127.0.0.1");
+
+        let result =
+            get_client_ip(&context, Vec::new()).expect("configured client IP should be returned");
+
+        assert_eq!(result, ValkeyValue::BulkString("127.0.0.1".into()));
+    }
 }

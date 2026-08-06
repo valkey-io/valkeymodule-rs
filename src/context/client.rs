@@ -255,4 +255,27 @@ mod tests {
         assert_eq!(client_info.port, 0);
         assert_eq!(client_info.db, 0);
     }
+
+    #[test]
+    fn gets_configured_client_ip_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_ip_by_id(42, "127.0.0.1");
+
+        assert_eq!(
+            context
+                .get_client_ip()
+                .expect("configured client IP should be returned"),
+            "127.0.0.1"
+        );
+        assert_eq!(
+            context
+                .get_client_ip_by_id(42)
+                .expect("configured client IP should be returned by ID"),
+            "127.0.0.1"
+        );
+        assert!(matches!(
+            context.get_client_ip_by_id(7),
+            Err(ValkeyError::Str("Client/Info not found"))
+        ));
+    }
 }
