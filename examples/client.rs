@@ -1,6 +1,7 @@
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
-    valkey_module, Context, NextArg, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
+    valkey_module, Context, NextArg, RedisModuleClientInfo, Status, ValkeyError, ValkeyResult,
+    ValkeyString, ValkeyValue,
 };
 
 fn get_client_id(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -175,5 +176,20 @@ mod tests {
             .expect("configured client should be deauthenticated");
 
         assert_eq!(result, ValkeyValue::BulkString("OK".into()));
+    }
+
+    #[test]
+    fn returns_client_info_version() {
+        let mut context = Context::test();
+        context.expect_get_client_info_by_id(RedisModuleClientInfo {
+            version: 7,
+            id: 42,
+            ..RedisModuleClientInfo::default()
+        });
+
+        let result = get_client_info(&context, Vec::new())
+            .expect("configured client info should be returned");
+
+        assert_eq!(result, ValkeyValue::BulkString("7".into()));
     }
 }

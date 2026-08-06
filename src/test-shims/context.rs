@@ -1,4 +1,6 @@
-use crate::{raw, Context, ValkeyString};
+use crate::{raw, Context, RedisModuleClientInfo, ValkeyString};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::Deref;
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -6,6 +8,10 @@ use std::sync::atomic::{AtomicI32, Ordering};
 const DEFAULT_CLIENT_ID: u64 = 1;
 
 static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
+
+thread_local! {
+    static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
+}
 
 impl Context {
     /// Creates a test context whose API return values can be configured with `expect_*` methods.
@@ -48,6 +54,11 @@ impl TestContext {
         super::setup_test_shims();
 
         let mut data = Box::new(ContextData::default());
+
+        // GetClientInfoById has no context parameter, so its shim uses per-thread state.
+        // Reset that state before each test context to prevent stale expectations leaking.
+        CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
+
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
         Self {
@@ -81,6 +92,21 @@ impl TestContext {
     ) -> &mut Self {
         self.data.client_id = client_id;
         self.data.client_username = Some(client_username.into());
+        self
+    }
+
+    /// Configures the client information returned for a client ID.
+    pub fn expect_get_client_info_by_id(
+        &mut self,
+        client_info: RedisModuleClientInfo,
+    ) -> &mut Self {
+        let client_id = client_info.id;
+        self.data.client_id = client_id;
+        CLIENT_INFO_BY_ID.with(|client_info_by_id| {
+            client_info_by_id
+                .borrow_mut()
+                .insert(client_id, client_info);
+        });
         self
     }
 
@@ -171,6 +197,27 @@ pub(super) extern "C" fn get_client_username_by_id(
     };
 
     ValkeyString::test(client_username.clone()).take()
+}
+
+pub(super) extern "C" fn get_client_info_by_id(
+    output: *mut libc::c_void,
+    client_id: libc::c_ulonglong,
+) -> libc::c_int {
+    if output.is_null() {
+        return raw::Status::Err as libc::c_int;
+    }
+
+    let client_info = CLIENT_INFO_BY_ID
+        .with(|client_info_by_id| client_info_by_id.borrow().get(&client_id).copied());
+    let Some(client_info) = client_info else {
+        return raw::Status::Err as libc::c_int;
+    };
+
+    // SAFETY: Valkey supplies a writable `RedisModuleClientInfo` output buffer.
+    unsafe {
+        output.cast::<RedisModuleClientInfo>().write(client_info);
+    }
+    raw::Status::Ok as libc::c_int
 }
 
 pub(super) extern "C" fn get_current_user_name(
@@ -513,5 +560,47 @@ mod tests {
         for options in module_options {
             context.set_module_options(options);
         }
+    }
+
+    #[test]
+    fn returns_configured_client_info() {
+        let mut context = Context::test();
+        context.expect_get_client_info_by_id(RedisModuleClientInfo {
+            version: 7,
+            id: 42,
+            port: 6379,
+            db: 2,
+            ..RedisModuleClientInfo::default()
+        });
+
+        let client_info = context
+            .get_client_info()
+            .expect("configured client info should be returned");
+
+        assert_eq!(client_info.version, 7);
+        assert_eq!(client_info.id, 42);
+        assert_eq!(client_info.port, 6379);
+        assert_eq!(client_info.db, 2);
+    }
+
+    #[test]
+    fn rejects_unconfigured_client_info() {
+        let context = Context::test();
+
+        assert!(matches!(
+            context.get_client_info(),
+            Err(crate::ValkeyError::Str("Client/Info not found"))
+        ));
+    }
+
+    #[test]
+    fn get_client_info_by_id_rejects_unknown_id() {
+        let _context = Context::test();
+        let mut client_info = RedisModuleClientInfo::default();
+
+        assert_eq!(
+            get_client_info_by_id((&mut client_info as *mut RedisModuleClientInfo).cast(), 42,),
+            raw::Status::Err as libc::c_int
+        );
     }
 }

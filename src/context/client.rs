@@ -229,7 +229,7 @@ mod tests {
             db: 2,
             ..RedisModuleClientInfo::default()
         };
-        context.expect_get_client_info_by_id(42, client_info);
+        context.expect_get_client_info_by_id(client_info);
 
         let result = context
             .get_client_info()

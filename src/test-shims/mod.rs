@@ -34,6 +34,7 @@ fn setup_test_shims() {
             raw::RedisModule_GetClientId = Some(context::get_client_id);
             raw::RedisModule_GetClientNameById = Some(context::get_client_name_by_id);
             raw::RedisModule_GetClientUserNameById = Some(context::get_client_username_by_id);
+            raw::RedisModule_GetClientInfoById = Some(context::get_client_info_by_id);
             raw::RedisModule_GetCurrentUserName = Some(context::get_current_user_name);
             raw::RedisModule_DeauthenticateAndCloseClient =
                 Some(context::deauthenticate_and_close_client);
