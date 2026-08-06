@@ -101,25 +101,42 @@ fn shutdown_event_handler(ctx: &Context, _event: u64) {
 
 #[persistence_event_handler]
 fn persistence_event_handler(ctx: &Context, persistence_event: PersistenceSubevent) {
-    match persistence_event {
+    let event_name = match persistence_event {
         PersistenceSubevent::RdbStart => {
             ctx.log_notice("RDB persistence started");
+            "RdbStart"
         }
         PersistenceSubevent::AofStart => {
             ctx.log_notice("AOF persistence started");
+            "AofStart"
         }
         PersistenceSubevent::SyncRdbStart => {
             ctx.log_notice("Sync RDB persistence started");
+            "SyncRdbStart"
         }
         PersistenceSubevent::SyncAofStart => {
             ctx.log_notice("Sync AOF persistence started");
+            "SyncAofStart"
         }
         PersistenceSubevent::Ended => {
             ctx.log_notice("Persistence operation ended");
+            "Ended"
         }
         PersistenceSubevent::Failed => {
             ctx.log_warning("Persistence operation failed");
+            "Failed"
         }
+    };
+    if let Err(e) = (|| -> std::io::Result<()> {
+        use std::io::Write;
+
+        let mut log = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("persistence_log.txt")?;
+        writeln!(log, "{event_name}")
+    })() {
+        ctx.log_warning(&format!("Failed to write persistence log file: {e}"));
     }
     NUM_PERSISTENCE_EVENTS.fetch_add(1, Ordering::SeqCst);
 }

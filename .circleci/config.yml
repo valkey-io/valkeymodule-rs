@@ -131,6 +131,14 @@ commands:
           name: Build release
           shell: /bin/bash -l -eo pipefail
           command: make build <<parameters.build_params>>
+      - run:
+          name: Reject test shims in release builds
+          shell: /bin/bash -l -eo pipefail
+          command: |
+            if cargo build --release --features test-shims; then
+              echo "release build unexpectedly accepted test-shims" >&2
+              exit 1
+            fi
       - save_cache:
           key: v3-dependencies-{{ arch }}-{{ checksum "Cargo.toml" }}
           paths:

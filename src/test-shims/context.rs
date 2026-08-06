@@ -288,7 +288,10 @@ mod tests {
         let mut context = Context::test();
         context.expect_get_client_name_by_id(42, "alice");
 
-        assert!(context.get_client_name_by_id(7).is_err());
+        assert!(matches!(
+            context.get_client_name_by_id(7),
+            Err(crate::ValkeyError::Str("Client/Client name is null"))
+        ));
     }
 
     #[test]
@@ -320,7 +323,10 @@ mod tests {
         let mut context = Context::test();
         context.expect_get_client_username_by_id(42, "alice");
 
-        assert!(context.get_client_username_by_id(7).is_err());
+        assert!(matches!(
+            context.get_client_username_by_id(7),
+            Err(crate::ValkeyError::Str("Client/Username is null"))
+        ));
     }
 
     #[test]

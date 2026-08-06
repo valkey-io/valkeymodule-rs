@@ -684,6 +684,12 @@ pub fn string_to_longlong(s: *const RedisModuleString, len: *mut i64) -> Status 
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[inline]
+pub fn string_to_ulonglong(s: *const RedisModuleString, len: *mut u64) -> Status {
+    unsafe { RedisModule_StringToULongLong.unwrap()(s, len).into() }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[inline]
 pub fn string_to_double(s: *const RedisModuleString, len: *mut f64) -> Status {
     unsafe { RedisModule_StringToDouble.unwrap()(s, len).into() }
 }
