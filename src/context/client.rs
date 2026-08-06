@@ -141,3 +141,82 @@ impl Context {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returns_current_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_id(42);
+
+        assert_eq!(context.get_client_id(), 42);
+    }
+
+    #[test]
+    fn gets_client_name_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_name_by_id(42, "alice");
+
+        assert_eq!(
+            context
+                .get_client_name()
+                .expect("configured client name should be returned")
+                .as_slice(),
+            b"alice"
+        );
+        assert_eq!(
+            context
+                .get_client_name_by_id(42)
+                .expect("configured client name should be returned by ID")
+                .as_slice(),
+            b"alice"
+        );
+        assert!(matches!(
+            context.get_client_name_by_id(7),
+            Err(ValkeyError::Str("Client/Client name is null"))
+        ));
+    }
+
+    #[test]
+    fn gets_client_username_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_username_by_id(42, "alice");
+
+        assert_eq!(
+            context
+                .get_client_username()
+                .expect("configured client username should be returned")
+                .as_slice(),
+            b"alice"
+        );
+        assert_eq!(
+            context
+                .get_client_username_by_id(42)
+                .expect("configured client username should be returned by ID")
+                .as_slice(),
+            b"alice"
+        );
+        assert!(matches!(
+            context.get_client_username_by_id(7),
+            Err(ValkeyError::Str("Client/Username is null"))
+        ));
+    }
+
+    #[test]
+    fn deauthenticates_configured_client_id_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_deauthenticate_and_close_client_by_id(42);
+
+        assert_eq!(context.deauthenticate_and_close_client(), Status::Ok);
+        assert_eq!(
+            context.deauthenticate_and_close_client_by_id(42),
+            Status::Ok
+        );
+        assert_eq!(
+            context.deauthenticate_and_close_client_by_id(7),
+            Status::Err
+        );
+    }
+}
