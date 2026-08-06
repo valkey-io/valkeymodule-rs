@@ -7,8 +7,8 @@ use crate::{
 use std::ffi::CStr;
 use std::os::raw::c_void;
 
-impl RedisModuleClientInfo {
-    fn new() -> Self {
+impl Default for RedisModuleClientInfo {
+    fn default() -> Self {
         Self {
             version: 1,
             flags: 0,
@@ -91,13 +91,12 @@ impl Context {
 
     /// wrapper for RedisModule_GetClientInfoById
     pub fn get_client_info_by_id(&self, client_id: u64) -> ValkeyResult<RedisModuleClientInfo> {
-        let mut mci = RedisModuleClientInfo::new();
+        let mut mci = RedisModuleClientInfo::default();
         let mci_ptr: *mut c_void = &mut mci as *mut _ as *mut c_void;
-        unsafe {
-            RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id);
-        };
-        if mci_ptr.is_null() {
-            Err(ValkeyError::Str("Client/Info is null"))
+        let status: Status =
+            unsafe { RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id).into() };
+        if status != Status::Ok {
+            Err(ValkeyError::Str("Client/Info not found"))
         } else {
             Ok(mci)
         }
@@ -218,5 +217,42 @@ mod tests {
             context.deauthenticate_and_close_client_by_id(7),
             Status::Err
         );
+    }
+
+    #[test]
+    fn gets_configured_client_info_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        let client_info = RedisModuleClientInfo {
+            id: 42,
+            addr: [1; 46],
+            port: 6379,
+            db: 2,
+            ..RedisModuleClientInfo::default()
+        };
+        context.expect_get_client_info_by_id(42, client_info);
+
+        let result = context
+            .get_client_info()
+            .expect("configured client info should be returned");
+        assert_eq!(result.id, 42);
+        assert_eq!(result.addr, client_info.addr);
+        assert_eq!(result.port, 6379);
+        assert_eq!(result.db, 2);
+        assert!(matches!(
+            context.get_client_info_by_id(7),
+            Err(ValkeyError::Str("Client/Info not found"))
+        ));
+    }
+
+    #[test]
+    fn client_info_default_uses_version_one_and_zeroed_fields() {
+        let client_info = RedisModuleClientInfo::default();
+
+        assert_eq!(client_info.version, 1);
+        assert_eq!(client_info.flags, 0);
+        assert_eq!(client_info.id, 0);
+        assert_eq!(client_info.addr, [0; 46]);
+        assert_eq!(client_info.port, 0);
+        assert_eq!(client_info.db, 0);
     }
 }
