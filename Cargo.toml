@@ -158,6 +158,11 @@ crate-type = ["cdylib"]
 name = "crontab"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "usage_tracking"
+crate-type = ["cdylib"]
+required-features = ["enable-usage-tracking"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
