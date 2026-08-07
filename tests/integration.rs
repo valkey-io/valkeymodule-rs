@@ -1257,10 +1257,10 @@ fn test_client() -> Result<()> {
         .with_context(|| "failed execute client.username")?;
     assert_eq!(resp, "default");
     // test client.cert
-    let resp: String = redis::cmd("client.cert")
-        .query(&mut con)
-        .with_context(|| "failed execute client.cert")?;
-    assert_eq!(resp, "");
+    let error = redis::cmd("client.cert")
+        .query::<String>(&mut con)
+        .expect_err("client.cert should fail when the client has no TLS certificate");
+    assert!(error.to_string().contains("Client/Cert: is null"));
     // test client.info
     let resp: String = redis::cmd("client.info")
         .query(&mut con)

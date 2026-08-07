@@ -7,8 +7,8 @@ use crate::{
 use std::ffi::CStr;
 use std::os::raw::c_void;
 
-impl RedisModuleClientInfo {
-    fn new() -> Self {
+impl Default for RedisModuleClientInfo {
+    fn default() -> Self {
         Self {
             version: 1,
             flags: 0,
@@ -91,13 +91,12 @@ impl Context {
 
     /// wrapper for RedisModule_GetClientInfoById
     pub fn get_client_info_by_id(&self, client_id: u64) -> ValkeyResult<RedisModuleClientInfo> {
-        let mut mci = RedisModuleClientInfo::new();
+        let mut mci = RedisModuleClientInfo::default();
         let mci_ptr: *mut c_void = &mut mci as *mut _ as *mut c_void;
-        unsafe {
-            RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id);
-        };
-        if mci_ptr.is_null() {
-            Err(ValkeyError::Str("Client/Info is null"))
+        let status: Status =
+            unsafe { RedisModule_GetClientInfoById.unwrap()(mci_ptr, client_id).into() };
+        if status != Status::Ok {
+            Err(ValkeyError::Str("Client/Info not found"))
         } else {
             Ok(mci)
         }
@@ -139,5 +138,164 @@ impl Context {
             },
             _ => Err(ValkeyError::Str("Unexpected CONFIG GET response")),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_CLIENT_CERTIFICATE: &str = concat!(
+        "-----BEGIN CERTIFICATE-----\n",
+        "VGhpcyBpcyBhIHRlc3QgY2xpZW50IGNlcnRpZmljYXRlLg==\n",
+        "-----END CERTIFICATE-----\n"
+    );
+
+    #[test]
+    fn returns_current_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_id(42);
+
+        assert_eq!(context.get_client_id(), 42);
+    }
+
+    #[test]
+    fn gets_client_name_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_name_by_id(42, "alice");
+
+        assert_eq!(
+            context
+                .get_client_name()
+                .expect("configured client name should be returned")
+                .as_slice(),
+            b"alice"
+        );
+        assert!(matches!(
+            context.get_client_name_by_id(7),
+            Err(ValkeyError::Str("Client/Client name is null"))
+        ));
+    }
+
+    #[test]
+    fn gets_client_username_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_username_by_id(42, "alice");
+
+        assert_eq!(
+            context
+                .get_client_username()
+                .expect("configured client username should be returned")
+                .as_slice(),
+            b"alice"
+        );
+        assert!(matches!(
+            context.get_client_username_by_id(7),
+            Err(ValkeyError::Str("Client/Username is null"))
+        ));
+    }
+
+    #[test]
+    fn deauthenticates_configured_client_id_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_deauthenticate_and_close_client_by_id(42);
+
+        assert_eq!(context.deauthenticate_and_close_client(), Status::Ok);
+        assert_eq!(
+            context.deauthenticate_and_close_client_by_id(42),
+            Status::Ok
+        );
+        assert_eq!(
+            context.deauthenticate_and_close_client_by_id(7),
+            Status::Err
+        );
+    }
+
+    #[test]
+    fn gets_configured_client_info_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        let client_info = RedisModuleClientInfo {
+            id: 42,
+            addr: [1; 46],
+            port: 6379,
+            db: 2,
+            ..RedisModuleClientInfo::default()
+        };
+        context.expect_get_client_info_by_id(client_info);
+
+        assert!(context.get_client_info().is_ok());
+        assert!(context.get_client_info_by_id(42).is_ok());
+        assert!(matches!(
+            context.get_client_info_by_id(7),
+            Err(ValkeyError::Str("Client/Info not found"))
+        ));
+    }
+
+    #[test]
+    fn client_info_default_uses_version_one_and_zeroed_fields() {
+        let client_info = RedisModuleClientInfo::default();
+
+        assert_eq!(client_info.version, 1);
+        assert_eq!(client_info.flags, 0);
+        assert_eq!(client_info.id, 0);
+        assert_eq!(client_info.addr, [0; 46]);
+        assert_eq!(client_info.port, 0);
+        assert_eq!(client_info.db, 0);
+    }
+
+    #[test]
+    fn gets_configured_client_ip_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_get_client_ip_by_id(42, "127.0.0.1");
+
+        assert_eq!(
+            context
+                .get_client_ip()
+                .expect("configured client IP should be returned"),
+            "127.0.0.1"
+        );
+        assert!(matches!(
+            context.get_client_ip_by_id(7),
+            Err(ValkeyError::Str("Client/Info not found"))
+        ));
+
+        context.expect_get_client_ip_by_id(42, "2001:db8::1");
+
+        assert_eq!(
+            context
+                .get_client_ip()
+                .expect("configured IPv6 client IP should be returned"),
+            "2001:db8::1"
+        );
+    }
+
+    #[test]
+    fn gets_configured_client_certificate_and_rejects_missing_certificate() {
+        let mut context = Context::test();
+        context.expect_get_client_cert(TEST_CLIENT_CERTIFICATE);
+
+        assert_eq!(
+            context
+                .get_client_cert()
+                .expect("configured client certificate should be returned")
+                .as_slice(),
+            TEST_CLIENT_CERTIFICATE.as_bytes()
+        );
+
+        let context = Context::test();
+        assert!(matches!(
+            context.get_client_cert(),
+            Err(ValkeyError::Str("Client/Cert is null"))
+        ));
+    }
+
+    #[test]
+    fn sets_current_client_name_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_set_client_name_by_id(42);
+        let client_name = context.create_string("bob");
+
+        assert_eq!(context.set_client_name(&client_name), Status::Ok);
+        assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
     }
 }

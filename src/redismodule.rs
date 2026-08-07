@@ -432,3 +432,200 @@ impl Drop for RedisBuffer {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_clone_keeps_string_alive_after_original_is_dropped() {
+        let context = Context::test();
+        let original = ValkeyString::test("value");
+        let cloned = original.safe_clone(&context);
+
+        assert_eq!(cloned.inner, original.inner);
+        drop(original);
+
+        assert_eq!(cloned.as_slice(), b"value");
+    }
+
+    #[test]
+    fn create_and_retain_keeps_the_transferred_reference_alive() {
+        let _context = Context::test();
+        let string = ValkeyString::create_and_retain("value");
+        let inner = string.inner;
+
+        assert_eq!(string.as_slice(), b"value");
+        drop(string);
+
+        // SAFETY: `create_and_retain` creates a second shim-backed reference for the caller to
+        // transfer to Valkey. This releases that reference after the test's owner was dropped.
+        unsafe {
+            raw::RedisModule_FreeString.unwrap()(ptr::null_mut(), inner);
+        }
+    }
+
+    #[test]
+    fn create_from_slice_preserves_binary_data() {
+        let _context = Context::test();
+        let string = ValkeyString::create_from_slice(ptr::null_mut(), &[0, 0xff, b'a']);
+
+        assert_eq!(string.as_slice(), &[0, 0xff, b'a']);
+    }
+
+    #[test]
+    fn empty_string_is_empty() {
+        let string = ValkeyString::test("");
+
+        assert!(string.is_empty());
+    }
+
+    #[test]
+    fn invalid_utf8_reports_an_error_and_converts_lossily() {
+        let string = ValkeyString::test([b'a', 0xff]);
+
+        assert!(matches!(
+            string.try_as_str(),
+            Err(ValkeyError::Str("Couldn't parse as UTF-8 string"))
+        ));
+        assert_eq!(string.to_string_lossy(), "a�");
+    }
+
+    #[test]
+    fn parses_signed_integer_boundaries() {
+        let minimum = ValkeyString::test(i64::MIN.to_string());
+        let maximum = ValkeyString::test(i64::MAX.to_string());
+
+        assert_eq!(
+            minimum
+                .parse_integer()
+                .expect("minimum signed integer should parse"),
+            i64::MIN
+        );
+        assert_eq!(
+            maximum
+                .parse_integer()
+                .expect("maximum signed integer should parse"),
+            i64::MAX
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_signed_and_unsigned_integers() {
+        let signed_overflow = ValkeyString::test("9223372036854775808");
+        let negative_unsigned = ValkeyString::test("-1");
+        let unsigned_overflow = ValkeyString::test("18446744073709551616");
+
+        assert!(matches!(
+            signed_overflow.parse_integer(),
+            Err(ValkeyError::Str("Couldn't parse as integer"))
+        ));
+        assert!(matches!(
+            negative_unsigned.parse_unsigned_integer(),
+            Err(ValkeyError::Str("Couldn't parse as unsigned integer"))
+        ));
+        assert!(matches!(
+            unsigned_overflow.parse_unsigned_integer(),
+            Err(ValkeyError::Str("Couldn't parse as unsigned integer"))
+        ));
+    }
+
+    #[test]
+    fn rejects_invalid_float() {
+        let string = ValkeyString::test("not-a-float");
+
+        assert!(matches!(
+            string.parse_float(),
+            Err(ValkeyError::Str("Couldn't parse as float"))
+        ));
+    }
+
+    #[test]
+    fn next_arg_helpers_consume_values_of_each_supported_type() {
+        let mut args = vec![
+            ValkeyString::test([0, 0xff]),
+            ValkeyString::test("string"),
+            ValkeyString::test("text"),
+            ValkeyString::test("-42"),
+            ValkeyString::test(u64::MAX.to_string()),
+            ValkeyString::test("42.5"),
+        ]
+        .into_iter();
+
+        assert_eq!(
+            args.next_arg()
+                .expect("binary argument should be returned")
+                .as_slice(),
+            &[0, 0xff]
+        );
+        assert_eq!(
+            args.next_string()
+                .expect("string argument should be returned"),
+            "string"
+        );
+        assert!(args.next_str().is_ok());
+        assert_eq!(args.next_i64().expect("integer should parse"), -42);
+        assert_eq!(
+            args.next_u64().expect("unsigned integer should parse"),
+            u64::MAX
+        );
+        assert_eq!(args.next_f64().expect("float should parse"), 42.5);
+        assert!(args.done().is_ok());
+    }
+
+    #[test]
+    fn next_arg_helpers_report_wrong_arity_for_empty_iterator() {
+        let mut args = Vec::<ValkeyString>::new().into_iter();
+
+        assert!(matches!(args.next_arg(), Err(ValkeyError::WrongArity)));
+        assert!(matches!(args.next_string(), Err(ValkeyError::WrongArity)));
+        assert!(matches!(args.next_str(), Err(ValkeyError::WrongArity)));
+        assert!(matches!(args.next_i64(), Err(ValkeyError::WrongArity)));
+        assert!(matches!(args.next_u64(), Err(ValkeyError::WrongArity)));
+        assert!(matches!(args.next_f64(), Err(ValkeyError::WrongArity)));
+    }
+
+    #[test]
+    fn next_str_rejects_invalid_utf8_while_next_string_is_lossy() {
+        let mut string_args = vec![ValkeyString::test([b'a', 0xff])].into_iter();
+        let mut str_args = vec![ValkeyString::test([b'a', 0xff])].into_iter();
+
+        assert_eq!(
+            string_args
+                .next_string()
+                .expect("next_string should use a lossy conversion"),
+            "a�"
+        );
+        assert!(matches!(
+            str_args.next_str(),
+            Err(ValkeyError::Str("Couldn't parse as UTF-8 string"))
+        ));
+    }
+
+    #[test]
+    fn numeric_next_arg_helpers_report_parse_errors() {
+        let mut integer_args = vec![ValkeyString::test("not-an-integer")].into_iter();
+        let mut unsigned_args = vec![ValkeyString::test("-1")].into_iter();
+        let mut float_args = vec![ValkeyString::test("not-a-float")].into_iter();
+
+        assert!(matches!(
+            integer_args.next_i64(),
+            Err(ValkeyError::Str("Couldn't parse as integer"))
+        ));
+        assert!(matches!(
+            unsigned_args.next_u64(),
+            Err(ValkeyError::Str("Couldn't parse as unsigned integer"))
+        ));
+        assert!(matches!(
+            float_args.next_f64(),
+            Err(ValkeyError::Str("Couldn't parse as float"))
+        ));
+    }
+
+    #[test]
+    fn done_rejects_remaining_arguments() {
+        let mut args = vec![ValkeyString::test("extra")].into_iter();
+
+        assert!(matches!(args.done(), Err(ValkeyError::WrongArity)));
+    }
+}
