@@ -25,6 +25,7 @@ struct ContextData {
     client_id: u64,
     client_name: Option<Vec<u8>>,
     client_username: Option<Vec<u8>>,
+    client_cert: Option<Vec<u8>>,
     current_user: Option<Vec<u8>>,
     acl_user: Option<Vec<u8>>,
     deauthentication_expected: bool,
@@ -36,6 +37,7 @@ impl Default for ContextData {
             client_id: DEFAULT_CLIENT_ID,
             client_name: None,
             client_username: None,
+            client_cert: None,
             current_user: None,
             acl_user: None,
             deauthentication_expected: false,
@@ -92,6 +94,12 @@ impl TestContext {
     ) -> &mut Self {
         self.data.client_id = client_id;
         self.data.client_username = Some(client_username.into());
+        self
+    }
+
+    /// Configures the certificate returned for the current client.
+    pub fn expect_get_client_cert<T: Into<Vec<u8>>>(&mut self, client_cert: T) -> &mut Self {
+        self.data.client_cert = Some(client_cert.into());
         self
     }
 
@@ -217,6 +225,26 @@ pub(super) extern "C" fn get_client_username_by_id(
     ValkeyString::test(client_username.clone()).take()
 }
 
+pub(super) extern "C" fn get_client_certificate(
+    ctx: *mut raw::RedisModuleCtx,
+    client_id: libc::c_ulonglong,
+) -> *mut raw::RedisModuleString {
+    if ctx.is_null() {
+        return null_mut();
+    }
+
+    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
+    let data = unsafe { &*ctx.cast::<ContextData>() };
+    if data.client_id != client_id {
+        return null_mut();
+    }
+    let Some(client_cert) = data.client_cert.as_ref() else {
+        return null_mut();
+    };
+
+    ValkeyString::test(client_cert.clone()).take()
+}
+
 pub(super) extern "C" fn get_client_info_by_id(
     output: *mut libc::c_void,
     client_id: libc::c_ulonglong,
@@ -312,6 +340,12 @@ pub(super) extern "C" fn authenticate_client_with_acl_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const TEST_CLIENT_CERTIFICATE: &str = concat!(
+        "-----BEGIN CERTIFICATE-----\n",
+        "VGhpcyBpcyBhIHRlc3QgY2xpZW50IGNlcnRpZmljYXRlLg==\n",
+        "-----END CERTIFICATE-----\n"
+    );
 
     #[test]
     fn returns_configured_client_id() {
@@ -632,6 +666,20 @@ mod tests {
                 .get_client_ip()
                 .expect("configured client IP should be returned"),
             "127.0.0.1"
+        );
+    }
+
+    #[test]
+    fn returns_configured_client_certificate() {
+        let mut context = Context::test();
+        context.expect_get_client_cert(TEST_CLIENT_CERTIFICATE);
+
+        assert_eq!(
+            context
+                .get_client_cert()
+                .expect("configured client certificate should be returned")
+                .as_slice(),
+            TEST_CLIENT_CERTIFICATE.as_bytes()
         );
     }
 }

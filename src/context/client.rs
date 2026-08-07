@@ -145,6 +145,12 @@ impl Context {
 mod tests {
     use super::*;
 
+    const TEST_CLIENT_CERTIFICATE: &str = concat!(
+        "-----BEGIN CERTIFICATE-----\n",
+        "VGhpcyBpcyBhIHRlc3QgY2xpZW50IGNlcnRpZmljYXRlLg==\n",
+        "-----END CERTIFICATE-----\n"
+    );
+
     #[test]
     fn returns_current_client_id() {
         let mut context = Context::test();
@@ -276,6 +282,26 @@ mod tests {
         assert!(matches!(
             context.get_client_ip_by_id(7),
             Err(ValkeyError::Str("Client/Info not found"))
+        ));
+    }
+
+    #[test]
+    fn gets_configured_client_certificate_and_rejects_missing_certificate() {
+        let mut context = Context::test();
+        context.expect_get_client_cert(TEST_CLIENT_CERTIFICATE);
+
+        assert_eq!(
+            context
+                .get_client_cert()
+                .expect("configured client certificate should be returned")
+                .as_slice(),
+            TEST_CLIENT_CERTIFICATE.as_bytes()
+        );
+
+        let context = Context::test();
+        assert!(matches!(
+            context.get_client_cert(),
+            Err(ValkeyError::Str("Client/Cert is null"))
         ));
     }
 }

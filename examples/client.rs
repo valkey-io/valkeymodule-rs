@@ -49,12 +49,7 @@ fn set_client_name(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 }
 
 fn get_client_cert(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
-    // unless connection is made with cert, this will return Err, so just log it and return nothing
-    match ctx.get_client_cert() {
-        Ok(tmp) => ctx.log_notice(&format!("client_cert: {:?}", tmp.to_string())),
-        Err(err) => ctx.log_notice(&format!("client_cert: {:?}", err.to_string())),
-    }
-    Ok("".into())
+    Ok(ctx.get_client_cert()?.to_string().into())
 }
 
 fn get_client_info(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -131,6 +126,12 @@ valkey_module! {
 mod tests {
     use super::*;
 
+    const TEST_CLIENT_CERTIFICATE: &str = concat!(
+        "-----BEGIN CERTIFICATE-----\n",
+        "VGhpcyBpcyBhIHRlc3QgY2xpZW50IGNlcnRpZmljYXRlLg==\n",
+        "-----END CERTIFICATE-----\n"
+    );
+
     #[test]
     fn returns_client_id() {
         let mut context = Context::test();
@@ -202,5 +203,25 @@ mod tests {
             get_client_ip(&context, Vec::new()).expect("configured client IP should be returned");
 
         assert_eq!(result, ValkeyValue::BulkString("127.0.0.1".into()));
+    }
+
+    #[test]
+    fn handles_configured_client_certificate() {
+        let mut context = Context::test();
+        context.expect_get_client_cert(TEST_CLIENT_CERTIFICATE);
+
+        let result = get_client_cert(&context, Vec::new())
+            .expect("configured client certificate should be handled");
+
+        assert_eq!(
+            result,
+            ValkeyValue::BulkString(TEST_CLIENT_CERTIFICATE.into())
+        );
+
+        let context = Context::test();
+        assert!(matches!(
+            get_client_cert(&context, Vec::new()),
+            Err(ValkeyError::Str("Client/Cert is null"))
+        ));
     }
 }
