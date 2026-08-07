@@ -304,4 +304,21 @@ mod tests {
             Err(ValkeyError::Str("Client/Cert is null"))
         ));
     }
+
+    #[test]
+    fn sets_client_name_by_id_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_set_client_name_by_id(42);
+        let client_name = context.create_string("bob");
+
+        assert_eq!(context.set_client_name_by_id(42, &client_name), Status::Ok);
+        assert_eq!(
+            context
+                .get_client_name_by_id(42)
+                .expect("updated client name should be returned")
+                .as_slice(),
+            b"bob"
+        );
+        assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
+    }
 }

@@ -224,4 +224,25 @@ mod tests {
             Err(ValkeyError::Str("Client/Cert is null"))
         ));
     }
+
+    #[test]
+    fn sets_client_name() {
+        let mut context = Context::test();
+        context.expect_set_client_name_by_id(42);
+        let args = vec![
+            context.create_string("client.set_name"),
+            context.create_string("bob"),
+        ];
+
+        let result = set_client_name(&context, args).expect("client name should be updated");
+
+        assert_eq!(result, ValkeyValue::Integer(Status::Ok as i64));
+        assert_eq!(
+            context
+                .get_client_name()
+                .expect("updated client name should be returned")
+                .as_slice(),
+            b"bob"
+        );
+    }
 }

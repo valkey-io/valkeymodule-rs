@@ -174,7 +174,7 @@ fn parse_string<T: FromStr>(string: *const raw::RedisModuleString, value: *mut T
 ///
 /// `string` must be non-null, aligned, and point to a live `ShimString` previously passed through
 /// `Arc::into_raw`. The returned slice must not outlive that allocation.
-unsafe fn string_data<'a>(string: *const raw::RedisModuleString) -> &'a [u8] {
+pub(super) unsafe fn string_data<'a>(string: *const raw::RedisModuleString) -> &'a [u8] {
     // SAFETY: The caller guarantees the pointer provenance, alignment, and lifetime above.
     unsafe { (&*string.cast::<ShimString>()).as_slice() }
 }

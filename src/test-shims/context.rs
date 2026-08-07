@@ -11,6 +11,7 @@ static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
+    static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
 }
 
 impl Context {
@@ -23,7 +24,6 @@ impl Context {
 
 struct ContextData {
     client_id: u64,
-    client_name: Option<Vec<u8>>,
     client_username: Option<Vec<u8>>,
     client_cert: Option<Vec<u8>>,
     current_user: Option<Vec<u8>>,
@@ -35,7 +35,6 @@ impl Default for ContextData {
     fn default() -> Self {
         Self {
             client_id: DEFAULT_CLIENT_ID,
-            client_name: None,
             client_username: None,
             client_cert: None,
             current_user: None,
@@ -60,6 +59,7 @@ impl TestContext {
         // GetClientInfoById has no context parameter, so its shim uses per-thread state.
         // Reset that state before each test context to prevent stale expectations leaking.
         CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
+        CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
 
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
@@ -82,7 +82,20 @@ impl TestContext {
         client_name: T,
     ) -> &mut Self {
         self.data.client_id = client_id;
-        self.data.client_name = Some(client_name.into());
+        CLIENT_NAME_BY_ID.with(|client_name_by_id| {
+            client_name_by_id
+                .borrow_mut()
+                .insert(client_id, client_name.into());
+        });
+        self
+    }
+
+    /// Configures a client ID accepted by [`Context::set_client_name_by_id`].
+    pub fn expect_set_client_name_by_id(&mut self, client_id: u64) -> &mut Self {
+        self.data.client_id = client_id;
+        CLIENT_NAME_BY_ID.with(|client_name_by_id| {
+            client_name_by_id.borrow_mut().entry(client_id).or_default();
+        });
         self
     }
 
@@ -194,15 +207,40 @@ pub(super) extern "C" fn get_client_name_by_id(
     }
 
     // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    if data.client_id != client_id {
-        return null_mut();
-    }
-    let Some(client_name) = data.client_name.as_ref() else {
+    let _data = unsafe { &*ctx.cast::<ContextData>() };
+    let client_name = CLIENT_NAME_BY_ID
+        .with(|client_name_by_id| client_name_by_id.borrow().get(&client_id).cloned());
+    let Some(client_name) = client_name else {
         return null_mut();
     };
 
-    ValkeyString::test(client_name.clone()).take()
+    ValkeyString::test(client_name).take()
+}
+
+pub(super) extern "C" fn set_client_name_by_id(
+    client_id: libc::c_ulonglong,
+    client_name: *mut raw::RedisModuleString,
+) -> libc::c_int {
+    if client_name.is_null() {
+        return raw::Status::Err as libc::c_int;
+    }
+
+    // SAFETY: Test strings passed to the shim are backed by `valkey_string::string_data`.
+    let client_name = unsafe { super::valkey_string::string_data(client_name) }.to_vec();
+    let updated = CLIENT_NAME_BY_ID.with(|client_name_by_id| {
+        let mut client_name_by_id = client_name_by_id.borrow_mut();
+        let Some(configured_name) = client_name_by_id.get_mut(&client_id) else {
+            return false;
+        };
+        *configured_name = client_name;
+        true
+    });
+
+    if updated {
+        raw::Status::Ok as libc::c_int
+    } else {
+        raw::Status::Err as libc::c_int
+    }
 }
 
 pub(super) extern "C" fn get_client_username_by_id(
@@ -680,6 +718,26 @@ mod tests {
                 .expect("configured client certificate should be returned")
                 .as_slice(),
             TEST_CLIENT_CERTIFICATE.as_bytes()
+        );
+    }
+
+    #[test]
+    fn updates_configured_client_name_and_rejects_unknown_client_id() {
+        let mut context = Context::test();
+        context.expect_set_client_name_by_id(42);
+        let client_name = context.create_string("bob");
+
+        assert_eq!(context.set_client_name(&client_name), raw::Status::Ok);
+        assert_eq!(
+            context
+                .get_client_name()
+                .expect("updated client name should be returned")
+                .as_slice(),
+            b"bob"
+        );
+        assert_eq!(
+            context.set_client_name_by_id(7, &client_name),
+            raw::Status::Err
         );
     }
 }
