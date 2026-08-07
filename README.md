@@ -86,7 +86,11 @@ mod tests {
 }
 ```
 
-The test context currently supports configuring the server version, client IDs, client names, client usernames, the current user, ACL-user authentication, and client deauthentication. Configure `Context::get_server_version()` with `expect_get_server_version(major, minor, patch)`. Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
+The test context supports configuring the server version, client IDs, names, usernames, certificates, client information and IP addresses, the current user, ACL-user authentication, and client deauthentication. Configure `Context::get_server_version()` with `expect_get_server_version(major, minor, patch)`.
+
+For client-specific expectations, use `expect_get_client_name_by_id`, `expect_get_client_username_by_id`, `expect_get_client_ip_by_id`, or `expect_set_client_name_by_id`. Configure detailed client information with `expect_get_client_info_by_id(RedisModuleClientInfo { id, ..Default::default() })`; the ID is read from the supplied structure. `expect_get_client_cert` configures the certificate returned for the current client. Each `Context::test()` resets these expectations, so tests do not inherit client state from earlier tests on the same thread.
+
+Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust
 let context = Context::test();
