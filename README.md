@@ -47,6 +47,31 @@ For integration tests with `ValkeyAlloc` use this:
 cargo test
 ```
 
+### Usage Tracking
+
+Enable `enable-usage-tracking` to collect low-overhead, per-module Rust heap
+statistics for allocations made through `ValkeyAlloc`. Add the feature to your
+module dependency and continue to register `ValkeyAlloc` as the module
+allocator:
+
+```toml
+[dependencies]
+valkey-module = { version = "...", features = ["enable-usage-tracking"] }
+```
+
+Read the counters from a command or other module code with:
+
+```rust
+let snapshot = valkey_module::module_stats::snapshot();
+```
+
+The snapshot reports current and peak tracked bytes, allocation and free
+counts, derived live allocations, and saturation-correction errors. It tracks
+Rust heap requests from the module only; Redis/Valkey keyspace memory, module
+API objects, replies, socket buffers, thread stacks, mmap regions, and other
+FFI allocations are excluded. The allocator does not override `realloc`, so
+resize-heavy `Vec` or `String` paths can temporarily overstate peak usage.
+
 ### Unit testing without a Valkey server
 
 The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:

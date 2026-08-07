@@ -35,6 +35,7 @@ pub struct ModuleStats {
 }
 
 impl ModuleStats {
+    /// Creates an empty set of module-memory counters.
     pub const fn new() -> Self {
         Self {
             memory_current_bytes: AtomicU64::new(0),
@@ -45,6 +46,7 @@ impl ModuleStats {
         }
     }
 
+    /// Records one allocation and raises the high-water mark when needed.
     pub fn add_alloc(&self, bytes: u64) {
         self.alloc_count.fetch_add(1, Ordering::Relaxed);
         let (current, overflowed) = add_saturating(&self.memory_current_bytes, bytes);
@@ -55,6 +57,7 @@ impl ModuleStats {
         self.update_peak(current);
     }
 
+    /// Records one deallocation and clamps an invalid underflow to zero.
     pub fn add_free(&self, bytes: u64) {
         self.free_count.fetch_add(1, Ordering::Relaxed);
         if subtract_saturating(&self.memory_current_bytes, bytes) {
@@ -63,6 +66,7 @@ impl ModuleStats {
         }
     }
 
+    /// Returns a relaxed, point-in-time view of all counters.
     pub fn snapshot(&self) -> Snapshot {
         let alloc_count = self.alloc_count.load(Ordering::Relaxed);
         let free_count = self.free_count.load(Ordering::Relaxed);
@@ -77,6 +81,7 @@ impl ModuleStats {
         }
     }
 
+    /// Atomically advances the high-water mark when `current` exceeds it.
     fn update_peak(&self, current: u64) {
         let mut peak = self.memory_peak_bytes.load(Ordering::Relaxed);
         while current > peak
@@ -91,6 +96,7 @@ impl ModuleStats {
 }
 
 impl Default for ModuleStats {
+    /// Creates an empty counter set, equivalent to [`ModuleStats::new`].
     fn default() -> Self {
         Self::new()
     }
@@ -99,19 +105,23 @@ impl Default for ModuleStats {
 static STATS: ModuleStats = ModuleStats::new();
 
 #[cfg(feature = "enable-usage-tracking")]
+/// Forwards an allocator allocation event to the shared module counters.
 pub(crate) fn add_alloc(bytes: u64) {
     STATS.add_alloc(bytes);
 }
 
 #[cfg(feature = "enable-usage-tracking")]
+/// Forwards an allocator deallocation event to the shared module counters.
 pub(crate) fn add_free(bytes: u64) {
     STATS.add_free(bytes);
 }
 
+/// Returns a snapshot of the process-wide module counters.
 pub fn snapshot() -> Snapshot {
     STATS.snapshot()
 }
 
+/// Formats the current snapshot as newline-separated `key=value` metrics.
 pub fn snapshot_text() -> String {
     let snapshot = snapshot();
     format!(
@@ -125,6 +135,7 @@ pub fn snapshot_text() -> String {
     )
 }
 
+/// Atomically adds `amount`, returning the new value and whether it saturated.
 fn add_saturating(value: &AtomicU64, amount: u64) -> (u64, bool) {
     let mut current = value.load(Ordering::Relaxed);
 
@@ -139,6 +150,7 @@ fn add_saturating(value: &AtomicU64, amount: u64) -> (u64, bool) {
     }
 }
 
+/// Atomically subtracts `amount`, returning whether it saturated at zero.
 fn subtract_saturating(value: &AtomicU64, amount: u64) -> bool {
     let mut current = value.load(Ordering::Relaxed);
 
@@ -150,5 +162,80 @@ fn subtract_saturating(value: &AtomicU64, amount: u64) -> bool {
             Ok(_) => return underflowed,
             Err(actual) => current = actual,
         }
+    }
+}
+
+//////////////////////////////////////////////////////////
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapshot_tracks_current_peak_counts_and_live_allocations() {
+        let stats = ModuleStats::new();
+
+        stats.add_alloc(64);
+        stats.add_alloc(32);
+        stats.add_free(64);
+
+        let snapshot = stats.snapshot();
+
+        assert_eq!(snapshot.memory_current_bytes, 32);
+        assert_eq!(snapshot.memory_peak_bytes, 96);
+        assert_eq!(snapshot.alloc_count, 2);
+        assert_eq!(snapshot.free_count, 1);
+        assert_eq!(snapshot.live_allocations, 1);
+        assert_eq!(snapshot.memory_accounting_errors, 0);
+    }
+
+    #[test]
+    fn peak_is_retained_after_memory_is_freed() {
+        let stats = ModuleStats::new();
+
+        stats.add_alloc(100);
+        stats.add_free(60);
+
+        let snapshot = stats.snapshot();
+
+        assert_eq!(snapshot.memory_current_bytes, 40);
+        assert_eq!(snapshot.memory_peak_bytes, 100);
+        assert_eq!(snapshot.alloc_count, 1);
+        assert_eq!(snapshot.free_count, 1);
+        assert_eq!(snapshot.live_allocations, 0);
+        assert_eq!(snapshot.memory_accounting_errors, 0);
+    }
+
+    #[test]
+    fn freeing_more_than_current_memory_saturates_and_records_error() {
+        let stats = ModuleStats::new();
+
+        stats.add_alloc(16);
+        stats.add_free(24);
+
+        let snapshot = stats.snapshot();
+
+        assert_eq!(snapshot.memory_current_bytes, 0);
+        assert_eq!(snapshot.memory_peak_bytes, 16);
+        assert_eq!(snapshot.alloc_count, 1);
+        assert_eq!(snapshot.free_count, 1);
+        assert_eq!(snapshot.live_allocations, 0);
+        assert_eq!(snapshot.memory_accounting_errors, 1);
+    }
+
+    #[test]
+    fn allocation_overflow_saturates_and_records_error() {
+        let stats = ModuleStats::new();
+
+        stats.add_alloc(u64::MAX);
+        stats.add_alloc(1);
+
+        let snapshot = stats.snapshot();
+
+        assert_eq!(snapshot.memory_current_bytes, u64::MAX);
+        assert_eq!(snapshot.memory_peak_bytes, u64::MAX);
+        assert_eq!(snapshot.alloc_count, 2);
+        assert_eq!(snapshot.free_count, 0);
+        assert_eq!(snapshot.live_allocations, 2);
+        assert_eq!(snapshot.memory_accounting_errors, 1);
     }
 }
