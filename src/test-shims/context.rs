@@ -9,6 +9,8 @@ const DEFAULT_CLIENT_ID: u64 = 1;
 
 static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 
+// These Valkey APIs do not receive a RedisModuleCtx, so their shims cannot access ContextData.
+// Thread-local state prevents expectations from leaking between concurrently running tests.
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
     static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
@@ -59,6 +61,7 @@ impl TestContext {
         // GetClientInfoById has no context parameter, so its shim uses per-thread state.
         // Reset that state before each test context to prevent stale expectations leaking.
         CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
+        // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
         CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
 
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
@@ -664,8 +667,8 @@ mod tests {
         });
 
         let client_info = context
-            .get_client_info()
-            .expect("configured client info should be returned");
+            .get_client_info_by_id(42)
+            .expect("configured client info should be returned by ID");
 
         assert_eq!(client_info.version, 7);
         assert_eq!(client_info.id, 42);
@@ -738,6 +741,67 @@ mod tests {
         assert_eq!(
             context.set_client_name_by_id(7, &client_name),
             raw::Status::Err
+        );
+    }
+
+    #[test]
+    fn new_test_context_clears_thread_local_client_expectations() {
+        let mut first_context = Context::test();
+        first_context.expect_get_client_name_by_id(42, "alice");
+        first_context.expect_get_client_info_by_id(RedisModuleClientInfo {
+            id: 42,
+            ..RedisModuleClientInfo::default()
+        });
+
+        let second_context = Context::test();
+
+        assert!(matches!(
+            second_context.get_client_name_by_id(42),
+            Err(crate::ValkeyError::Str("Client/Client name is null"))
+        ));
+        assert!(matches!(
+            second_context.get_client_info_by_id(42),
+            Err(crate::ValkeyError::Str("Client/Info not found"))
+        ));
+    }
+
+    #[test]
+    fn returns_each_of_multiple_configured_client_info_entries() {
+        let mut context = Context::test();
+        context.expect_get_client_info_by_id(RedisModuleClientInfo {
+            id: 41,
+            port: 6379,
+            ..RedisModuleClientInfo::default()
+        });
+        context.expect_get_client_info_by_id(RedisModuleClientInfo {
+            id: 42,
+            port: 6380,
+            ..RedisModuleClientInfo::default()
+        });
+
+        let first = context
+            .get_client_info_by_id(41)
+            .expect("first configured client info should be returned");
+        let second = context
+            .get_client_info_by_id(42)
+            .expect("second configured client info should be returned");
+
+        assert_eq!((first.id, first.port), (41, 6379));
+        assert_eq!((second.id, second.port), (42, 6380));
+    }
+
+    #[test]
+    fn client_shims_reject_null_context_or_output() {
+        assert!(get_client_name_by_id(null_mut(), 42).is_null());
+        assert!(get_client_username_by_id(null_mut(), 42).is_null());
+        assert!(get_client_certificate(null_mut(), 42).is_null());
+        assert_eq!(
+            get_client_info_by_id(null_mut(), 42),
+            raw::Status::Err as libc::c_int
+        );
+        assert_eq!(
+            set_client_name_by_id(42, null_mut()),
+            raw::Status::Err as libc::c_int
         );
     }
 }

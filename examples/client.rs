@@ -1,7 +1,6 @@
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
-    valkey_module, Context, NextArg, RedisModuleClientInfo, Status, ValkeyError, ValkeyResult,
-    ValkeyString, ValkeyValue,
+    valkey_module, Context, NextArg, Status, ValkeyError, ValkeyResult, ValkeyString, ValkeyValue,
 };
 
 fn get_client_id(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
@@ -125,6 +124,7 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use valkey_module::RedisModuleClientInfo;
 
     const TEST_CLIENT_CERTIFICATE: &str = concat!(
         "-----BEGIN CERTIFICATE-----\n",
