@@ -298,4 +298,35 @@ mod tests {
         assert_eq!(context.set_client_name(&client_name), Status::Ok);
         assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
     }
+
+    #[test]
+    fn gets_configured_config_value() {
+        let mut context = Context::test();
+        context.expect_call(
+            "CONFIG",
+            &["GET", "hz"],
+            ValkeyValue::Array(vec![
+                ValkeyValue::SimpleString("hz".to_owned()),
+                ValkeyValue::SimpleString("10".to_owned()),
+            ]),
+        );
+
+        assert_eq!(
+            context
+                .config_get("hz".to_owned())
+                .expect("configured config value should be returned")
+                .as_slice(),
+            b"10"
+        );
+    }
+
+    #[test]
+    fn rejects_unconfigured_test_call() {
+        let context = Context::test();
+
+        assert!(matches!(
+            context.config_get("hz".to_owned()),
+            Err(ValkeyError::String(message)) if message == "unexpected call: CONFIG GET hz"
+        ));
+    }
 }

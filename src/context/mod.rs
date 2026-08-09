@@ -414,6 +414,14 @@ impl Context {
         let mut call_args: StrCallArgs = args.into();
         let final_args = call_args.args_mut();
 
+        #[cfg(any(test, feature = "test-shims"))]
+        // Test contexts return configured replies here because stable Rust cannot implement the
+        // C-variadic RedisModule_Call API for the test shim.
+        if let Some(reply) = crate::test_shims::try_call(self.ctx, command, final_args) {
+            let promise = create_promise_call_reply(self, NonNull::new(reply));
+            return R::from(promise);
+        }
+
         let cmd = CString::new(command).unwrap();
         let reply: *mut raw::RedisModuleCallReply = unsafe {
             let p_call = raw::RedisModule_Call.unwrap();

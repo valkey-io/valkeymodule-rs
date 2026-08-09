@@ -90,6 +90,21 @@ The test context supports configuring the server version, client IDs, names, use
 
 For client-specific expectations, use `expect_get_client_name_by_id`, `expect_get_client_username_by_id`, `expect_get_client_ip_by_id`, or `expect_set_client_name_by_id`. Configure detailed client information with `expect_get_client_info_by_id(RedisModuleClientInfo { id, ..Default::default() })`; the ID is read from the supplied structure. `expect_get_client_cert` configures the certificate returned for the current client. Each `Context::test()` resets these expectations, so tests do not inherit client state from earlier tests on the same thread.
 
+Use `expect_call` to configure an exact `Context::call()` command and argument list. It supports simple strings, integers, booleans, doubles, big numbers, nulls, maps, and nested arrays. An unconfigured call returns an error describing the unexpected command instead of invoking Valkey:
+
+```rust
+use valkey_module::ValkeyValue;
+
+context.expect_call(
+    "CONFIG",
+    &["GET", "hz"],
+    ValkeyValue::Array(vec![
+        ValkeyValue::SimpleString("hz".into()),
+        ValkeyValue::SimpleString("10".into()),
+    ]),
+);
+```
+
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust
