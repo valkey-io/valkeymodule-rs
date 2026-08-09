@@ -105,6 +105,8 @@ context.expect_call(
 );
 ```
 
+For [`Context::config_get()`], use `expect_config_get("hz", "10")` instead of configuring the underlying `CONFIG GET` reply directly.
+
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust

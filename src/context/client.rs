@@ -299,34 +299,79 @@ mod tests {
         assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
     }
 
-    #[test]
-    fn gets_configured_config_value() {
-        let mut context = Context::test();
-        context.expect_call(
-            "CONFIG",
-            &["GET", "hz"],
-            ValkeyValue::Array(vec![
-                ValkeyValue::SimpleString("hz".to_owned()),
-                ValkeyValue::SimpleString("10".to_owned()),
-            ]),
-        );
+    mod config_get {
+        use super::*;
 
-        assert_eq!(
-            context
-                .config_get("hz".to_owned())
-                .expect("configured config value should be returned")
-                .as_slice(),
-            b"10"
-        );
-    }
+        #[test]
+        fn gets_configured_value() {
+            let mut context = Context::test();
+            context.expect_config_get("hz", "10");
 
-    #[test]
-    fn rejects_unconfigured_test_call() {
-        let context = Context::test();
+            assert_eq!(
+                context
+                    .config_get("hz".to_owned())
+                    .expect("configured config value should be returned")
+                    .as_slice(),
+                b"10"
+            );
+        }
 
-        assert!(matches!(
-            context.config_get("hz".to_owned()),
-            Err(ValkeyError::String(message)) if message == "unexpected call: CONFIG GET hz"
-        ));
+        #[test]
+        fn rejects_reply_with_unexpected_shape() {
+            let mut context = Context::test();
+            context.expect_call(
+                "CONFIG",
+                &["GET", "hz"],
+                ValkeyValue::Array(vec![ValkeyValue::SimpleString("hz".to_owned())]),
+            );
+
+            assert!(matches!(
+                context.config_get("hz".to_owned()),
+                Err(ValkeyError::Str("Unexpected CONFIG GET response"))
+            ));
+        }
+
+        #[test]
+        fn rejects_reply_with_non_string_value() {
+            let mut context = Context::test();
+            context.expect_call(
+                "CONFIG",
+                &["GET", "hz"],
+                ValkeyValue::Array(vec![
+                    ValkeyValue::SimpleString("hz".to_owned()),
+                    ValkeyValue::Integer(10),
+                ]),
+            );
+
+            assert!(matches!(
+                context.config_get("hz".to_owned()),
+                Err(ValkeyError::Str("Config value is not a string"))
+            ));
+        }
+
+        #[test]
+        fn propagates_call_error() {
+            let mut context = Context::test();
+            context.expect_call(
+                "CONFIG",
+                &["GET", "hz"],
+                ValkeyValue::StaticError("ERR permission denied"),
+            );
+
+            assert!(matches!(
+                context.config_get("hz".to_owned()),
+                Err(ValkeyError::String(message)) if message == "ERR permission denied"
+            ));
+        }
+
+        #[test]
+        fn rejects_unconfigured_test_call() {
+            let context = Context::test();
+
+            assert!(matches!(
+                context.config_get("hz".to_owned()),
+                Err(ValkeyError::String(message)) if message == "unexpected call: CONFIG GET hz"
+            ));
+        }
     }
 }

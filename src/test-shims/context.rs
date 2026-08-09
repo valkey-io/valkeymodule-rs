@@ -196,6 +196,23 @@ impl TestContext {
         self
     }
 
+    /// Configures the value returned by [`Context::config_get`] for a configuration name.
+    pub fn expect_config_get(
+        &mut self,
+        config: impl Into<String>,
+        value: impl Into<String>,
+    ) -> &mut Self {
+        let config = config.into();
+        self.expect_call(
+            "CONFIG",
+            &["GET", config.as_str()],
+            ValkeyValue::Array(vec![
+                ValkeyValue::SimpleString(config.clone()),
+                ValkeyValue::SimpleString(value.into()),
+            ]),
+        )
+    }
+
     /// Configures a reply returned by [`Context::call`] for an exact command and argument list.
     pub fn expect_call<T: AsRef<[u8]>>(
         &mut self,
