@@ -178,6 +178,8 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use valkey_module::redisvalue::ValkeyValueKey;
 
     #[test]
     fn context_creates_string() {
@@ -197,5 +199,49 @@ mod tests {
         let string = context.create_string("");
 
         assert!(string.is_empty());
+    }
+
+    #[test]
+    fn context_call_returns_configured_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &["unit-test"],
+            ValkeyValue::SimpleString("unit-test".to_owned()),
+        );
+
+        let reply: String = context
+            .call("ECHO", &["unit-test"])
+            .expect("configured call should return a reply")
+            .try_into()
+            .expect("configured string reply should convert to String");
+
+        assert_eq!(reply, "unit-test");
+    }
+
+    #[test]
+    fn call_test_accepts_configured_resp3_map_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &["TEST"],
+            ValkeyValue::SimpleString("TEST".to_owned()),
+        );
+        context.expect_call(
+            "SHUTDOWN",
+            &[] as &[&str],
+            ValkeyValue::StaticError("not allowed in script mode"),
+        );
+        context.expect_call("HSET", &["x", "foo", "bar"], ValkeyValue::Integer(1));
+        context.expect_call(
+            "HGETALL",
+            &["x"],
+            ValkeyValue::Map(HashMap::from([(
+                ValkeyValueKey::String("foo".to_owned()),
+                ValkeyValue::SimpleString("bar".to_owned()),
+            )])),
+        );
+
+        assert!(call_test(&context, Vec::new()).is_ok());
     }
 }

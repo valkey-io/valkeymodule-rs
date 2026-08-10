@@ -1,8 +1,10 @@
+mod call;
 mod command_filter_ctx;
 mod context;
 mod valkey_string;
 
 pub use command_filter_ctx::TestCommandFilterCtx;
+pub(crate) use context::try_call;
 pub use context::TestContext;
 
 use crate::raw;
@@ -44,6 +46,17 @@ fn setup_test_shims() {
             raw::RedisModule_GetServerVersion = Some(context::get_server_version);
             raw::RedisModule_AuthenticateClientWithACLUser =
                 Some(context::authenticate_client_with_acl_user);
+            // Calls made through a TestContext
+            raw::RedisModule_CallReplyType = Some(call::call_reply_type);
+            raw::RedisModule_FreeCallReply = Some(call::free_call_reply);
+            raw::RedisModule_CallReplyInteger = Some(call::call_reply_integer);
+            raw::RedisModule_CallReplyBool = Some(call::call_reply_bool);
+            raw::RedisModule_CallReplyDouble = Some(call::call_reply_double);
+            raw::RedisModule_CallReplyBigNumber = Some(call::call_reply_big_number);
+            raw::RedisModule_CallReplyLength = Some(call::call_reply_length);
+            raw::RedisModule_CallReplyArrayElement = Some(call::call_reply_array_element);
+            raw::RedisModule_CallReplyMapElement = Some(call::call_reply_map_element);
+            raw::RedisModule_CallReplyStringPtr = Some(call::call_reply_string_ptr);
             // CommandFilterCtx
             raw::RedisModule_CommandFilterArgsCount =
                 Some(command_filter_ctx::command_filter_args_count);

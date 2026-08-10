@@ -110,3 +110,80 @@ valkey_module! {
         [filter2_fn, VALKEYMODULE_CMDFILTER_NOSELF]
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn info_filter_rewrites_info_command() {
+        let mut context = CommandFilterCtx::test();
+        context
+            .expect_args_count(1)
+            .expect_arg_get(0, "INFO")
+            .expect_get_client_id(42);
+
+        info_filter_fn(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.cmd_get_try_as_str(), Ok("info2"));
+    }
+
+    #[test]
+    fn info_filter_leaves_unrelated_command_unchanged() {
+        let mut context = CommandFilterCtx::test();
+        context.expect_args_count(1).expect_arg_get(0, "PING");
+
+        info_filter_fn(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.cmd_get_try_as_str(), Ok("PING"));
+    }
+
+    #[test]
+    fn set_filter_rewrites_key_and_value() {
+        let mut context = CommandFilterCtx::test();
+        context
+            .expect_args_count(3)
+            .expect_arg_get(0, "SET")
+            .expect_arg_get(1, "old_key")
+            .expect_arg_get(2, "old_value");
+
+        set_filter_fn(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.args_count(), 3);
+        assert_eq!(context.cmd_get_try_as_str(), Ok("SET"));
+        assert_eq!(context.arg_get_try_as_str(1), Ok("new_key"));
+        assert_eq!(context.arg_get_try_as_str(2), Ok("new_value"));
+    }
+
+    #[test]
+    fn set_filter_leaves_wrong_arity_unchanged() {
+        let mut context = CommandFilterCtx::test();
+        context
+            .expect_args_count(2)
+            .expect_arg_get(0, "SET")
+            .expect_arg_get(1, "key");
+
+        set_filter_fn(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.args_count(), 2);
+        assert_eq!(context.cmd_get_try_as_str(), Ok("SET"));
+        assert_eq!(context.arg_get_try_as_str(1), Ok("key"));
+    }
+
+    #[test]
+    fn set_filter_leaves_unrelated_command_unchanged() {
+        let mut context = CommandFilterCtx::test();
+        context
+            .expect_args_count(3)
+            .expect_arg_get(0, "GET")
+            .expect_arg_get(1, "key")
+            .expect_arg_get(2, "value");
+
+        set_filter_fn(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.args_count(), 3);
+        assert_eq!(context.cmd_get_try_as_str(), Ok("GET"));
+        assert_eq!(context.arg_get_try_as_str(1), Ok("key"));
+        assert_eq!(context.arg_get_try_as_str(2), Ok("value"));
+    }
+}

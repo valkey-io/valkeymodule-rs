@@ -245,4 +245,19 @@ mod tests {
             b"bob"
         );
     }
+
+    #[test]
+    fn returns_configured_config_value() {
+        let mut context = Context::test();
+        context.expect_config_get("maxmemory-policy", "noeviction");
+        let args = vec![
+            context.create_string("client.config_get"),
+            context.create_string("maxmemory-policy"),
+        ];
+
+        let result =
+            config_get(&context, args).expect("configured config value should be returned");
+
+        assert_eq!(result, ValkeyValue::BulkString("noeviction".into()));
+    }
 }

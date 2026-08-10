@@ -49,6 +49,13 @@ impl TestCommandFilterCtx {
         }
     }
 
+    /// Returns the opaque context pointer for invoking a command-filter callback in a test.
+    ///
+    /// The pointer remains valid while this test context is alive.
+    pub fn as_raw_ctx_ptr(&mut self) -> *mut raw::RedisModuleCommandFilterCtx {
+        (self.data.as_mut() as *mut CommandFilterData).cast()
+    }
+
     /// Configures the value returned by [`CommandFilterCtx::args_count`].
     pub fn expect_args_count(&mut self, args_count: libc::c_int) -> &mut Self {
         self.data.args_count = args_count;
@@ -451,6 +458,20 @@ mod tests {
         context.expect_get_client_id(10).expect_get_client_id(20);
 
         assert_eq!(context.get_client_id(), 20);
+    }
+
+    #[test]
+    fn exposes_raw_context_pointer_for_command_filter_callbacks() {
+        extern "C" fn replace_argument(ctx: *mut raw::RedisModuleCommandFilterCtx) {
+            CommandFilterCtx::new(ctx).arg_replace(1, "new");
+        }
+
+        let mut context = CommandFilterCtx::test();
+        context.expect_args_count(2).expect_arg_get(1, "old");
+
+        replace_argument(context.as_raw_ctx_ptr());
+
+        assert_eq!(context.arg_get_try_as_str(1), Ok("new"));
     }
 
     #[test]

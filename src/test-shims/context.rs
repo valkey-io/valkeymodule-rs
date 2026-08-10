@@ -1,4 +1,5 @@
-use crate::{raw, Context, RedisModuleClientInfo, ValkeyString};
+use super::call::TestCallReply;
+use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -14,6 +15,7 @@ static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
     static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
+    static TEST_CONTEXTS: RefCell<std::collections::HashSet<usize>> = RefCell::default();
 }
 
 impl Context {
@@ -31,6 +33,14 @@ struct ContextData {
     current_user: Option<Vec<u8>>,
     acl_user: Option<Vec<u8>>,
     deauthentication_expected: bool,
+    call_expectations: Vec<CallExpectation>,
+}
+
+/// Matches one exact test-context command invocation to its configured reply.
+struct CallExpectation {
+    command: Vec<u8>,
+    args: Vec<Vec<u8>>,
+    reply: TestCallReply,
 }
 
 impl Default for ContextData {
@@ -42,6 +52,7 @@ impl Default for ContextData {
             current_user: None,
             acl_user: None,
             deauthentication_expected: false,
+            call_expectations: Vec::new(),
         }
     }
 }
@@ -57,14 +68,16 @@ impl TestContext {
         super::setup_test_shims();
 
         let mut data = Box::new(ContextData::default());
+        let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
         // GetClientInfoById has no context parameter, so its shim uses per-thread state.
         // Reset that state before each test context to prevent stale expectations leaking.
         CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
         // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
         CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
-
-        let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
+        TEST_CONTEXTS.with(|test_contexts| {
+            test_contexts.borrow_mut().insert(ctx as usize);
+        });
 
         Self {
             context: Context::new(ctx),
@@ -182,6 +195,52 @@ impl TestContext {
         self.data.deauthentication_expected = true;
         self
     }
+
+    /// Configures the value returned by [`Context::config_get`] for a configuration name.
+    pub fn expect_config_get(
+        &mut self,
+        config: impl Into<String>,
+        value: impl Into<String>,
+    ) -> &mut Self {
+        let config = config.into();
+        self.expect_call(
+            "CONFIG",
+            &["GET", config.as_str()],
+            ValkeyValue::Array(vec![
+                ValkeyValue::SimpleString(config.clone()),
+                ValkeyValue::SimpleString(value.into()),
+            ]),
+        )
+    }
+
+    /// Configures a reply returned by [`Context::call`] for an exact command and argument list.
+    pub fn expect_call<T: AsRef<[u8]>>(
+        &mut self,
+        command: impl AsRef<[u8]>,
+        args: &[T],
+        reply: ValkeyValue,
+    ) -> &mut Self {
+        let reply = TestCallReply::from_value(reply)
+            .expect("unsupported reply type configured for test-shim call");
+        self.data.call_expectations.push(CallExpectation {
+            command: command.as_ref().to_vec(),
+            args: args.iter().map(|arg| arg.as_ref().to_vec()).collect(),
+            reply,
+        });
+        self
+    }
+}
+
+// Removes the context address when the backing test data is about to be released.
+impl Drop for TestContext {
+    fn drop(&mut self) {
+        // A recycled allocation must not be mistaken for a live test context.
+        TEST_CONTEXTS.with(|test_contexts| {
+            test_contexts
+                .borrow_mut()
+                .remove(&(self.context.ctx as usize));
+        });
+    }
 }
 
 impl Deref for TestContext {
@@ -190,6 +249,48 @@ impl Deref for TestContext {
     fn deref(&self) -> &Self::Target {
         &self.context
     }
+}
+
+/// Returns a configured reply when `ctx` belongs to a live `TestContext`.
+///
+/// `None` lets ordinary contexts invoke the real Valkey API.
+pub(crate) fn try_call(
+    ctx: *mut raw::RedisModuleCtx,
+    command: &str,
+    args: &[*mut raw::RedisModuleString],
+) -> Option<*mut raw::RedisModuleCallReply> {
+    let is_test_context =
+        TEST_CONTEXTS.with(|test_contexts| test_contexts.borrow().contains(&(ctx as usize)));
+    if !is_test_context {
+        return None;
+    }
+
+    // SAFETY: `ctx` is registered only while its owning `TestContext` is live.
+    let data = unsafe { &mut *ctx.cast::<ContextData>() };
+    let args = args
+        .iter()
+        .map(|arg| {
+            // SAFETY: call arguments for a test context are allocated by the string test shim.
+            unsafe { super::valkey_string::string_data(*arg) }.to_vec()
+        })
+        .collect::<Vec<_>>();
+    let reply = data
+        .call_expectations
+        .iter()
+        .find(|expectation| expectation.command == command.as_bytes() && expectation.args == args)
+        .map(|expectation| expectation.reply.clone());
+
+    let reply = match reply {
+        Some(reply) => reply,
+        None => TestCallReply::error(format!(
+            "unexpected call: {command} {}",
+            args.iter()
+                .map(|arg| String::from_utf8_lossy(arg))
+                .collect::<Vec<_>>()
+                .join(" ")
+        )),
+    };
+    Some(reply.into_raw())
 }
 
 pub(super) extern "C" fn get_client_id(ctx: *mut raw::RedisModuleCtx) -> libc::c_ulonglong {
@@ -803,5 +904,144 @@ mod tests {
             set_client_name_by_id(42, null_mut()),
             raw::Status::Err as libc::c_int
         );
+    }
+
+    #[test]
+    fn returns_configured_call_reply() {
+        let mut context = Context::test();
+        let expected = ValkeyValue::Array(vec![
+            ValkeyValue::SimpleString("value".to_owned()),
+            ValkeyValue::Integer(42),
+            ValkeyValue::Bool(true),
+            ValkeyValue::Float(1.5),
+            ValkeyValue::BigNumber("12345678901234567890".to_owned()),
+            ValkeyValue::Null,
+            ValkeyValue::Array(vec![ValkeyValue::SimpleString("nested".to_owned())]),
+        ]);
+        context.expect_call("TEST", &["argument"], expected.clone());
+
+        assert_eq!(
+            context
+                .call("TEST", &["argument"])
+                .expect("configured call reply should be returned"),
+            expected
+        );
+    }
+
+    #[test]
+    fn returns_configured_ordered_map_call_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "HGETALL",
+            &["hash"],
+            ValkeyValue::OrderedMap(std::collections::BTreeMap::from([(
+                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+                ValkeyValue::SimpleString("value".to_owned()),
+            )])),
+        );
+
+        assert_eq!(
+            context
+                .call("HGETALL", &["hash"])
+                .expect("configured ordered map reply should be returned"),
+            ValkeyValue::Map(std::collections::HashMap::from([(
+                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+                ValkeyValue::SimpleString("value".to_owned()),
+            )]))
+        );
+    }
+
+    #[test]
+    fn matches_configured_binary_call_arguments() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &[b"\0\xff".as_slice()],
+            ValkeyValue::SimpleString("matched".to_owned()),
+        );
+
+        assert_eq!(
+            context
+                .call("ECHO", &[b"\0\xff".as_slice()])
+                .expect("configured binary argument should match"),
+            ValkeyValue::SimpleString("matched".to_owned())
+        );
+    }
+
+    #[test]
+    fn returns_each_of_multiple_configured_call_replies() {
+        let mut context = Context::test();
+        context.expect_call("GET", &["first"], ValkeyValue::Integer(1));
+        context.expect_call("GET", &["second"], ValkeyValue::Integer(2));
+
+        assert_eq!(
+            context
+                .call("GET", &["first"])
+                .expect("first configured call should return a reply"),
+            ValkeyValue::Integer(1)
+        );
+        assert_eq!(
+            context
+                .call("GET", &["second"])
+                .expect("second configured call should return a reply"),
+            ValkeyValue::Integer(2)
+        );
+    }
+
+    #[test]
+    fn rejects_call_that_does_not_match_configured_arguments() {
+        let mut context = Context::test();
+        context.expect_call(
+            "TEST",
+            &["expected"],
+            ValkeyValue::SimpleString("configured".to_owned()),
+        );
+
+        assert!(matches!(
+            context.call("TEST", &["actual"]),
+            Err(crate::ValkeyError::String(message)) if message == "unexpected call: TEST actual"
+        ));
+    }
+
+    #[test]
+    fn rejects_call_that_does_not_match_configured_command() {
+        let mut context = Context::test();
+        context.expect_call(
+            "EXPECTED",
+            &["argument"],
+            ValkeyValue::SimpleString("configured".to_owned()),
+        );
+
+        assert!(matches!(
+            context.call("ACTUAL", &["argument"]),
+            Err(crate::ValkeyError::String(message))
+                if message == "unexpected call: ACTUAL argument"
+        ));
+    }
+
+    #[test]
+    fn call_ext_returns_configured_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &["extended"],
+            ValkeyValue::SimpleString("extended".to_owned()),
+        );
+        let options = crate::CallOptionsBuilder::new().errors_as_replies().build();
+        let reply: crate::CallResult = context.call_ext("ECHO", &options, &["extended"]);
+
+        assert_eq!(
+            ValkeyValue::from(&reply),
+            ValkeyValue::SimpleString("extended".to_owned())
+        );
+    }
+
+    #[test]
+    fn dropped_test_context_is_not_intercepted() {
+        let context = Context::test();
+        let ctx = context.context.ctx;
+        drop(context);
+
+        assert!(try_call(ctx, "TEST", &[]).is_none());
     }
 }
