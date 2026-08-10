@@ -144,6 +144,28 @@ assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
 assert_eq!(context.get_client_id(), 42);
 ```
 
+To test a raw command-filter callback directly, pass `context.as_raw_ctx_ptr()` to it. The returned opaque pointer remains valid while the `TestCommandFilterCtx` is alive:
+
+```rust
+use valkey_module::{CommandFilterCtx, RedisModuleCommandFilterCtx};
+
+fn rewrite_set_filter(ctx: *mut RedisModuleCommandFilterCtx) {
+    let context = CommandFilterCtx::new(ctx);
+    context.arg_replace(1, "new-key");
+}
+
+let mut context = CommandFilterCtx::test();
+context
+    .expect_args_count(3)
+    .expect_arg_get(0, "SET")
+    .expect_arg_get(1, "key")
+    .expect_arg_get(2, "value");
+
+rewrite_set_filter(context.as_raw_ctx_ptr());
+
+assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+```
+
 `expect_args_count()` configures the reported number of arguments, while `expect_arg_get()` configures the binary-safe value at an individual position. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
 
 Run these tests normally:

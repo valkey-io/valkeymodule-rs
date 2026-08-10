@@ -125,6 +125,18 @@ mod tests {
     }
 
     #[test]
+    fn invokes_command_filter_callback_with_test_context_pointer() {
+        let client_id = 43;
+        CLIENT_ID_USERNAME_MAP.insert(client_id, "alice".to_string());
+        let mut context = CommandFilterCtx::test();
+        context.expect_get_client_id(client_id);
+
+        filter1_fn(context.as_raw_ctx_ptr());
+
+        CLIENT_ID_USERNAME_MAP.remove(&client_id);
+    }
+
+    #[test]
     fn defaults_username_for_unknown_command_filter_client() {
         let mut context = CommandFilterCtx::test();
         context.expect_get_client_id(99);
