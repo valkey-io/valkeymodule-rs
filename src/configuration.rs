@@ -39,16 +39,8 @@ bitflags! {
 }
 
 #[macro_export]
-macro_rules! enum_configuration {
-    ($(#[$meta:meta])* $vis:vis enum $name:ident {
-        $($(#[$vmeta:meta])* $vname:ident = $val:expr,)*
-    }) => {
-        use $crate::configuration::EnumConfigurationValue;
-        $(#[$meta])*
-        $vis enum $name {
-            $($(#[$vmeta])* $vname = $val,)*
-        }
-
+macro_rules! enum_configuration_tryfrom_trait {
+    ($name:ident, $($vname:ident)*) => {
         impl std::convert::TryFrom<i32> for $name {
             type Error = $crate::ValkeyError;
 
@@ -59,24 +51,77 @@ macro_rules! enum_configuration {
                 }
             }
         }
+    }
+}
 
+#[macro_export]
+macro_rules! enum_configuration_from_trait {
+    ($name:ident) => {
         impl std::convert::From<$name> for i32 {
             fn from(val: $name) -> Self {
                 val as i32
             }
         }
+    };
+}
 
-        impl EnumConfigurationValue for $name {
-            fn get_options(&self) -> (Vec<String>, Vec<i32>) {
-                (vec![$(stringify!($vname).to_string(),)*], vec![$($val,)*])
-            }
-        }
-
+#[macro_export]
+macro_rules! enum_configuration_clone_trait {
+    ($name:ident, $($vname:ident)*) => {
         impl Clone for $name {
             fn clone(&self) -> Self {
                 match self {
                     $($name::$vname => $name::$vname,)*
                 }
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! enum_configuration {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+        $($(#[$vmeta:meta])* $vname:ident = $val:expr,)*
+    }) => {
+        $(#[$meta])*
+        $vis enum $name {
+            $($(#[$vmeta])* $vname = $val,)*
+        }
+
+        $crate::enum_configuration_tryfrom_trait!($name, $($vname)*);
+
+        $crate::enum_configuration_from_trait!($name);
+
+        $crate::enum_configuration_clone_trait!($name, $($vname)*);
+
+        impl $crate::configuration::EnumConfigurationValue for $name {
+            fn get_options(&self) -> (Vec<String>, Vec<i32>) {
+                (vec![$(stringify!($vname).to_string(),)*], vec![$($val,)*])
+            }
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! enum_configuration2 {
+    ($(#[$meta:meta])* $vis:vis enum $name:ident {
+        $($(#[$vmeta:meta])* $vname:ident = ($sname:expr, $val:expr),)*
+    }) => {
+        $(#[$meta])*
+        $vis enum $name {
+            $($(#[$vmeta])* $vname = $val,)*
+        }
+
+        $crate::enum_configuration_tryfrom_trait!($name, $($vname)*);
+
+        $crate::enum_configuration_from_trait!($name);
+
+        $crate::enum_configuration_clone_trait!($name, $($vname)*);
+
+
+        impl $crate::configuration::EnumConfigurationValue for $name {
+            fn get_options(&self) -> (Vec<String>, Vec<i32>) {
+                (vec![$($sname.to_string(),)*], vec![$($val,)*])
             }
         }
     }
