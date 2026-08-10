@@ -11,6 +11,8 @@ use crate::key::{KeyFlags, ValkeyKey, ValkeyKeyWritable};
 use crate::logging::ValkeyLogLevel;
 use crate::raw::{ModuleOptions, Version};
 use crate::redisvalue::ValkeyValueKey;
+#[cfg(any(test, feature = "test-shims"))]
+use crate::test_shims::try_call;
 use crate::{
     add_info_begin_dict_field, add_info_end_dict_field, add_info_field_double,
     add_info_field_long_long, add_info_field_str, add_info_field_unsigned_long_long, raw, utils,
@@ -417,7 +419,7 @@ impl Context {
         #[cfg(any(test, feature = "test-shims"))]
         // Test contexts return configured replies here because stable Rust cannot implement the
         // C-variadic RedisModule_Call API for the test shim.
-        if let Some(reply) = crate::test_shims::try_call(self.ctx, command, final_args) {
+        if let Some(reply) = try_call(self.ctx, command, final_args) {
             let promise = create_promise_call_reply(self, NonNull::new(reply));
             return R::from(promise);
         }
