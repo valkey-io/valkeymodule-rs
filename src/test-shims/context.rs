@@ -10,6 +10,23 @@ const DEFAULT_CLIENT_ID: u64 = 1;
 
 static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_GetClientId = Some(get_client_id);
+        raw::RedisModule_GetClientNameById = Some(get_client_name_by_id);
+        raw::RedisModule_SetClientNameById = Some(set_client_name_by_id);
+        raw::RedisModule_GetClientUserNameById = Some(get_client_username_by_id);
+        raw::RedisModule_GetClientCertificate = Some(get_client_certificate);
+        raw::RedisModule_GetClientInfoById = Some(get_client_info_by_id);
+        raw::RedisModule_GetCurrentUserName = Some(get_current_user_name);
+        raw::RedisModule_DeauthenticateAndCloseClient = Some(deauthenticate_and_close_client);
+        raw::RedisModule_SetModuleOptions = Some(set_module_options);
+        raw::RedisModule_GetServerVersion = Some(get_server_version);
+        raw::RedisModule_AuthenticateClientWithACLUser = Some(authenticate_client_with_acl_user);
+    }
+}
+
 // These Valkey APIs do not receive a RedisModuleCtx, so their shims cannot access ContextData.
 // Thread-local state prevents expectations from leaking between concurrently running tests.
 thread_local! {

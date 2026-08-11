@@ -3,6 +3,18 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::ptr::null_mut;
 
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_CommandFilterArgsCount = Some(command_filter_args_count);
+        raw::RedisModule_CommandFilterArgGet = Some(command_filter_arg_get);
+        raw::RedisModule_CommandFilterArgReplace = Some(command_filter_arg_replace);
+        raw::RedisModule_CommandFilterArgInsert = Some(command_filter_arg_insert);
+        raw::RedisModule_CommandFilterArgDelete = Some(command_filter_arg_delete);
+        raw::RedisModule_CommandFilterGetClientId = Some(command_filter_get_client_id);
+    }
+}
+
 const DEFAULT_CLIENT_ID: u64 = 1;
 
 impl CommandFilterCtx {

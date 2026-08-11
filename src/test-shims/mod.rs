@@ -24,65 +24,11 @@ fn setup_test_shims() {
             "refusing to install test shims inside a running Valkey process"
         );
 
-        unsafe {
-            // ValkeyString
-            raw::RedisModule_StringPtrLen = Some(valkey_string::string_ptr_len);
-            raw::RedisModule_FreeString = Some(valkey_string::free_string);
-            raw::RedisModule_RetainString = Some(valkey_string::retain_string);
-            raw::RedisModule_StringToLongLong = Some(valkey_string::string_to_longlong);
-            raw::RedisModule_StringToULongLong = Some(valkey_string::string_to_ulonglong);
-            raw::RedisModule_StringToDouble = Some(valkey_string::string_to_double);
-            raw::RedisModule_CreateString = Some(valkey_string::create_string);
-            raw::RedisModule_CreateStringFromString =
-                Some(valkey_string::create_string_from_string);
-            raw::RedisModule_StringCompare = Some(valkey_string::string_compare);
-            // Context
-            raw::RedisModule_GetClientId = Some(context::get_client_id);
-            raw::RedisModule_GetClientNameById = Some(context::get_client_name_by_id);
-            raw::RedisModule_SetClientNameById = Some(context::set_client_name_by_id);
-            raw::RedisModule_GetClientUserNameById = Some(context::get_client_username_by_id);
-            raw::RedisModule_GetClientCertificate = Some(context::get_client_certificate);
-            raw::RedisModule_GetClientInfoById = Some(context::get_client_info_by_id);
-            raw::RedisModule_GetCurrentUserName = Some(context::get_current_user_name);
-            raw::RedisModule_DeauthenticateAndCloseClient =
-                Some(context::deauthenticate_and_close_client);
-            raw::RedisModule_SetModuleOptions = Some(context::set_module_options);
-            raw::RedisModule_GetServerVersion = Some(context::get_server_version);
-            raw::RedisModule_AuthenticateClientWithACLUser =
-                Some(context::authenticate_client_with_acl_user);
-            // Calls made through a TestContext
-            raw::RedisModule_CallReplyType = Some(call::call_reply_type);
-            raw::RedisModule_FreeCallReply = Some(call::free_call_reply);
-            raw::RedisModule_CallReplyInteger = Some(call::call_reply_integer);
-            raw::RedisModule_CallReplyBool = Some(call::call_reply_bool);
-            raw::RedisModule_CallReplyDouble = Some(call::call_reply_double);
-            raw::RedisModule_CallReplyBigNumber = Some(call::call_reply_big_number);
-            raw::RedisModule_CallReplyLength = Some(call::call_reply_length);
-            raw::RedisModule_CallReplyArrayElement = Some(call::call_reply_array_element);
-            raw::RedisModule_CallReplyMapElement = Some(call::call_reply_map_element);
-            raw::RedisModule_CallReplyStringPtr = Some(call::call_reply_string_ptr);
-            // InfoContext
-            raw::RedisModule_InfoAddSection = Some(info_context::info_add_section);
-            raw::RedisModule_InfoAddFieldString = Some(info_context::info_add_field_string);
-            raw::RedisModule_InfoAddFieldLongLong = Some(info_context::info_add_field_long_long);
-            raw::RedisModule_InfoAddFieldULongLong =
-                Some(info_context::info_add_field_unsigned_long_long);
-            raw::RedisModule_InfoAddFieldDouble = Some(info_context::info_add_field_double);
-            raw::RedisModule_InfoBeginDictField = Some(info_context::info_begin_dict_field);
-            raw::RedisModule_InfoEndDictField = Some(info_context::info_end_dict_field);
-            // CommandFilterCtx
-            raw::RedisModule_CommandFilterArgsCount =
-                Some(command_filter_ctx::command_filter_args_count);
-            raw::RedisModule_CommandFilterArgGet = Some(command_filter_ctx::command_filter_arg_get);
-            raw::RedisModule_CommandFilterArgReplace =
-                Some(command_filter_ctx::command_filter_arg_replace);
-            raw::RedisModule_CommandFilterArgInsert =
-                Some(command_filter_ctx::command_filter_arg_insert);
-            raw::RedisModule_CommandFilterArgDelete =
-                Some(command_filter_ctx::command_filter_arg_delete);
-            raw::RedisModule_CommandFilterGetClientId =
-                Some(command_filter_ctx::command_filter_get_client_id);
-        }
+        valkey_string::install();
+        context::install();
+        call::install();
+        info_context::install();
+        command_filter_ctx::install();
     });
 }
 

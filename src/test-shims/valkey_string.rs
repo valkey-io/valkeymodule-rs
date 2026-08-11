@@ -5,6 +5,21 @@ use std::ptr::null_mut;
 use std::str::FromStr;
 use std::sync::Arc;
 
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_StringPtrLen = Some(string_ptr_len);
+        raw::RedisModule_FreeString = Some(free_string);
+        raw::RedisModule_RetainString = Some(retain_string);
+        raw::RedisModule_StringToLongLong = Some(string_to_longlong);
+        raw::RedisModule_StringToULongLong = Some(string_to_ulonglong);
+        raw::RedisModule_StringToDouble = Some(string_to_double);
+        raw::RedisModule_CreateString = Some(create_string);
+        raw::RedisModule_CreateStringFromString = Some(create_string_from_string);
+        raw::RedisModule_StringCompare = Some(string_compare);
+    }
+}
+
 type ShimString = Vec<u8>;
 
 impl ValkeyString {

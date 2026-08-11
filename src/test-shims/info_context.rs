@@ -4,6 +4,19 @@ use std::collections::HashSet;
 use std::ffi::CStr;
 use std::ops::Deref;
 
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_InfoAddSection = Some(info_add_section);
+        raw::RedisModule_InfoAddFieldString = Some(info_add_field_string);
+        raw::RedisModule_InfoAddFieldLongLong = Some(info_add_field_long_long);
+        raw::RedisModule_InfoAddFieldULongLong = Some(info_add_field_unsigned_long_long);
+        raw::RedisModule_InfoAddFieldDouble = Some(info_add_field_double);
+        raw::RedisModule_InfoBeginDictField = Some(info_begin_dict_field);
+        raw::RedisModule_InfoEndDictField = Some(info_end_dict_field);
+    }
+}
+
 /// A typed value captured from an INFO field.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInfoValue {
@@ -54,6 +67,9 @@ struct InfoContextData {
     unrequested_sections: HashSet<String>,
 }
 
+// Tracks live test INFO context addresses so callbacks can reject foreign or stale pointers before
+// casting them back to `InfoContextData`. INFO callbacks execute synchronously on the creating
+// thread, so the registry is thread-local.
 thread_local! {
     static TEST_INFO_CONTEXTS: RefCell<HashSet<usize>> = RefCell::default();
 }
