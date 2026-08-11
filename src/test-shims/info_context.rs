@@ -17,6 +17,21 @@ pub(super) fn install() {
     }
 }
 
+// Tracks live test INFO context addresses so callbacks can reject foreign or stale pointers before
+// casting them back to `InfoContextData`. INFO callbacks execute synchronously on the creating
+// thread, so the registry is thread-local.
+thread_local! {
+    static TEST_INFO_CONTEXTS: RefCell<HashSet<usize>> = RefCell::default();
+}
+
+impl InfoContext {
+    /// Creates a test INFO context that can be used without a running Valkey server.
+    #[must_use]
+    pub fn test() -> TestInfoContext {
+        TestInfoContext::new()
+    }
+}
+
 /// A typed value captured from an INFO field.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestInfoValue {
@@ -67,25 +82,10 @@ struct InfoContextData {
     unrequested_sections: HashSet<String>,
 }
 
-// Tracks live test INFO context addresses so callbacks can reject foreign or stale pointers before
-// casting them back to `InfoContextData`. INFO callbacks execute synchronously on the creating
-// thread, so the registry is thread-local.
-thread_local! {
-    static TEST_INFO_CONTEXTS: RefCell<HashSet<usize>> = RefCell::default();
-}
-
 /// Owns a test-only [`InfoContext`] that captures emitted INFO data.
 pub struct TestInfoContext {
     context: InfoContext,
     data: Box<InfoContextData>,
-}
-
-impl InfoContext {
-    /// Creates a test INFO context that can be used without a running Valkey server.
-    #[must_use]
-    pub fn test() -> TestInfoContext {
-        TestInfoContext::new()
-    }
 }
 
 impl TestInfoContext {
@@ -131,66 +131,6 @@ impl Drop for TestInfoContext {
             contexts.borrow_mut().remove(&(self.context.ctx as usize));
         });
     }
-}
-
-fn with_data_mut<T>(
-    ctx: *mut raw::RedisModuleInfoCtx,
-    operation: impl FnOnce(&mut InfoContextData) -> T,
-) -> Option<T> {
-    if ctx.is_null()
-        || !TEST_INFO_CONTEXTS.with(|contexts| contexts.borrow().contains(&(ctx as usize)))
-    {
-        return None;
-    }
-
-    // SAFETY: the registry contains only live `InfoContextData` allocations, and INFO callbacks
-    // execute synchronously on one thread.
-    Some(operation(unsafe { &mut *ctx.cast::<InfoContextData>() }))
-}
-
-fn required_c_string(value: *const libc::c_char) -> Option<String> {
-    if value.is_null() {
-        return None;
-    }
-
-    // SAFETY: Module API callbacks require a NUL-terminated input string.
-    Some(
-        unsafe { CStr::from_ptr(value) }
-            .to_string_lossy()
-            .into_owned(),
-    )
-}
-
-fn append_field(
-    ctx: *mut raw::RedisModuleInfoCtx,
-    name: *const libc::c_char,
-    value: TestInfoValue,
-) -> libc::c_int {
-    let Some(name) = required_c_string(name) else {
-        return raw::Status::Err as libc::c_int;
-    };
-
-    with_data_mut(ctx, |data| {
-        let Some(section_index) = data.current_section else {
-            return raw::Status::Err as libc::c_int;
-        };
-        let field = TestInfoField { name, value };
-        if let Some(dictionary_index) = data.current_dictionary {
-            let Some(TestInfoEntry::Dictionary { fields, .. }) = data.sections[section_index]
-                .entries
-                .get_mut(dictionary_index)
-            else {
-                return raw::Status::Err as libc::c_int;
-            };
-            fields.push(field);
-        } else {
-            data.sections[section_index]
-                .entries
-                .push(TestInfoEntry::Field(field));
-        }
-        raw::Status::Ok as libc::c_int
-    })
-    .unwrap_or(raw::Status::Err as libc::c_int)
 }
 
 pub(super) extern "C" fn info_add_section(
@@ -311,12 +251,82 @@ pub(super) extern "C" fn info_end_dict_field(ctx: *mut raw::RedisModuleInfoCtx) 
     .unwrap_or(raw::Status::Err as libc::c_int)
 }
 
+/// Copies a required C string into an owned Rust string.
+///
+/// Returns `None` when `value` is null.
+fn required_c_string(value: *const libc::c_char) -> Option<String> {
+    if value.is_null() {
+        return None;
+    }
+
+    // SAFETY: Module API callbacks require a NUL-terminated input string.
+    Some(
+        unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned(),
+    )
+}
+
+/// Appends a typed field to the current dictionary, or directly to the current section.
+///
+/// Returns `ERR` when the name or context is invalid, no section is active, or the current
+/// dictionary cannot accept the field.
+fn append_field(
+    ctx: *mut raw::RedisModuleInfoCtx,
+    name: *const libc::c_char,
+    value: TestInfoValue,
+) -> libc::c_int {
+    let Some(name) = required_c_string(name) else {
+        return raw::Status::Err as libc::c_int;
+    };
+
+    with_data_mut(ctx, |data| {
+        let Some(section_index) = data.current_section else {
+            return raw::Status::Err as libc::c_int;
+        };
+        let field = TestInfoField { name, value };
+        if let Some(dictionary_index) = data.current_dictionary {
+            let Some(TestInfoEntry::Dictionary { fields, .. }) = data.sections[section_index]
+                .entries
+                .get_mut(dictionary_index)
+            else {
+                return raw::Status::Err as libc::c_int;
+            };
+            fields.push(field);
+        } else {
+            data.sections[section_index]
+                .entries
+                .push(TestInfoEntry::Field(field));
+        }
+        raw::Status::Ok as libc::c_int
+    })
+    .unwrap_or(raw::Status::Err as libc::c_int)
+}
+
+/// Runs `operation` with mutable access to a live test INFO context's backing data.
+///
+/// Returns `None` when `ctx` is null, foreign, or stale.
+fn with_data_mut<T>(
+    ctx: *mut raw::RedisModuleInfoCtx,
+    operation: impl FnOnce(&mut InfoContextData) -> T,
+) -> Option<T> {
+    if ctx.is_null()
+        || !TEST_INFO_CONTEXTS.with(|contexts| contexts.borrow().contains(&(ctx as usize)))
+    {
+        return None;
+    }
+
+    // SAFETY: the registry contains only live, uniquely owned `InfoContextData` allocations, and
+    // INFO callbacks execute synchronously on one thread.
+    Some(operation(unsafe { &mut *ctx.cast::<InfoContextData>() }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         InfoContext, InfoContextBuilderFieldBottomLevelValue, InfoContextBuilderFieldTopLevelValue,
-        Status,
+        Status, ValkeyString,
     };
     use std::ffi::CString;
 
@@ -422,23 +432,34 @@ mod tests {
     }
 
     #[test]
-    fn callbacks_reject_invalid_context() {
-        assert_eq!(
-            info_add_section(std::ptr::null_mut(), std::ptr::null()),
-            Status::Err as libc::c_int
-        );
+    fn callbacks_reject_null_context() {
+        assert_info_callbacks_reject(std::ptr::null_mut());
     }
 
     #[test]
-    fn dropped_context_pointer_is_rejected() {
+    fn callbacks_reject_foreign_context() {
+        let mut data = Box::new(InfoContextData {
+            sections: vec![TestInfoSection {
+                name: Some("section".to_owned()),
+                entries: Vec::new(),
+            }],
+            current_section: Some(0),
+            current_dictionary: None,
+            unrequested_sections: HashSet::new(),
+        });
+        let foreign = (&mut *data as *mut InfoContextData).cast::<raw::RedisModuleInfoCtx>();
+
+        assert_info_callbacks_reject(foreign);
+    }
+
+    #[test]
+    fn callbacks_reject_dropped_context() {
         let stale = {
-            let info = InfoContext::test();
-            info.ctx
+            let info_ctx = InfoContext::test();
+            info_ctx.ctx
         };
-        assert_eq!(
-            info_add_section(stale, std::ptr::null()),
-            Status::Err as libc::c_int
-        );
+
+        assert_info_callbacks_reject(stale);
     }
 
     #[test]
@@ -685,5 +706,39 @@ mod tests {
     fn rejects_invalid_dictionary_order() {
         let info = InfoContext::test();
         assert_eq!(info_end_dict_field(info.ctx), Status::Err as libc::c_int);
+    }
+
+    fn assert_info_callbacks_reject(ctx: *mut raw::RedisModuleInfoCtx) {
+        let section = CString::new("section").expect("section name should not contain NUL");
+        let field = CString::new("field").expect("field name should not contain NUL");
+        let dictionary =
+            CString::new("dictionary").expect("dictionary name should not contain NUL");
+        let value = ValkeyString::test("value");
+
+        assert_eq!(
+            info_add_section(ctx, section.as_ptr()),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            info_add_field_string(ctx, field.as_ptr(), value.inner),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            info_add_field_long_long(ctx, field.as_ptr(), 1),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            info_add_field_unsigned_long_long(ctx, field.as_ptr(), 1),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            info_add_field_double(ctx, field.as_ptr(), 1.0),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            info_begin_dict_field(ctx, dictionary.as_ptr()),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(info_end_dict_field(ctx), Status::Err as libc::c_int);
     }
 }

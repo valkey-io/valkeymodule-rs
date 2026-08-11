@@ -535,7 +535,7 @@ mod tests {
     }
 
     #[test]
-    fn callbacks_reject_dropped_context_pointer() {
+    fn callbacks_reject_dropped_context() {
         let stale = {
             let mut context = CommandFilterCtx::test();
             context
@@ -545,44 +545,46 @@ mod tests {
             context.as_raw_ctx_ptr()
         };
 
-        assert_eq!(command_filter_args_count(stale), 0);
-        assert!(command_filter_arg_get(stale, 0).is_null());
-
-        let replacement = ValkeyString::create_and_retain("replacement");
-        assert_eq!(
-            command_filter_arg_replace(stale, 0, replacement.inner),
-            raw::Status::Err as libc::c_int
-        );
-
-        let insertion = ValkeyString::create_and_retain("insertion");
-        assert_eq!(
-            command_filter_arg_insert(stale, 0, insertion.inner),
-            raw::Status::Err as libc::c_int
-        );
-        assert_eq!(
-            command_filter_arg_delete(stale, 0),
-            raw::Status::Err as libc::c_int
-        );
-        assert_eq!(command_filter_get_client_id(stale), DEFAULT_CLIENT_ID);
+        assert_command_filter_callbacks_reject(stale);
     }
 
     #[test]
-    fn callbacks_reject_unregistered_context_pointer() {
+    fn callbacks_reject_foreign_context() {
         let mut data = Box::new(CommandFilterData {
-            args_count: 7,
-            args: HashMap::new(),
+            args_count: 1,
+            args: HashMap::from([(0, ValkeyString::test("command"))]),
             client_id: 42,
         });
         let foreign =
             (data.as_mut() as *mut CommandFilterData).cast::<raw::RedisModuleCommandFilterCtx>();
 
-        assert_eq!(command_filter_args_count(foreign), 0);
-        assert!(command_filter_arg_get(foreign, 0).is_null());
-        assert_eq!(command_filter_get_client_id(foreign), DEFAULT_CLIENT_ID);
+        assert_command_filter_callbacks_reject(foreign);
     }
 
     #[test]
-    fn defaults_client_id_for_null_context() {
-        assert_eq!(command_filter_get_client_id(null_mut()), DEFAULT_CLIENT_ID);
+    fn callbacks_reject_null_context() {
+        assert_command_filter_callbacks_reject(null_mut());
+    }
+
+    fn assert_command_filter_callbacks_reject(ctx: *mut raw::RedisModuleCommandFilterCtx) {
+        assert_eq!(command_filter_args_count(ctx), 0);
+        assert!(command_filter_arg_get(ctx, 0).is_null());
+
+        let replacement = ValkeyString::test("replacement").take();
+        assert_eq!(
+            command_filter_arg_replace(ctx, 0, replacement),
+            raw::Status::Err as libc::c_int
+        );
+
+        let insertion = ValkeyString::test("insertion").take();
+        assert_eq!(
+            command_filter_arg_insert(ctx, 0, insertion),
+            raw::Status::Err as libc::c_int
+        );
+        assert_eq!(
+            command_filter_arg_delete(ctx, 0),
+            raw::Status::Err as libc::c_int
+        );
+        assert_eq!(command_filter_get_client_id(ctx), DEFAULT_CLIENT_ID);
     }
 }
