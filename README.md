@@ -201,7 +201,7 @@ Run these tests normally:
 cargo test
 ```
 
-The first call to `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `RedisModule_GetServerInfo` and `ValkeyString::append()`, still require a running server.
+The first call to `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Create each test context and invoke its callbacks on the same thread: live contexts are tracked in thread-local registries, so callbacks on another thread reject the context pointer as foreign. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `RedisModule_GetServerInfo` and `ValkeyString::append()`, still require a running server.
 
 ### Redis Compatibility
 
