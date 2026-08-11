@@ -49,7 +49,7 @@ cargo test
 
 ### Unit testing without a Valkey server
 
-The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
+The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
 
 ```toml
 [dev-dependencies]
@@ -85,6 +85,33 @@ mod tests {
     }
 }
 ```
+
+Use `InfoContext::test()` to invoke an INFO handler directly and inspect the typed sections it emits. `sections()` returns an owned snapshot that preserves section, field, and dictionary insertion order:
+
+```rust
+use valkey_module::test_shims::{TestInfoEntry, TestInfoValue};
+use valkey_module::{InfoContext, InfoContextBuilderFieldBottomLevelValue};
+
+let info = InfoContext::test();
+info.builder()
+    .add_section("metrics")
+    .field("status", "ready")
+    .expect("status field should be unique")
+    .field("ratio", InfoContextBuilderFieldBottomLevelValue::F64(0.5))
+    .expect("ratio field should be unique")
+    .build_section()
+    .expect("section should be unique")
+    .build_info()
+    .expect("INFO data should build");
+
+assert!(matches!(
+    &info.sections()[0].entries[0],
+    TestInfoEntry::Field(field)
+        if matches!(&field.value, TestInfoValue::String(value) if value == "ready")
+));
+```
+
+Call `expect_unrequested_section(name)` before invoking a handler to model Valkey declining an unrequested INFO section. The `info_handler_builder`, `info_handler_macro`, `info_handler_multiple_sections`, `info_handler_struct`, and `test_helper` examples demonstrate serverless INFO-handler unit tests.
 
 The test context supports configuring the server version, client IDs, names, usernames, certificates, client information and IP addresses, the current user, ACL-user authentication, and client deauthentication. Configure `Context::get_server_version()` with `expect_get_server_version(major, minor, patch)`.
 
@@ -174,7 +201,7 @@ Run these tests normally:
 cargo test
 ```
 
-The first call to `Context::test()`, `CommandFilterCtx::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `ValkeyString::append()`, still require a running server.
+The first call to `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `RedisModule_GetServerInfo` and `ValkeyString::append()`, still require a running server.
 
 ### Redis Compatibility
 

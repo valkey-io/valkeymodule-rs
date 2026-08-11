@@ -1,11 +1,15 @@
 mod call;
 mod command_filter_ctx;
 mod context;
+mod info_context;
 mod valkey_string;
 
 pub use command_filter_ctx::TestCommandFilterCtx;
 pub(crate) use context::try_call;
 pub use context::TestContext;
+pub use info_context::{
+    TestInfoContext, TestInfoEntry, TestInfoField, TestInfoSection, TestInfoValue,
+};
 
 use crate::raw;
 use std::ptr::addr_of;
@@ -57,6 +61,15 @@ fn setup_test_shims() {
             raw::RedisModule_CallReplyArrayElement = Some(call::call_reply_array_element);
             raw::RedisModule_CallReplyMapElement = Some(call::call_reply_map_element);
             raw::RedisModule_CallReplyStringPtr = Some(call::call_reply_string_ptr);
+            // InfoContext
+            raw::RedisModule_InfoAddSection = Some(info_context::info_add_section);
+            raw::RedisModule_InfoAddFieldString = Some(info_context::info_add_field_string);
+            raw::RedisModule_InfoAddFieldLongLong = Some(info_context::info_add_field_long_long);
+            raw::RedisModule_InfoAddFieldULongLong =
+                Some(info_context::info_add_field_unsigned_long_long);
+            raw::RedisModule_InfoAddFieldDouble = Some(info_context::info_add_field_double);
+            raw::RedisModule_InfoBeginDictField = Some(info_context::info_begin_dict_field);
+            raw::RedisModule_InfoEndDictField = Some(info_context::info_end_dict_field);
             // CommandFilterCtx
             raw::RedisModule_CommandFilterArgsCount =
                 Some(command_filter_ctx::command_filter_args_count);

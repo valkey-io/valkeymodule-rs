@@ -62,6 +62,7 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use valkey_module::test_shims::{TestInfoEntry, TestInfoField, TestInfoSection, TestInfoValue};
     use valkey_module::ValkeyValue;
 
     #[test]
@@ -80,5 +81,32 @@ mod tests {
                 ValkeyValue::Integer(2),
             ])
         );
+    }
+
+    #[test]
+    fn captures_test_helper_info_output() {
+        let info_ctx = InfoContext::test();
+
+        assert!(add_info_impl(&info_ctx, false).is_ok());
+
+        assert_eq!(
+            info_ctx.sections(),
+            vec![TestInfoSection {
+                name: Some("test_helper".to_owned()),
+                entries: vec![TestInfoEntry::Field(TestInfoField {
+                    name: "field".to_owned(),
+                    value: TestInfoValue::String("value".to_owned()),
+                })],
+            }]
+        );
+    }
+
+    #[test]
+    fn skips_unrequested_info_section() {
+        let mut info_ctx = InfoContext::test();
+        info_ctx.expect_unrequested_section("test_helper");
+
+        assert!(add_info_impl(&info_ctx, false).is_ok());
+        assert!(info_ctx.sections().is_empty());
     }
 }

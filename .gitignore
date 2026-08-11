@@ -26,3 +26,4 @@ valkeymodule-rs-macros/Cargo.lock
 valkeymodule-rs-macros-internals/Cargo.lock
 docs/superpowers/*
 *.profraw
+.codegraph/*
