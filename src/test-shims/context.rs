@@ -1,14 +1,11 @@
 use super::call::TestCallReply;
 use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicI32, Ordering};
 
 const DEFAULT_CLIENT_ID: u64 = 1;
-
-static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
 
 pub(super) fn install() {
     // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
@@ -32,6 +29,7 @@ pub(super) fn install() {
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
     static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
+    static SERVER_VERSION: Cell<libc::c_int> = Cell::new(0);
     static TEST_CONTEXTS: RefCell<std::collections::HashSet<usize>> = RefCell::default();
 }
 
@@ -92,6 +90,8 @@ impl TestContext {
         CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
         // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
         CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
+        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
+        SERVER_VERSION.with(|server_version| server_version.set(0));
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts.borrow_mut().insert(ctx as usize);
         });
@@ -193,7 +193,7 @@ impl TestContext {
         let version = (libc::c_int::from(major) << 16)
             | (libc::c_int::from(minor) << 8)
             | libc::c_int::from(patch);
-        SERVER_VERSION.store(version, Ordering::Relaxed);
+        SERVER_VERSION.with(|server_version| server_version.set(version));
         self
     }
 
@@ -463,7 +463,7 @@ pub(super) extern "C" fn set_module_options(_ctx: *mut raw::RedisModuleCtx, _opt
 }
 
 pub(super) extern "C" fn get_server_version() -> libc::c_int {
-    SERVER_VERSION.load(Ordering::Relaxed)
+    SERVER_VERSION.with(Cell::get)
 }
 
 pub(super) extern "C" fn authenticate_client_with_acl_user(
@@ -620,6 +620,25 @@ mod tests {
                 major: 8,
                 minor: 1,
                 patch: 2,
+            }
+        );
+    }
+
+    #[test]
+    fn new_test_context_resets_server_version() {
+        let mut first_context = Context::test();
+        first_context.expect_get_server_version(8, 1, 2);
+
+        let second_context = Context::test();
+
+        assert_eq!(
+            second_context
+                .get_server_version()
+                .expect("default server version should be returned"),
+            raw::Version {
+                major: 0,
+                minor: 0,
+                patch: 0,
             }
         );
     }
