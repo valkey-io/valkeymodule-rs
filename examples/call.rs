@@ -244,4 +244,36 @@ mod tests {
 
         assert!(call_test(&context, Vec::new()).is_ok());
     }
+
+    #[test]
+    fn call_test_accepts_configured_replies_through_thread_safe_context() {
+        let mut context = ThreadSafeContext::test();
+        context.expect_call(
+            "ECHO",
+            &["TEST"],
+            ValkeyValue::SimpleString("TEST".to_owned()),
+        );
+        context.expect_call(
+            "SHUTDOWN",
+            &[] as &[&str],
+            ValkeyValue::StaticError("not allowed in script mode"),
+        );
+        context.expect_call("HSET", &["x", "foo", "bar"], ValkeyValue::Integer(1));
+        context.expect_call(
+            "HGETALL",
+            &["x"],
+            ValkeyValue::Map(HashMap::from([(
+                ValkeyValueKey::String("foo".to_owned()),
+                ValkeyValue::SimpleString("bar".to_owned()),
+            )])),
+        );
+
+        let guard = context.lock();
+        let result = call_test(&guard, Vec::new());
+
+        assert!(matches!(
+            result,
+            Ok(ValkeyValue::BulkString(value)) if value == "pass"
+        ));
+    }
 }

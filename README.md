@@ -49,7 +49,7 @@ cargo test
 
 ### Unit testing without a Valkey server
 
-The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
+The `test-shims` feature provides `Context::test()`, `ThreadSafeContext::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
 
 ```toml
 [dev-dependencies]
@@ -133,6 +133,27 @@ context.expect_call(
 ```
 
 For [`Context::config_get()`], use `expect_config_get("hz", "10")` instead of configuring the underlying `CONFIG GET` reply directly.
+
+Use `ThreadSafeContext::test()` to configure a thread-safe context and exercise code through its locked `ContextGuard`:
+
+```rust
+use valkey_module::{ThreadSafeContext, ValkeyValue};
+
+let mut context = ThreadSafeContext::test();
+context.expect_call(
+    "INCR",
+    &["counter"],
+    ValkeyValue::Integer(1),
+);
+
+let guard = context.lock();
+assert!(matches!(
+    guard.call("INCR", &["counter"]),
+    Ok(ValkeyValue::Integer(1))
+));
+```
+
+The fixture synchronizes its test state so it can be moved between threads. It does not model Valkey's process-wide GIL or command scheduling.
 
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
