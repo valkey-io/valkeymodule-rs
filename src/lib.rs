@@ -27,6 +27,7 @@ mod context;
 pub mod key;
 pub mod logging;
 mod macros;
+pub mod module_stats;
 mod utils;
 
 pub use crate::context::blocked::BlockedClient;

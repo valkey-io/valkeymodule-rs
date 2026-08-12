@@ -1899,3 +1899,107 @@ fn test_swapdb_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_usage_tracking_module_memory() -> Result<()> {
+    const ALLOCATION_BYTES: i64 = 1024 * 1024; // 1MB
+    const ATOMIC_ALLOCATION_BYTES: i64 = 16 * 1024 * 8; // ATOMIC_COUNT * 8 byte per AtomicU64
+    const TOLERANCE_BYTES: i64 = 1024; // 1KB
+    const LIVE_ALLOCATION_TOLERANCE: i64 = 1;
+    const CURRENT_BYTES_INDEX: usize = 0;
+    const PEAK_BYTES_INDEX: usize = 1;
+    const LIVE_ALLOCATIONS_INDEX: usize = 4;
+
+    let mut con = start_server_w_module_get_connection("usage_tracking")?;
+
+    // Module-owned allocations must be reflected in the tracked counters.
+    let baseline: Vec<i64> = redis::cmd("usage_tracking.snapshot").query(&mut con)?;
+    assert_eq!(
+        baseline.len(),
+        6,
+        "snapshot should contain all six counters"
+    );
+    for (allocation_type, command, expected_bytes) in [
+        ("vector", "usage_tracking.allocate_vector", ALLOCATION_BYTES),
+        (
+            "DashMap",
+            "usage_tracking.allocate_dashmap",
+            ALLOCATION_BYTES,
+        ),
+        (
+            "AtomicU64 slice",
+            "usage_tracking.allocate_atomics",
+            ATOMIC_ALLOCATION_BYTES,
+        ),
+        ("string", "usage_tracking.allocate_string", ALLOCATION_BYTES),
+        (
+            "custom struct",
+            "usage_tracking.allocate_custom",
+            ALLOCATION_BYTES,
+        ),
+    ] {
+        // Every command retains only one allocation type, so each increase is isolated.
+        redis::cmd(command).exec(&mut con)?;
+        let allocated: Vec<i64> = redis::cmd("usage_tracking.snapshot").query(&mut con)?;
+        assert_eq!(
+            allocated.len(),
+            6,
+            "{allocation_type} snapshot should contain all six counters"
+        );
+        assert!(
+            allocated[CURRENT_BYTES_INDEX] >= baseline[CURRENT_BYTES_INDEX] + expected_bytes,
+            "{allocation_type} should increase current memory usage: baseline={}, allocated={}",
+            baseline[CURRENT_BYTES_INDEX],
+            allocated[CURRENT_BYTES_INDEX],
+        );
+        assert!(
+            allocated[PEAK_BYTES_INDEX] >= allocated[CURRENT_BYTES_INDEX],
+            "{allocation_type} peak memory usage should include its retained allocation: peak={}, current={}",
+            allocated[PEAK_BYTES_INDEX],
+            allocated[CURRENT_BYTES_INDEX],
+        );
+
+        redis::cmd("usage_tracking.release").exec(&mut con)?;
+        let released: Vec<i64> = redis::cmd("usage_tracking.snapshot").query(&mut con)?;
+        assert!(
+            released[CURRENT_BYTES_INDEX] <= baseline[CURRENT_BYTES_INDEX] + TOLERANCE_BYTES,
+            "{allocation_type} current memory usage should return near baseline: baseline={}, released={}",
+            baseline[CURRENT_BYTES_INDEX],
+            released[CURRENT_BYTES_INDEX],
+        );
+    }
+
+    let released: Vec<i64> = redis::cmd("usage_tracking.snapshot").query(&mut con)?;
+
+    assert!(
+        released[LIVE_ALLOCATIONS_INDEX] <= baseline[LIVE_ALLOCATIONS_INDEX] + LIVE_ALLOCATION_TOLERANCE,
+        "live allocation count should return near the baseline after release: baseline={}, released={}",
+        baseline[LIVE_ALLOCATIONS_INDEX],
+        released[LIVE_ALLOCATIONS_INDEX],
+    );
+
+    // Write 1MB data into Redis keyspace
+    redis::cmd("SET")
+        .arg("usage-tracking-keyspace-control")
+        .arg(vec![b'x'; ALLOCATION_BYTES as usize])
+        .exec(&mut con)?;
+    let after_keyspace_write: Vec<i64> = redis::cmd("usage_tracking.snapshot").query(&mut con)?;
+    assert_eq!(
+        after_keyspace_write.len(),
+        6,
+        "snapshot should contain all six counters"
+    );
+    // Validate Redis keyspace growth happens in Redis/Valkey, not through the module allocator.
+    assert!(
+        after_keyspace_write[CURRENT_BYTES_INDEX] <= released[CURRENT_BYTES_INDEX] + TOLERANCE_BYTES,
+        "Redis keyspace memory must not be attributed to module usage tracking: released={}, after keyspace write={}",
+        released[CURRENT_BYTES_INDEX],
+        after_keyspace_write[CURRENT_BYTES_INDEX],
+    );
+    // Cleanup the key being inserted
+    redis::cmd("DEL")
+        .arg("usage-tracking-keyspace-control")
+        .exec(&mut con)?;
+
+    Ok(())
+}

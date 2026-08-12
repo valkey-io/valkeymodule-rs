@@ -158,6 +158,11 @@ crate-type = ["cdylib"]
 name = "crontab"
 crate-type = ["cdylib"]
 
+[[example]]
+name = "usage_tracking"
+crate-type = ["cdylib"]
+required-features = ["enable-usage-tracking"]
+
 [dependencies]
 bitflags = "2.8.0"
 libc = "0.2"
@@ -198,6 +203,8 @@ min-redis-compatibility-version-6-2 = []
 min-redis-compatibility-version-6-0 = []
 # this is used to enable System.alloc instead of ValkeyAlloc for tests
 enable-system-alloc = []
+# this enables low-overhead Rust heap usage accounting through ValkeyAlloc
+enable-usage-tracking = []
 # this enables test shims and selects the system allocator they require
 test-shims = ["enable-system-alloc"]
 # this is to indicate the Module wants to use RedisModule APIs for calls
