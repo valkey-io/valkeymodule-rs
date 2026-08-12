@@ -171,7 +171,7 @@ pub(super) extern "C" fn call_reply_big_number(
             return std::ptr::null();
         };
         if !len.is_null() {
-            // SAFETY: Valkey supplies a writable length output pointer.
+            // SAFETY: The caller supplies a writable length output pointer.
             unsafe { len.write(value.len()) };
         }
         value.as_ptr().cast()
@@ -258,7 +258,7 @@ pub(super) extern "C" fn call_reply_string_ptr(
             _ => return std::ptr::null(),
         };
         if !len.is_null() {
-            // SAFETY: Valkey supplies a writable length output pointer.
+            // SAFETY: The caller supplies a writable length output pointer.
             unsafe { len.write(value.len()) };
         }
         value.as_ptr().cast()
@@ -275,9 +275,9 @@ fn with_reply_value<R>(
         return None;
     }
 
-    // SAFETY: all non-null replies originate from `TestCallReply::into_raw` or
-    // `call_reply_array_element`, which allocate a `TestCallReply` handle.
-    // SAFETY: the handle remains live for the duration of this callback.
+    // SAFETY: all non-null replies originate from `TestCallReply::into_raw` directly or from
+    // collection-element callbacks that allocate `TestCallReply` handles. The handle remains live
+    // for the duration of this callback.
     Some(f(unsafe { &*reply.cast::<TestCallReply>() }.value.as_ref()))
 }
 

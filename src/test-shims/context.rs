@@ -1,7 +1,7 @@
 use super::call::TestCallReply;
 use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::ptr::null_mut;
 
@@ -24,13 +24,13 @@ pub(super) fn install() {
 
 const DEFAULT_CLIENT_ID: u64 = 1;
 
-// These Valkey APIs do not receive a RedisModuleCtx, so their shims cannot access ContextData.
-// Thread-local state prevents expectations from leaking between concurrently running tests.
+// Stores expectations for APIs that cannot keep all state in `ContextData` and tracks live context
+// addresses for pointer validation. Thread-local storage isolates concurrently running tests.
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
     static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
     static SERVER_VERSION: Cell<libc::c_int> = Cell::new(0);
-    static TEST_CONTEXTS: RefCell<std::collections::HashSet<usize>> = RefCell::default();
+    static TEST_CONTEXTS: RefCell<HashSet<usize>> = RefCell::default();
 }
 
 impl Context {
@@ -41,6 +41,7 @@ impl Context {
     }
 }
 
+/// Stores expectations and mutable state owned by one test context.
 struct ContextData {
     client_id: u64,
     client_username: Option<Vec<u8>>,
@@ -58,6 +59,7 @@ struct CallExpectation {
     reply: TestCallReply,
 }
 
+// Establishes the baseline state used by a newly created test context.
 impl Default for ContextData {
     fn default() -> Self {
         Self {
@@ -78,6 +80,7 @@ pub struct TestContext {
     data: Box<ContextData>,
 }
 
+// Constructs test contexts and configures their callback expectations.
 impl TestContext {
     fn new() -> Self {
         super::setup_test_shims();
@@ -92,6 +95,7 @@ impl TestContext {
         CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
         // GetServerVersion has no context parameter, so reset its per-thread expectation too.
         SERVER_VERSION.with(|server_version| server_version.set(0));
+        // Register the backing allocation before callbacks can receive its opaque context pointer.
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts.borrow_mut().insert(ctx as usize);
         });
@@ -259,7 +263,7 @@ impl Deref for TestContext {
 // Removes the context address when the backing test data is about to be released.
 impl Drop for TestContext {
     fn drop(&mut self) {
-        // A recycled allocation must not be mistaken for a live test context.
+        // Unregister the address before the backing allocation is released.
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts
                 .borrow_mut()
@@ -268,9 +272,10 @@ impl Drop for TestContext {
     }
 }
 
-/// Returns a configured reply when `ctx` belongs to a live `TestContext`.
+/// Returns a test-shim reply when `ctx` belongs to a live [`TestContext`].
 ///
-/// `None` lets ordinary contexts invoke the real Valkey API.
+/// A matching expectation returns its configured reply; an unexpected call returns an error
+/// reply. `None` lets ordinary contexts continue to the real Valkey API.
 pub(crate) fn try_call(
     ctx: *mut raw::RedisModuleCtx,
     command: &str,
@@ -334,7 +339,7 @@ pub(super) extern "C" fn set_client_name_by_id(
         return raw::Status::Err as libc::c_int;
     }
 
-    // SAFETY: Test strings passed to the shim are backed by `valkey_string::string_data`.
+    // SAFETY: The caller supplies a live module string allocated by the string shim.
     let client_name = unsafe { super::valkey_string::string_data(client_name) }.to_vec();
     let updated = CLIENT_NAME_BY_ID.with(|client_name_by_id| {
         let mut client_name_by_id = client_name_by_id.borrow_mut();
@@ -400,7 +405,7 @@ pub(super) extern "C" fn get_client_info_by_id(
         return raw::Status::Err as libc::c_int;
     };
 
-    // SAFETY: Valkey supplies a writable `RedisModuleClientInfo` output buffer.
+    // SAFETY: The caller supplies a writable `RedisModuleClientInfo` output buffer.
     unsafe {
         output.cast::<RedisModuleClientInfo>().write(client_info);
     }
@@ -513,6 +518,9 @@ fn with_data_mut<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{redisvalue::ValkeyValueKey, CallOptionsBuilder, CallResult, Status, ValkeyError};
+    use std::collections::BTreeMap;
+    use std::ptr::null;
 
     const TEST_CLIENT_CERTIFICATE: &str = concat!(
         "-----BEGIN CERTIFICATE-----\n",
@@ -562,7 +570,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_name_by_id(7),
-            Err(crate::ValkeyError::Str("Client/Client name is null"))
+            Err(ValkeyError::Str("Client/Client name is null"))
         ));
     }
 
@@ -597,7 +605,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_username_by_id(7),
-            Err(crate::ValkeyError::Str("Client/Username is null"))
+            Err(ValkeyError::Str("Client/Username is null"))
         ));
     }
 
@@ -665,7 +673,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Ok
+            Status::Ok
         );
     }
 
@@ -676,7 +684,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Err
+            Status::Err
         );
 
         let mut context = Context::test();
@@ -684,7 +692,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -706,35 +714,28 @@ mod tests {
             &mut client_id,
         );
 
-        assert_eq!(status, raw::Status::Ok as libc::c_int);
+        assert_eq!(status, Status::Ok as libc::c_int);
         assert_eq!(client_id, 42);
     }
 
     #[test]
     fn rejects_acl_authentication_with_null_context_or_name() {
         assert_eq!(
-            authenticate_client_with_acl_user(
-                null_mut(),
-                std::ptr::null(),
-                0,
-                None,
-                null_mut(),
-                null_mut(),
-            ),
-            raw::Status::Err as libc::c_int
+            authenticate_client_with_acl_user(null_mut(), null(), 0, None, null_mut(), null_mut(),),
+            Status::Err as libc::c_int
         );
 
         let context = Context::test();
         assert_eq!(
             authenticate_client_with_acl_user(
                 context.get_raw(),
-                std::ptr::null(),
+                null(),
                 0,
                 None,
                 null_mut(),
                 null_mut(),
             ),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -750,7 +751,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(42),
-            raw::Status::Ok
+            Status::Ok
         );
     }
 
@@ -759,7 +760,7 @@ mod tests {
         let mut context = Context::test();
         context.expect_deauthenticate_and_close_client_by_id(42);
 
-        assert_eq!(context.deauthenticate_and_close_client(), raw::Status::Ok);
+        assert_eq!(context.deauthenticate_and_close_client(), Status::Ok);
     }
 
     #[test]
@@ -769,7 +770,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(7),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -779,7 +780,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(DEFAULT_CLIENT_ID),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -787,7 +788,7 @@ mod tests {
     fn rejects_deauthentication_with_null_context() {
         assert_eq!(
             deauthenticate_and_close_client(null_mut(), 42),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -833,7 +834,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_info(),
-            Err(crate::ValkeyError::Str("Client/Info not found"))
+            Err(ValkeyError::Str("Client/Info not found"))
         ));
     }
 
@@ -844,7 +845,7 @@ mod tests {
 
         assert_eq!(
             get_client_info_by_id((&mut client_info as *mut RedisModuleClientInfo).cast(), 42,),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -881,7 +882,7 @@ mod tests {
         context.expect_set_client_name_by_id(42);
         let client_name = context.create_string("bob");
 
-        assert_eq!(context.set_client_name(&client_name), raw::Status::Ok);
+        assert_eq!(context.set_client_name(&client_name), Status::Ok);
         assert_eq!(
             context
                 .get_client_name()
@@ -889,10 +890,7 @@ mod tests {
                 .as_slice(),
             b"bob"
         );
-        assert_eq!(
-            context.set_client_name_by_id(7, &client_name),
-            raw::Status::Err
-        );
+        assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
     }
 
     #[test]
@@ -908,11 +906,11 @@ mod tests {
 
         assert!(matches!(
             second_context.get_client_name_by_id(42),
-            Err(crate::ValkeyError::Str("Client/Client name is null"))
+            Err(ValkeyError::Str("Client/Client name is null"))
         ));
         assert!(matches!(
             second_context.get_client_info_by_id(42),
-            Err(crate::ValkeyError::Str("Client/Info not found"))
+            Err(ValkeyError::Str("Client/Info not found"))
         ));
     }
 
@@ -948,11 +946,11 @@ mod tests {
         assert!(get_client_certificate(null_mut(), 42).is_null());
         assert_eq!(
             get_client_info_by_id(null_mut(), 42),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(
             set_client_name_by_id(42, null_mut()),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -1007,8 +1005,8 @@ mod tests {
         context.expect_call(
             "HGETALL",
             &["hash"],
-            ValkeyValue::OrderedMap(std::collections::BTreeMap::from([(
-                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+            ValkeyValue::OrderedMap(BTreeMap::from([(
+                ValkeyValueKey::String("field".to_owned()),
                 ValkeyValue::SimpleString("value".to_owned()),
             )])),
         );
@@ -1017,8 +1015,8 @@ mod tests {
             context
                 .call("HGETALL", &["hash"])
                 .expect("configured ordered map reply should be returned"),
-            ValkeyValue::Map(std::collections::HashMap::from([(
-                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+            ValkeyValue::Map(HashMap::from([(
+                ValkeyValueKey::String("field".to_owned()),
                 ValkeyValue::SimpleString("value".to_owned()),
             )]))
         );
@@ -1072,7 +1070,7 @@ mod tests {
 
         assert!(matches!(
             context.call("TEST", &["actual"]),
-            Err(crate::ValkeyError::String(message)) if message == "unexpected call: TEST actual"
+            Err(ValkeyError::String(message)) if message == "unexpected call: TEST actual"
         ));
     }
 
@@ -1087,7 +1085,7 @@ mod tests {
 
         assert!(matches!(
             context.call("ACTUAL", &["argument"]),
-            Err(crate::ValkeyError::String(message))
+            Err(ValkeyError::String(message))
                 if message == "unexpected call: ACTUAL argument"
         ));
     }
@@ -1100,8 +1098,8 @@ mod tests {
             &["extended"],
             ValkeyValue::SimpleString("extended".to_owned()),
         );
-        let options = crate::CallOptionsBuilder::new().errors_as_replies().build();
-        let reply: crate::CallResult = context.call_ext("ECHO", &options, &["extended"]);
+        let options = CallOptionsBuilder::new().errors_as_replies().build();
+        let reply: CallResult = context.call_ext("ECHO", &options, &["extended"]);
 
         assert_eq!(
             ValkeyValue::from(&reply),
@@ -1128,7 +1126,7 @@ mod tests {
         assert!(get_current_user_name(ctx).is_null());
         assert_eq!(
             deauthenticate_and_close_client(ctx, 42),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(
             authenticate_client_with_acl_user(
@@ -1139,7 +1137,7 @@ mod tests {
                 null_mut(),
                 &mut authenticated_client_id,
             ),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(authenticated_client_id, 0);
         assert!(try_call(ctx, "TEST", &[]).is_none());

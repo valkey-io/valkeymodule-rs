@@ -33,12 +33,14 @@ impl CommandFilterCtx {
     }
 }
 
+/// Stores arguments and client state owned by one test command-filter context.
 struct CommandFilterData {
     args_count: libc::c_int,
     args: HashMap<libc::c_int, ValkeyString>,
     client_id: u64,
 }
 
+// Establishes the baseline state used by a newly created test command-filter context.
 impl Default for CommandFilterData {
     fn default() -> Self {
         Self {
@@ -55,6 +57,7 @@ pub struct TestCommandFilterCtx {
     data: Box<CommandFilterData>,
 }
 
+// Constructs test command-filter contexts and configures their callback values.
 impl TestCommandFilterCtx {
     fn new() -> Self {
         super::setup_test_shims();
@@ -75,6 +78,7 @@ impl TestCommandFilterCtx {
     /// Returns the opaque context pointer for invoking a command-filter callback in a test.
     ///
     /// The pointer remains valid while this test context is alive.
+    /// Invoke callbacks on the thread that created this test context.
     pub fn as_raw_ctx_ptr(&mut self) -> *mut raw::RedisModuleCommandFilterCtx {
         (self.data.as_mut() as *mut CommandFilterData).cast()
     }
@@ -279,6 +283,7 @@ fn with_data_mut<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Status;
 
     #[test]
     fn returns_configured_args_count() {
@@ -379,13 +384,13 @@ mod tests {
     fn rejects_null_argument_or_context() {
         assert_eq!(
             command_filter_arg_replace(null_mut(), 0, null_mut()),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
 
         let argument = ValkeyString::create_and_retain("new");
         assert_eq!(
             command_filter_arg_replace(null_mut(), 0, argument.inner),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -434,13 +439,13 @@ mod tests {
     fn rejects_insert_with_null_argument_or_context() {
         assert_eq!(
             command_filter_arg_insert(null_mut(), 0, null_mut()),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
 
         let argument = ValkeyString::create_and_retain("new");
         assert_eq!(
             command_filter_arg_insert(null_mut(), 0, argument.inner),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -493,7 +498,7 @@ mod tests {
     fn rejects_delete_with_null_context() {
         assert_eq!(
             command_filter_arg_delete(null_mut(), 0),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -573,17 +578,17 @@ mod tests {
         let replacement = ValkeyString::test("replacement").take();
         assert_eq!(
             command_filter_arg_replace(ctx, 0, replacement),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
 
         let insertion = ValkeyString::test("insertion").take();
         assert_eq!(
             command_filter_arg_insert(ctx, 0, insertion),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(
             command_filter_arg_delete(ctx, 0),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(command_filter_get_client_id(ctx), DEFAULT_CLIENT_ID);
     }

@@ -73,6 +73,7 @@ pub struct TestInfoSection {
     pub entries: Vec<TestInfoEntry>,
 }
 
+/// Stores captured INFO output and the current section and dictionary positions.
 #[derive(Default)]
 struct InfoContextData {
     sections: Vec<TestInfoSection>,
@@ -88,6 +89,7 @@ pub struct TestInfoContext {
     data: Box<InfoContextData>,
 }
 
+// Constructs test INFO contexts and exposes their captured output and expectations.
 impl TestInfoContext {
     fn new() -> Self {
         super::setup_test_shims();
@@ -178,8 +180,8 @@ pub(super) extern "C" fn info_add_field_string(
         return raw::Status::Err as libc::c_int;
     }
 
-    // SAFETY: the test shim creates and owns this opaque module string for the duration of the
-    // synchronous callback.
+    // SAFETY: the caller supplies a live module string allocated by the string shim and keeps it
+    // alive for the duration of this synchronous callback.
     let value = unsafe { super::valkey_string::string_data(value) };
     let Ok(value) = String::from_utf8(value.to_vec()) else {
         return raw::Status::Err as libc::c_int;
@@ -329,6 +331,7 @@ mod tests {
         Status, ValkeyString,
     };
     use std::ffi::CString;
+    use std::ptr::{null, null_mut};
 
     #[test]
     fn captures_all_scalar_field_types() {
@@ -433,7 +436,7 @@ mod tests {
 
     #[test]
     fn callbacks_reject_null_context() {
-        assert_info_callbacks_reject(std::ptr::null_mut());
+        assert_info_callbacks_reject(null_mut());
     }
 
     #[test]
@@ -607,11 +610,11 @@ mod tests {
         let info_ctx = InfoContext::test();
 
         assert_eq!(
-            info_add_section(info_ctx.ctx, std::ptr::null()),
+            info_add_section(info_ctx.ctx, null()),
             Status::Ok as libc::c_int
         );
         assert_eq!(
-            info_add_field_long_long(info_ctx.ctx, std::ptr::null(), 1),
+            info_add_field_long_long(info_ctx.ctx, null(), 1),
             Status::Err as libc::c_int
         );
         assert!(info_ctx.sections()[0].entries.is_empty());
@@ -622,11 +625,11 @@ mod tests {
         let info_ctx = InfoContext::test();
 
         assert_eq!(
-            info_add_section(info_ctx.ctx, std::ptr::null()),
+            info_add_section(info_ctx.ctx, null()),
             Status::Ok as libc::c_int
         );
         assert_eq!(
-            info_begin_dict_field(info_ctx.ctx, std::ptr::null()),
+            info_begin_dict_field(info_ctx.ctx, null()),
             Status::Err as libc::c_int
         );
         assert!(info_ctx.sections()[0].entries.is_empty());
@@ -638,11 +641,11 @@ mod tests {
         let field = CString::new("field").expect("field name should not contain NUL");
 
         assert_eq!(
-            info_add_section(info_ctx.ctx, std::ptr::null()),
+            info_add_section(info_ctx.ctx, null()),
             Status::Ok as libc::c_int
         );
         assert_eq!(
-            info_add_field_string(info_ctx.ctx, field.as_ptr(), std::ptr::null_mut()),
+            info_add_field_string(info_ctx.ctx, field.as_ptr(), null_mut()),
             Status::Err as libc::c_int
         );
         assert!(info_ctx.sections()[0].entries.is_empty());

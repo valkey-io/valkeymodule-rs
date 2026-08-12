@@ -43,7 +43,7 @@ pub(super) extern "C" fn string_ptr_len(
     string: *const raw::RedisModuleString,
     len: *mut usize,
 ) -> *const c_char {
-    // SAFETY: The shim is installed only for pointers created by `into_raw_string`.
+    // SAFETY: The caller supplies a live module-string pointer created by `into_raw_string`.
     let data = unsafe { string_data(string) };
     // SAFETY: `ValkeyString` supplies a non-null pointer to writable length storage.
     unsafe {
