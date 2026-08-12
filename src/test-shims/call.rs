@@ -2,6 +2,22 @@ use crate::redisvalue::ValkeyValueKey;
 use crate::{raw, ValkeyValue};
 use std::sync::Arc;
 
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_CallReplyType = Some(call_reply_type);
+        raw::RedisModule_FreeCallReply = Some(free_call_reply);
+        raw::RedisModule_CallReplyInteger = Some(call_reply_integer);
+        raw::RedisModule_CallReplyBool = Some(call_reply_bool);
+        raw::RedisModule_CallReplyDouble = Some(call_reply_double);
+        raw::RedisModule_CallReplyBigNumber = Some(call_reply_big_number);
+        raw::RedisModule_CallReplyLength = Some(call_reply_length);
+        raw::RedisModule_CallReplyArrayElement = Some(call_reply_array_element);
+        raw::RedisModule_CallReplyMapElement = Some(call_reply_map_element);
+        raw::RedisModule_CallReplyStringPtr = Some(call_reply_string_ptr);
+    }
+}
+
 /// Owns a test-shim call reply while allowing array elements to share its value.
 #[derive(Clone)]
 pub(super) struct TestCallReply {
@@ -155,7 +171,7 @@ pub(super) extern "C" fn call_reply_big_number(
             return std::ptr::null();
         };
         if !len.is_null() {
-            // SAFETY: Valkey supplies a writable length output pointer.
+            // SAFETY: The caller supplies a writable length output pointer.
             unsafe { len.write(value.len()) };
         }
         value.as_ptr().cast()
@@ -242,7 +258,7 @@ pub(super) extern "C" fn call_reply_string_ptr(
             _ => return std::ptr::null(),
         };
         if !len.is_null() {
-            // SAFETY: Valkey supplies a writable length output pointer.
+            // SAFETY: The caller supplies a writable length output pointer.
             unsafe { len.write(value.len()) };
         }
         value.as_ptr().cast()
@@ -259,9 +275,9 @@ fn with_reply_value<R>(
         return None;
     }
 
-    // SAFETY: all non-null replies originate from `TestCallReply::into_raw` or
-    // `call_reply_array_element`, which allocate a `TestCallReply` handle.
-    // SAFETY: the handle remains live for the duration of this callback.
+    // SAFETY: all non-null replies originate from `TestCallReply::into_raw` directly or from
+    // collection-element callbacks that allocate `TestCallReply` handles. The handle remains live
+    // for the duration of this callback.
     Some(f(unsafe { &*reply.cast::<TestCallReply>() }.value.as_ref()))
 }
 

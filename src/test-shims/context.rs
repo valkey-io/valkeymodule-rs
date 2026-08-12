@@ -1,21 +1,36 @@
 use super::call::TestCallReply;
 use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::ptr::null_mut;
-use std::sync::atomic::{AtomicI32, Ordering};
+
+pub(super) fn install() {
+    // SAFETY: `setup_test_shims` calls this once after verifying the real API is uninitialized.
+    unsafe {
+        raw::RedisModule_GetClientId = Some(get_client_id);
+        raw::RedisModule_GetClientNameById = Some(get_client_name_by_id);
+        raw::RedisModule_SetClientNameById = Some(set_client_name_by_id);
+        raw::RedisModule_GetClientUserNameById = Some(get_client_username_by_id);
+        raw::RedisModule_GetClientCertificate = Some(get_client_certificate);
+        raw::RedisModule_GetClientInfoById = Some(get_client_info_by_id);
+        raw::RedisModule_GetCurrentUserName = Some(get_current_user_name);
+        raw::RedisModule_DeauthenticateAndCloseClient = Some(deauthenticate_and_close_client);
+        raw::RedisModule_SetModuleOptions = Some(set_module_options);
+        raw::RedisModule_GetServerVersion = Some(get_server_version);
+        raw::RedisModule_AuthenticateClientWithACLUser = Some(authenticate_client_with_acl_user);
+    }
+}
 
 const DEFAULT_CLIENT_ID: u64 = 1;
 
-static SERVER_VERSION: AtomicI32 = AtomicI32::new(0);
-
-// These Valkey APIs do not receive a RedisModuleCtx, so their shims cannot access ContextData.
-// Thread-local state prevents expectations from leaking between concurrently running tests.
+// Stores expectations for APIs that cannot keep all state in `ContextData` and tracks live context
+// addresses for pointer validation. Thread-local storage isolates concurrently running tests.
 thread_local! {
     static CLIENT_INFO_BY_ID: RefCell<HashMap<u64, RedisModuleClientInfo>> = RefCell::default();
     static CLIENT_NAME_BY_ID: RefCell<HashMap<u64, Vec<u8>>> = RefCell::default();
-    static TEST_CONTEXTS: RefCell<std::collections::HashSet<usize>> = RefCell::default();
+    static SERVER_VERSION: Cell<libc::c_int> = Cell::new(0);
+    static TEST_CONTEXTS: RefCell<HashSet<usize>> = RefCell::default();
 }
 
 impl Context {
@@ -26,6 +41,7 @@ impl Context {
     }
 }
 
+/// Stores expectations and mutable state owned by one test context.
 struct ContextData {
     client_id: u64,
     client_username: Option<Vec<u8>>,
@@ -43,6 +59,7 @@ struct CallExpectation {
     reply: TestCallReply,
 }
 
+// Establishes the baseline state used by a newly created test context.
 impl Default for ContextData {
     fn default() -> Self {
         Self {
@@ -63,6 +80,7 @@ pub struct TestContext {
     data: Box<ContextData>,
 }
 
+// Constructs test contexts and configures their callback expectations.
 impl TestContext {
     fn new() -> Self {
         super::setup_test_shims();
@@ -75,6 +93,9 @@ impl TestContext {
         CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
         // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
         CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
+        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
+        SERVER_VERSION.with(|server_version| server_version.set(0));
+        // Register the backing allocation before callbacks can receive its opaque context pointer.
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts.borrow_mut().insert(ctx as usize);
         });
@@ -176,7 +197,7 @@ impl TestContext {
         let version = (libc::c_int::from(major) << 16)
             | (libc::c_int::from(minor) << 8)
             | libc::c_int::from(patch);
-        SERVER_VERSION.store(version, Ordering::Relaxed);
+        SERVER_VERSION.with(|server_version| server_version.set(version));
         self
     }
 
@@ -231,18 +252,6 @@ impl TestContext {
     }
 }
 
-// Removes the context address when the backing test data is about to be released.
-impl Drop for TestContext {
-    fn drop(&mut self) {
-        // A recycled allocation must not be mistaken for a live test context.
-        TEST_CONTEXTS.with(|test_contexts| {
-            test_contexts
-                .borrow_mut()
-                .remove(&(self.context.ctx as usize));
-        });
-    }
-}
-
 impl Deref for TestContext {
     type Target = Context;
 
@@ -251,74 +260,75 @@ impl Deref for TestContext {
     }
 }
 
-/// Returns a configured reply when `ctx` belongs to a live `TestContext`.
+// Removes the context address when the backing test data is about to be released.
+impl Drop for TestContext {
+    fn drop(&mut self) {
+        // Unregister the address before the backing allocation is released.
+        TEST_CONTEXTS.with(|test_contexts| {
+            test_contexts
+                .borrow_mut()
+                .remove(&(self.context.ctx as usize));
+        });
+    }
+}
+
+/// Returns a test-shim reply when `ctx` belongs to a live [`TestContext`].
 ///
-/// `None` lets ordinary contexts invoke the real Valkey API.
+/// A matching expectation returns its configured reply; an unexpected call returns an error
+/// reply. `None` lets ordinary contexts continue to the real Valkey API.
 pub(crate) fn try_call(
     ctx: *mut raw::RedisModuleCtx,
     command: &str,
     args: &[*mut raw::RedisModuleString],
 ) -> Option<*mut raw::RedisModuleCallReply> {
-    let is_test_context =
-        TEST_CONTEXTS.with(|test_contexts| test_contexts.borrow().contains(&(ctx as usize)));
-    if !is_test_context {
-        return None;
-    }
+    with_data_mut(ctx, |data| {
+        let args = args
+            .iter()
+            .map(|arg| {
+                // SAFETY: call arguments for a test context are allocated by the string test shim.
+                unsafe { super::valkey_string::string_data(*arg) }.to_vec()
+            })
+            .collect::<Vec<_>>();
+        let reply = data
+            .call_expectations
+            .iter()
+            .find(|expectation| {
+                expectation.command == command.as_bytes() && expectation.args == args
+            })
+            .map(|expectation| expectation.reply.clone());
 
-    // SAFETY: `ctx` is registered only while its owning `TestContext` is live.
-    let data = unsafe { &mut *ctx.cast::<ContextData>() };
-    let args = args
-        .iter()
-        .map(|arg| {
-            // SAFETY: call arguments for a test context are allocated by the string test shim.
-            unsafe { super::valkey_string::string_data(*arg) }.to_vec()
-        })
-        .collect::<Vec<_>>();
-    let reply = data
-        .call_expectations
-        .iter()
-        .find(|expectation| expectation.command == command.as_bytes() && expectation.args == args)
-        .map(|expectation| expectation.reply.clone());
-
-    let reply = match reply {
-        Some(reply) => reply,
-        None => TestCallReply::error(format!(
-            "unexpected call: {command} {}",
-            args.iter()
-                .map(|arg| String::from_utf8_lossy(arg))
-                .collect::<Vec<_>>()
-                .join(" ")
-        )),
-    };
-    Some(reply.into_raw())
+        let reply = match reply {
+            Some(reply) => reply,
+            None => TestCallReply::error(format!(
+                "unexpected call: {command} {}",
+                args.iter()
+                    .map(|arg| String::from_utf8_lossy(arg))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )),
+        };
+        reply.into_raw()
+    })
 }
 
 pub(super) extern "C" fn get_client_id(ctx: *mut raw::RedisModuleCtx) -> libc::c_ulonglong {
-    if ctx.is_null() {
-        return DEFAULT_CLIENT_ID;
-    }
-
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    unsafe { &*ctx.cast::<ContextData>() }.client_id
+    with_data(ctx, |data| data.client_id).unwrap_or(DEFAULT_CLIENT_ID)
 }
 
 pub(super) extern "C" fn get_client_name_by_id(
     ctx: *mut raw::RedisModuleCtx,
     client_id: libc::c_ulonglong,
 ) -> *mut raw::RedisModuleString {
-    if ctx.is_null() {
-        return null_mut();
-    }
+    with_data(ctx, |_| {
+        let client_name = CLIENT_NAME_BY_ID
+            .with(|client_name_by_id| client_name_by_id.borrow().get(&client_id).cloned());
+        let Some(client_name) = client_name else {
+            return null_mut();
+        };
 
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let _data = unsafe { &*ctx.cast::<ContextData>() };
-    let client_name = CLIENT_NAME_BY_ID
-        .with(|client_name_by_id| client_name_by_id.borrow().get(&client_id).cloned());
-    let Some(client_name) = client_name else {
-        return null_mut();
-    };
-
-    ValkeyString::test(client_name).take()
+        ValkeyString::test(client_name).take()
+    })
+    .unwrap_or(null_mut())
 }
 
 pub(super) extern "C" fn set_client_name_by_id(
@@ -329,7 +339,7 @@ pub(super) extern "C" fn set_client_name_by_id(
         return raw::Status::Err as libc::c_int;
     }
 
-    // SAFETY: Test strings passed to the shim are backed by `valkey_string::string_data`.
+    // SAFETY: The caller supplies a live module string allocated by the string shim.
     let client_name = unsafe { super::valkey_string::string_data(client_name) }.to_vec();
     let updated = CLIENT_NAME_BY_ID.with(|client_name_by_id| {
         let mut client_name_by_id = client_name_by_id.borrow_mut();
@@ -351,40 +361,34 @@ pub(super) extern "C" fn get_client_username_by_id(
     ctx: *mut raw::RedisModuleCtx,
     client_id: libc::c_ulonglong,
 ) -> *mut raw::RedisModuleString {
-    if ctx.is_null() {
-        return null_mut();
-    }
+    with_data(ctx, |data| {
+        if data.client_id != client_id {
+            return null_mut();
+        }
+        let Some(client_username) = data.client_username.as_ref() else {
+            return null_mut();
+        };
 
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    if data.client_id != client_id {
-        return null_mut();
-    }
-    let Some(client_username) = data.client_username.as_ref() else {
-        return null_mut();
-    };
-
-    ValkeyString::test(client_username.clone()).take()
+        ValkeyString::test(client_username.clone()).take()
+    })
+    .unwrap_or(null_mut())
 }
 
 pub(super) extern "C" fn get_client_certificate(
     ctx: *mut raw::RedisModuleCtx,
     client_id: libc::c_ulonglong,
 ) -> *mut raw::RedisModuleString {
-    if ctx.is_null() {
-        return null_mut();
-    }
+    with_data(ctx, |data| {
+        if data.client_id != client_id {
+            return null_mut();
+        }
+        let Some(client_cert) = data.client_cert.as_ref() else {
+            return null_mut();
+        };
 
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    if data.client_id != client_id {
-        return null_mut();
-    }
-    let Some(client_cert) = data.client_cert.as_ref() else {
-        return null_mut();
-    };
-
-    ValkeyString::test(client_cert.clone()).take()
+        ValkeyString::test(client_cert.clone()).take()
+    })
+    .unwrap_or(null_mut())
 }
 
 pub(super) extern "C" fn get_client_info_by_id(
@@ -401,7 +405,7 @@ pub(super) extern "C" fn get_client_info_by_id(
         return raw::Status::Err as libc::c_int;
     };
 
-    // SAFETY: Valkey supplies a writable `RedisModuleClientInfo` output buffer.
+    // SAFETY: The caller supplies a writable `RedisModuleClientInfo` output buffer.
     unsafe {
         output.cast::<RedisModuleClientInfo>().write(client_info);
     }
@@ -411,42 +415,37 @@ pub(super) extern "C" fn get_client_info_by_id(
 pub(super) extern "C" fn get_current_user_name(
     ctx: *mut raw::RedisModuleCtx,
 ) -> *mut raw::RedisModuleString {
-    if ctx.is_null() {
-        return null_mut();
-    }
+    with_data(ctx, |data| {
+        let Some(current_user) = data.current_user.as_ref() else {
+            return null_mut();
+        };
 
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    let Some(current_user) = data.current_user.as_ref() else {
-        return null_mut();
-    };
-
-    ValkeyString::test(current_user.clone()).take()
+        ValkeyString::test(current_user.clone()).take()
+    })
+    .unwrap_or(null_mut())
 }
 
 pub(super) extern "C" fn deauthenticate_and_close_client(
     ctx: *mut raw::RedisModuleCtx,
     client_id: libc::c_ulonglong,
 ) -> libc::c_int {
-    if ctx.is_null() {
-        return raw::Status::Err as libc::c_int;
-    }
-
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    if data.deauthentication_expected && data.client_id == client_id {
-        raw::Status::Ok as libc::c_int
-    } else {
-        raw::Status::Err as libc::c_int
-    }
+    with_data(ctx, |data| {
+        if data.deauthentication_expected && data.client_id == client_id {
+            raw::Status::Ok as libc::c_int
+        } else {
+            raw::Status::Err as libc::c_int
+        }
+    })
+    .unwrap_or(raw::Status::Err as libc::c_int)
 }
 
 /// Accepts module options in tests without applying server-wide behavior.
-pub(super) extern "C" fn set_module_options(_ctx: *mut raw::RedisModuleCtx, _options: libc::c_int) {
+pub(super) extern "C" fn set_module_options(ctx: *mut raw::RedisModuleCtx, _options: libc::c_int) {
+    let _ = with_data(ctx, |_| ());
 }
 
 pub(super) extern "C" fn get_server_version() -> libc::c_int {
-    SERVER_VERSION.load(Ordering::Relaxed)
+    SERVER_VERSION.with(Cell::get)
 }
 
 pub(super) extern "C" fn authenticate_client_with_acl_user(
@@ -457,31 +456,71 @@ pub(super) extern "C" fn authenticate_client_with_acl_user(
     _privdata: *mut libc::c_void,
     client_id: *mut u64,
 ) -> libc::c_int {
-    if ctx.is_null() || name.is_null() {
+    if name.is_null() {
         return raw::Status::Err as libc::c_int;
     }
 
-    // SAFETY: `TestContext::new` stores a live `ContextData` allocation at this opaque pointer.
-    let data = unsafe { &*ctx.cast::<ContextData>() };
-    // SAFETY: The callback contract requires `name` to reference at least `len` readable bytes.
-    let name = unsafe { std::slice::from_raw_parts(name.cast::<u8>(), len) };
-    if data.acl_user.as_deref() != Some(name) {
-        return raw::Status::Err as libc::c_int;
-    }
-
-    if !client_id.is_null() {
-        // SAFETY: A non-null `client_id` points to writable storage supplied by the caller.
-        unsafe {
-            *client_id = data.client_id;
+    with_data(ctx, |data| {
+        // SAFETY: The callback contract requires `name` to reference at least `len` readable bytes.
+        let name = unsafe { std::slice::from_raw_parts(name.cast::<u8>(), len) };
+        if data.acl_user.as_deref() != Some(name) {
+            return raw::Status::Err as libc::c_int;
         }
+
+        if !client_id.is_null() {
+            // SAFETY: A non-null `client_id` points to writable storage supplied by the caller.
+            unsafe {
+                *client_id = data.client_id;
+            }
+        }
+
+        raw::Status::Ok as libc::c_int
+    })
+    .unwrap_or(raw::Status::Err as libc::c_int)
+}
+
+/// Runs `operation` with shared access to a live test context's backing data.
+///
+/// Returns `None` when `ctx` is null, foreign, or stale.
+fn with_data<T>(
+    ctx: *mut raw::RedisModuleCtx,
+    operation: impl FnOnce(&ContextData) -> T,
+) -> Option<T> {
+    if ctx.is_null()
+        || !TEST_CONTEXTS.with(|test_contexts| test_contexts.borrow().contains(&(ctx as usize)))
+    {
+        return None;
     }
 
-    raw::Status::Ok as libc::c_int
+    // SAFETY: the registry contains only live `ContextData` allocations, and context callbacks
+    // execute synchronously on one thread.
+    Some(operation(unsafe { &*ctx.cast::<ContextData>() }))
+}
+
+/// Runs `operation` with mutable access to a live test context's backing data.
+///
+/// Returns `None` when `ctx` is null, foreign, or stale.
+fn with_data_mut<T>(
+    ctx: *mut raw::RedisModuleCtx,
+    operation: impl FnOnce(&mut ContextData) -> T,
+) -> Option<T> {
+    if ctx.is_null()
+        || !TEST_CONTEXTS.with(|test_contexts| test_contexts.borrow().contains(&(ctx as usize)))
+    {
+        return None;
+    }
+
+    // SAFETY: the registry contains only live, uniquely owned `ContextData` allocations, and
+    // context callbacks execute synchronously on one thread.
+    Some(operation(unsafe { &mut *ctx.cast::<ContextData>() }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{redisvalue::ValkeyValueKey, CallOptionsBuilder, CallResult, Status, ValkeyError};
+    use std::collections::BTreeMap;
+    use std::ptr::null;
 
     const TEST_CLIENT_CERTIFICATE: &str = concat!(
         "-----BEGIN CERTIFICATE-----\n",
@@ -531,7 +570,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_name_by_id(7),
-            Err(crate::ValkeyError::Str("Client/Client name is null"))
+            Err(ValkeyError::Str("Client/Client name is null"))
         ));
     }
 
@@ -566,7 +605,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_username_by_id(7),
-            Err(crate::ValkeyError::Str("Client/Username is null"))
+            Err(ValkeyError::Str("Client/Username is null"))
         ));
     }
 
@@ -608,6 +647,25 @@ mod tests {
     }
 
     #[test]
+    fn new_test_context_resets_server_version() {
+        let mut first_context = Context::test();
+        first_context.expect_get_server_version(8, 1, 2);
+
+        let second_context = Context::test();
+
+        assert_eq!(
+            second_context
+                .get_server_version()
+                .expect("default server version should be returned"),
+            raw::Version {
+                major: 0,
+                minor: 0,
+                patch: 0,
+            }
+        );
+    }
+
+    #[test]
     fn authenticates_configured_acl_user() {
         let mut context = Context::test();
         context.expect_authenticate_client_with_acl_user("alice");
@@ -615,7 +673,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Ok
+            Status::Ok
         );
     }
 
@@ -626,7 +684,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Err
+            Status::Err
         );
 
         let mut context = Context::test();
@@ -634,7 +692,7 @@ mod tests {
 
         assert_eq!(
             context.authenticate_client_with_acl_user(&username),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -656,35 +714,28 @@ mod tests {
             &mut client_id,
         );
 
-        assert_eq!(status, raw::Status::Ok as libc::c_int);
+        assert_eq!(status, Status::Ok as libc::c_int);
         assert_eq!(client_id, 42);
     }
 
     #[test]
     fn rejects_acl_authentication_with_null_context_or_name() {
         assert_eq!(
-            authenticate_client_with_acl_user(
-                null_mut(),
-                std::ptr::null(),
-                0,
-                None,
-                null_mut(),
-                null_mut(),
-            ),
-            raw::Status::Err as libc::c_int
+            authenticate_client_with_acl_user(null_mut(), null(), 0, None, null_mut(), null_mut(),),
+            Status::Err as libc::c_int
         );
 
         let context = Context::test();
         assert_eq!(
             authenticate_client_with_acl_user(
                 context.get_raw(),
-                std::ptr::null(),
+                null(),
                 0,
                 None,
                 null_mut(),
                 null_mut(),
             ),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -700,7 +751,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(42),
-            raw::Status::Ok
+            Status::Ok
         );
     }
 
@@ -709,7 +760,7 @@ mod tests {
         let mut context = Context::test();
         context.expect_deauthenticate_and_close_client_by_id(42);
 
-        assert_eq!(context.deauthenticate_and_close_client(), raw::Status::Ok);
+        assert_eq!(context.deauthenticate_and_close_client(), Status::Ok);
     }
 
     #[test]
@@ -719,7 +770,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(7),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -729,7 +780,7 @@ mod tests {
 
         assert_eq!(
             context.deauthenticate_and_close_client_by_id(DEFAULT_CLIENT_ID),
-            raw::Status::Err
+            Status::Err
         );
     }
 
@@ -737,7 +788,7 @@ mod tests {
     fn rejects_deauthentication_with_null_context() {
         assert_eq!(
             deauthenticate_and_close_client(null_mut(), 42),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -783,7 +834,7 @@ mod tests {
 
         assert!(matches!(
             context.get_client_info(),
-            Err(crate::ValkeyError::Str("Client/Info not found"))
+            Err(ValkeyError::Str("Client/Info not found"))
         ));
     }
 
@@ -794,7 +845,7 @@ mod tests {
 
         assert_eq!(
             get_client_info_by_id((&mut client_info as *mut RedisModuleClientInfo).cast(), 42,),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
     }
 
@@ -831,7 +882,7 @@ mod tests {
         context.expect_set_client_name_by_id(42);
         let client_name = context.create_string("bob");
 
-        assert_eq!(context.set_client_name(&client_name), raw::Status::Ok);
+        assert_eq!(context.set_client_name(&client_name), Status::Ok);
         assert_eq!(
             context
                 .get_client_name()
@@ -839,10 +890,7 @@ mod tests {
                 .as_slice(),
             b"bob"
         );
-        assert_eq!(
-            context.set_client_name_by_id(7, &client_name),
-            raw::Status::Err
-        );
+        assert_eq!(context.set_client_name_by_id(7, &client_name), Status::Err);
     }
 
     #[test]
@@ -858,11 +906,11 @@ mod tests {
 
         assert!(matches!(
             second_context.get_client_name_by_id(42),
-            Err(crate::ValkeyError::Str("Client/Client name is null"))
+            Err(ValkeyError::Str("Client/Client name is null"))
         ));
         assert!(matches!(
             second_context.get_client_info_by_id(42),
-            Err(crate::ValkeyError::Str("Client/Info not found"))
+            Err(ValkeyError::Str("Client/Info not found"))
         ));
     }
 
@@ -898,12 +946,35 @@ mod tests {
         assert!(get_client_certificate(null_mut(), 42).is_null());
         assert_eq!(
             get_client_info_by_id(null_mut(), 42),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
         assert_eq!(
             set_client_name_by_id(42, null_mut()),
-            raw::Status::Err as libc::c_int
+            Status::Err as libc::c_int
         );
+    }
+
+    #[test]
+    fn callbacks_reject_null_context() {
+        assert_context_callbacks_reject(null_mut());
+    }
+
+    #[test]
+    fn callbacks_reject_foreign_context() {
+        let mut configured_context = Context::test();
+        configured_context.expect_get_client_name_by_id(42, "alice");
+        let mut foreign_data = Box::new(ContextData {
+            client_id: 42,
+            client_username: Some(b"alice".to_vec()),
+            client_cert: Some(b"certificate".to_vec()),
+            current_user: Some(b"alice".to_vec()),
+            acl_user: Some(b"alice".to_vec()),
+            deauthentication_expected: true,
+            call_expectations: Vec::new(),
+        });
+        let foreign_ctx = (&mut *foreign_data as *mut ContextData).cast::<raw::RedisModuleCtx>();
+
+        assert_context_callbacks_reject(foreign_ctx);
     }
 
     #[test]
@@ -934,8 +1005,8 @@ mod tests {
         context.expect_call(
             "HGETALL",
             &["hash"],
-            ValkeyValue::OrderedMap(std::collections::BTreeMap::from([(
-                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+            ValkeyValue::OrderedMap(BTreeMap::from([(
+                ValkeyValueKey::String("field".to_owned()),
                 ValkeyValue::SimpleString("value".to_owned()),
             )])),
         );
@@ -944,8 +1015,8 @@ mod tests {
             context
                 .call("HGETALL", &["hash"])
                 .expect("configured ordered map reply should be returned"),
-            ValkeyValue::Map(std::collections::HashMap::from([(
-                crate::redisvalue::ValkeyValueKey::String("field".to_owned()),
+            ValkeyValue::Map(HashMap::from([(
+                ValkeyValueKey::String("field".to_owned()),
                 ValkeyValue::SimpleString("value".to_owned()),
             )]))
         );
@@ -999,7 +1070,7 @@ mod tests {
 
         assert!(matches!(
             context.call("TEST", &["actual"]),
-            Err(crate::ValkeyError::String(message)) if message == "unexpected call: TEST actual"
+            Err(ValkeyError::String(message)) if message == "unexpected call: TEST actual"
         ));
     }
 
@@ -1014,7 +1085,7 @@ mod tests {
 
         assert!(matches!(
             context.call("ACTUAL", &["argument"]),
-            Err(crate::ValkeyError::String(message))
+            Err(ValkeyError::String(message))
                 if message == "unexpected call: ACTUAL argument"
         ));
     }
@@ -1027,8 +1098,8 @@ mod tests {
             &["extended"],
             ValkeyValue::SimpleString("extended".to_owned()),
         );
-        let options = crate::CallOptionsBuilder::new().errors_as_replies().build();
-        let reply: crate::CallResult = context.call_ext("ECHO", &options, &["extended"]);
+        let options = CallOptionsBuilder::new().errors_as_replies().build();
+        let reply: CallResult = context.call_ext("ECHO", &options, &["extended"]);
 
         assert_eq!(
             ValkeyValue::from(&reply),
@@ -1037,11 +1108,40 @@ mod tests {
     }
 
     #[test]
-    fn dropped_test_context_is_not_intercepted() {
+    fn callbacks_reject_dropped_context() {
         let context = Context::test();
         let ctx = context.context.ctx;
         drop(context);
 
+        assert_context_callbacks_reject(ctx);
+    }
+
+    fn assert_context_callbacks_reject(ctx: *mut raw::RedisModuleCtx) {
+        let mut authenticated_client_id = 0;
+
+        assert_eq!(get_client_id(ctx), DEFAULT_CLIENT_ID);
+        assert!(get_client_name_by_id(ctx, 42).is_null());
+        assert!(get_client_username_by_id(ctx, 42).is_null());
+        assert!(get_client_certificate(ctx, 42).is_null());
+        assert!(get_current_user_name(ctx).is_null());
+        assert_eq!(
+            deauthenticate_and_close_client(ctx, 42),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(
+            authenticate_client_with_acl_user(
+                ctx,
+                b"alice".as_ptr().cast::<libc::c_char>(),
+                5,
+                None,
+                null_mut(),
+                &mut authenticated_client_id,
+            ),
+            Status::Err as libc::c_int
+        );
+        assert_eq!(authenticated_client_id, 0);
         assert!(try_call(ctx, "TEST", &[]).is_none());
+
+        set_module_options(ctx, 0);
     }
 }

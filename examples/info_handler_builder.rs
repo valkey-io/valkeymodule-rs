@@ -26,3 +26,45 @@ valkey_module! {
     data_types: [],
     commands: [],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::test_shims::{TestInfoEntry, TestInfoField, TestInfoSection, TestInfoValue};
+
+    #[test]
+    fn captures_builder_info_and_dictionary() {
+        let info_ctx = InfoContext::test();
+
+        assert!(add_info(&info_ctx, false).is_ok());
+
+        assert_eq!(
+            info_ctx.sections(),
+            vec![TestInfoSection {
+                name: Some("info".to_owned()),
+                entries: vec![
+                    TestInfoEntry::Field(TestInfoField {
+                        name: "field".to_owned(),
+                        value: TestInfoValue::String("value".to_owned()),
+                    }),
+                    TestInfoEntry::Dictionary {
+                        name: "dictionary".to_owned(),
+                        fields: vec![TestInfoField {
+                            name: "key".to_owned(),
+                            value: TestInfoValue::String("value".to_owned()),
+                        }],
+                    },
+                ],
+            }]
+        );
+    }
+
+    #[test]
+    fn skips_unrequested_info_section() {
+        let mut info_ctx = InfoContext::test();
+        info_ctx.expect_unrequested_section("info");
+
+        assert!(add_info(&info_ctx, false).is_ok());
+        assert!(info_ctx.sections().is_empty());
+    }
+}

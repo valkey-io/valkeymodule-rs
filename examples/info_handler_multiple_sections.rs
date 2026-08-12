@@ -36,3 +36,54 @@ valkey_module! {
     data_types: [],
     commands: [],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use valkey_module::test_shims::{TestInfoEntry, TestInfoField, TestInfoSection, TestInfoValue};
+
+    #[test]
+    fn captures_both_derived_info_sections_in_order() {
+        let info_ctx = InfoContext::test();
+
+        assert!(add_info(&info_ctx, false).is_ok());
+
+        assert_eq!(
+            info_ctx.sections(),
+            vec![
+                TestInfoSection {
+                    name: Some("InfoSection1".to_owned()),
+                    entries: vec![TestInfoEntry::Field(TestInfoField {
+                        name: "field_1".to_owned(),
+                        value: TestInfoValue::String("value1".to_owned()),
+                    })],
+                },
+                TestInfoSection {
+                    name: Some("InfoSection2".to_owned()),
+                    entries: vec![TestInfoEntry::Field(TestInfoField {
+                        name: "field_2".to_owned(),
+                        value: TestInfoValue::String("value2".to_owned()),
+                    })],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn skips_unrequested_first_info_section() {
+        let mut info_ctx = InfoContext::test();
+        info_ctx.expect_unrequested_section("InfoSection1");
+
+        assert!(add_info(&info_ctx, false).is_ok());
+        assert_eq!(
+            info_ctx.sections(),
+            vec![TestInfoSection {
+                name: Some("InfoSection2".to_owned()),
+                entries: vec![TestInfoEntry::Field(TestInfoField {
+                    name: "field_2".to_owned(),
+                    value: TestInfoValue::String("value2".to_owned()),
+                })],
+            }]
+        );
+    }
+}
