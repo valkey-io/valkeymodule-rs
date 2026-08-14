@@ -43,6 +43,10 @@ crate-type = ["cdylib"]
 required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
+name = "server_time"
+crate-type = ["cdylib"]
+
+[[example]]
 name = "keys_pos"
 crate-type = ["cdylib"]
 
