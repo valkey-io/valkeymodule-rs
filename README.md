@@ -146,11 +146,12 @@ context.expect_call(
     ValkeyValue::Integer(1),
 );
 
-let guard = context.lock();
-assert!(matches!(
-    guard.call("INCR", &["counter"]),
-    Ok(ValkeyValue::Integer(1))
-));
+context.with_lock(|guard| {
+    assert!(matches!(
+        guard.call("INCR", &["counter"]),
+        Ok(ValkeyValue::Integer(1))
+    ));
+});
 ```
 
 The fixture synchronizes its test state so it can be moved between threads. It does not model Valkey's process-wide GIL or command scheduling.

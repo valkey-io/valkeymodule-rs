@@ -268,12 +268,13 @@ mod tests {
             )])),
         );
 
-        let guard = context.lock();
-        let result = call_test(&guard, Vec::new());
+        context.with_lock(|guard| {
+            let result = call_test(guard, Vec::new());
 
-        assert!(matches!(
-            result,
-            Ok(ValkeyValue::BulkString(value)) if value == "pass"
-        ));
+            assert!(matches!(
+                result,
+                Ok(ValkeyValue::BulkString(value)) if value == "pass"
+            ));
+        });
     }
 }

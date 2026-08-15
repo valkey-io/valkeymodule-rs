@@ -387,6 +387,16 @@ mod tests {
     }
 
     #[test]
+    fn with_lock_exposes_configured_context_to_closure() {
+        let mut context = ThreadSafeContext::test();
+        context.expect_call("INCR", &["counter"], ValkeyValue::Integer(1));
+
+        let reply = context.with_lock(|guard| guard.call("INCR", &["counter"]));
+
+        assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
+    }
+
+    #[test]
     fn test_thread_safe_context_moves_to_another_thread() {
         let mut context = ThreadSafeContext::test();
         context.expect_call("INCR", &["counter"], ValkeyValue::Integer(1));
