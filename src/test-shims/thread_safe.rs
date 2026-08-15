@@ -1,6 +1,6 @@
+use super::call::TestCallExpectation;
 use super::context::TestContext;
 use crate::context::thread_safe::{DetachedFromClient, ThreadSafeContext};
-use crate::redisvalue::ValkeyValueKey;
 use crate::{raw, Context, ValkeyValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -42,41 +42,11 @@ impl ThreadSafeContext<DetachedFromClient> {
 #[derive(Clone, Default)]
 struct ThreadSafeContextData {
     client_id: Option<u64>,
-    call_expectations: Vec<CallExpectation>,
+    call_expectations: Vec<TestCallExpectation>,
 }
 
 /// Provides synchronized ownership of context expectations across test threads.
 type SharedContextData = Arc<Mutex<ThreadSafeContextData>>;
-
-/// Matches one exact test-context command invocation to its configured reply.
-#[derive(Clone)]
-struct CallExpectation {
-    command: Vec<u8>,
-    args: Vec<Vec<u8>>,
-    reply: OwnedCallReply,
-}
-
-/// Stores a thread-safe copy of each call-reply variant supported by the context shim.
-#[derive(Clone)]
-enum OwnedCallReply {
-    String(Vec<u8>),
-    Error(&'static str),
-    Integer(i64),
-    Bool(bool),
-    Double(f64),
-    BigNumber(String),
-    Array(Vec<Self>),
-    Map(Vec<(OwnedCallReplyKey, Self)>),
-    Null,
-}
-
-/// Stores a thread-safe copy of each map-key variant supported by the context shim.
-#[derive(Clone)]
-enum OwnedCallReplyKey {
-    Integer(i64),
-    String(Vec<u8>),
-    Bool(bool),
-}
 
 /// Owns a configurable test-only [`ThreadSafeContext`] backed by synchronized state.
 pub struct TestThreadSafeContext {
@@ -107,15 +77,9 @@ impl TestThreadSafeContext {
         args: &[T],
         reply: ValkeyValue,
     ) -> &mut Self {
-        let reply = OwnedCallReply::from_value(reply)
+        let expectation = TestCallExpectation::new(command, args, reply)
             .expect("unsupported reply type configured for test-shim call");
-        lock_state(&self.data)
-            .call_expectations
-            .push(CallExpectation {
-                command: command.as_ref().to_vec(),
-                args: args.iter().map(|arg| arg.as_ref().to_vec()).collect(),
-                reply,
-            });
+        lock_state(&self.data).call_expectations.push(expectation);
         self
     }
 
@@ -230,11 +194,7 @@ fn create_guard_context(data: SharedContextData) -> *mut raw::RedisModuleCtx {
         context.expect_get_client_id(client_id);
     }
     for expectation in data.call_expectations {
-        context.expect_call(
-            expectation.command,
-            &expectation.args,
-            expectation.reply.to_value(),
-        );
+        context.expect_call_reply(expectation);
     }
 
     let ctx = context.ctx;
@@ -245,81 +205,6 @@ fn create_guard_context(data: SharedContextData) -> *mut raw::RedisModuleCtx {
         "new guard context should have a unique pointer"
     );
     ctx
-}
-
-impl OwnedCallReply {
-    fn from_value(value: ValkeyValue) -> Result<Self, &'static str> {
-        Ok(match value {
-            ValkeyValue::SimpleString(value) => Self::String(value.into_bytes()),
-            ValkeyValue::SimpleStringStatic(value) => Self::String(value.as_bytes().to_vec()),
-            ValkeyValue::BulkString(value) => Self::String(value.into_bytes()),
-            ValkeyValue::BulkValkeyString(value) => Self::String(value.as_slice().to_vec()),
-            ValkeyValue::StringBuffer(value) => Self::String(value),
-            ValkeyValue::Integer(value) => Self::Integer(value),
-            ValkeyValue::Bool(value) => Self::Bool(value),
-            ValkeyValue::Float(value) => Self::Double(value),
-            ValkeyValue::BigNumber(value) => Self::BigNumber(value),
-            ValkeyValue::Array(values) => Self::Array(
-                values
-                    .into_iter()
-                    .map(Self::from_value)
-                    .collect::<Result<_, _>>()?,
-            ),
-            ValkeyValue::Map(values) => Self::Map(Self::map_entries(values)?),
-            ValkeyValue::OrderedMap(values) => Self::Map(Self::map_entries(values)?),
-            ValkeyValue::Null => Self::Null,
-            ValkeyValue::StaticError(value) => Self::Error(value),
-            _ => return Err("test-shim calls do not support this reply type"),
-        })
-    }
-
-    fn map_entries(
-        values: impl IntoIterator<Item = (ValkeyValueKey, ValkeyValue)>,
-    ) -> Result<Vec<(OwnedCallReplyKey, Self)>, &'static str> {
-        values
-            .into_iter()
-            .map(|(key, value)| Ok((OwnedCallReplyKey::from_value(key), Self::from_value(value)?)))
-            .collect()
-    }
-
-    fn to_value(&self) -> ValkeyValue {
-        match self {
-            Self::String(value) => ValkeyValue::StringBuffer(value.clone()),
-            Self::Error(value) => ValkeyValue::StaticError(value),
-            Self::Integer(value) => ValkeyValue::Integer(*value),
-            Self::Bool(value) => ValkeyValue::Bool(*value),
-            Self::Double(value) => ValkeyValue::Float(*value),
-            Self::BigNumber(value) => ValkeyValue::BigNumber(value.clone()),
-            Self::Array(values) => ValkeyValue::Array(values.iter().map(Self::to_value).collect()),
-            Self::Map(values) => ValkeyValue::Map(
-                values
-                    .iter()
-                    .map(|(key, value)| (key.to_value(), value.to_value()))
-                    .collect(),
-            ),
-            Self::Null => ValkeyValue::Null,
-        }
-    }
-}
-
-impl OwnedCallReplyKey {
-    fn from_value(value: ValkeyValueKey) -> Self {
-        match value {
-            ValkeyValueKey::Integer(value) => Self::Integer(value),
-            ValkeyValueKey::String(value) => Self::String(value.into_bytes()),
-            ValkeyValueKey::BulkValkeyString(value) => Self::String(value.as_slice().to_vec()),
-            ValkeyValueKey::BulkString(value) => Self::String(value),
-            ValkeyValueKey::Bool(value) => Self::Bool(value),
-        }
-    }
-
-    fn to_value(&self) -> ValkeyValueKey {
-        match self {
-            Self::Integer(value) => ValkeyValueKey::Integer(*value),
-            Self::String(value) => ValkeyValueKey::BulkString(value.clone()),
-            Self::Bool(value) => ValkeyValueKey::Bool(*value),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -394,6 +279,40 @@ mod tests {
         let reply = context.with_lock(|guard| guard.call("INCR", &["counter"]));
 
         assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
+    }
+
+    #[test]
+    fn with_lock_releases_the_guard_when_the_closure_panics() {
+        let mut context = ThreadSafeContext::test();
+        context.expect_call("INCR", &["counter"], ValkeyValue::Integer(1));
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            context.with_lock(|_| panic!("test panic"));
+        }));
+
+        assert!(result.is_err());
+        assert!(LIVE_GUARD_CONTEXTS.with(|contexts| contexts.borrow().is_empty()));
+        assert!(matches!(
+            context.with_lock(|guard| guard.call("INCR", &["counter"])),
+            Ok(ValkeyValue::Integer(1))
+        ));
+    }
+
+    #[test]
+    fn thread_safe_context_replays_bulk_valkey_string_call_reply() {
+        let mut context = ThreadSafeContext::test();
+        context.expect_call(
+            "ECHO",
+            &[] as &[&str],
+            ValkeyValue::BulkValkeyString(crate::ValkeyString::test("value")),
+        );
+
+        let reply = context.with_lock(|guard| guard.call("ECHO", &[] as &[&str]));
+
+        assert_eq!(
+            reply.expect("configured call reply should be returned"),
+            ValkeyValue::SimpleString("value".to_owned())
+        );
     }
 
     #[test]

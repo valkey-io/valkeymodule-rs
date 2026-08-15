@@ -24,6 +24,14 @@ pub(super) struct TestCallReply {
     value: Arc<TestCallReplyValue>,
 }
 
+/// Stores a normalized command invocation and its owned test reply.
+#[derive(Clone)]
+pub(super) struct TestCallExpectation {
+    pub(super) command: Vec<u8>,
+    pub(super) args: Vec<Vec<u8>>,
+    pub(super) reply: TestCallReply,
+}
+
 /// Stores the reply variants exposed through Valkey's call-reply API.
 enum TestCallReplyValue {
     String(Vec<u8>),
@@ -35,6 +43,21 @@ enum TestCallReplyValue {
     Array(Vec<Arc<TestCallReplyValue>>),
     Map(Vec<(Arc<TestCallReplyValue>, Arc<TestCallReplyValue>)>),
     Null,
+}
+
+impl TestCallExpectation {
+    /// Converts a command, its arguments, and a reply into an owned expectation.
+    pub(super) fn new<T: AsRef<[u8]>>(
+        command: impl AsRef<[u8]>,
+        args: &[T],
+        reply: ValkeyValue,
+    ) -> Result<Self, &'static str> {
+        Ok(Self {
+            command: command.as_ref().to_vec(),
+            args: args.iter().map(|arg| arg.as_ref().to_vec()).collect(),
+            reply: TestCallReply::from_value(reply)?,
+        })
+    }
 }
 
 // Constructs and transfers owned mock call-reply handles.
@@ -67,6 +90,7 @@ impl TestCallReplyValue {
             ValkeyValue::SimpleString(value) => Self::String(value.into_bytes()),
             ValkeyValue::SimpleStringStatic(value) => Self::String(value.as_bytes().to_vec()),
             ValkeyValue::BulkString(value) => Self::String(value.into_bytes()),
+            ValkeyValue::BulkValkeyString(value) => Self::String(value.as_slice().to_vec()),
             ValkeyValue::StringBuffer(value) => Self::String(value),
             ValkeyValue::Integer(value) => Self::Integer(value),
             ValkeyValue::Bool(value) => Self::Bool(value),

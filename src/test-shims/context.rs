@@ -1,4 +1,4 @@
-use super::call::TestCallReply;
+use super::call::{TestCallExpectation, TestCallReply};
 use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -49,14 +49,7 @@ struct ContextData {
     current_user: Option<Vec<u8>>,
     acl_user: Option<Vec<u8>>,
     deauthentication_expected: bool,
-    call_expectations: Vec<CallExpectation>,
-}
-
-/// Matches one exact test-context command invocation to its configured reply.
-struct CallExpectation {
-    command: Vec<u8>,
-    args: Vec<Vec<u8>>,
-    reply: TestCallReply,
+    call_expectations: Vec<TestCallExpectation>,
 }
 
 // Establishes the baseline state used by a newly created test context.
@@ -241,13 +234,14 @@ impl TestContext {
         args: &[T],
         reply: ValkeyValue,
     ) -> &mut Self {
-        let reply = TestCallReply::from_value(reply)
+        let expectation = TestCallExpectation::new(command, args, reply)
             .expect("unsupported reply type configured for test-shim call");
-        self.data.call_expectations.push(CallExpectation {
-            command: command.as_ref().to_vec(),
-            args: args.iter().map(|arg| arg.as_ref().to_vec()).collect(),
-            reply,
-        });
+        self.expect_call_reply(expectation)
+    }
+
+    /// Adds an already normalized expectation for use by another test fixture.
+    pub(super) fn expect_call_reply(&mut self, expectation: TestCallExpectation) -> &mut Self {
+        self.data.call_expectations.push(expectation);
         self
     }
 }
@@ -996,6 +990,23 @@ mod tests {
                 .call("TEST", &["argument"])
                 .expect("configured call reply should be returned"),
             expected
+        );
+    }
+
+    #[test]
+    fn returns_bulk_valkey_string_call_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &[] as &[&str],
+            ValkeyValue::BulkValkeyString(ValkeyString::test("value")),
+        );
+
+        assert_eq!(
+            context
+                .call("ECHO", &[] as &[&str])
+                .expect("configured call reply should be returned"),
+            ValkeyValue::SimpleString("value".to_owned())
         );
     }
 
