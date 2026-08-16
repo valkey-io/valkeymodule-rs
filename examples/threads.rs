@@ -97,6 +97,8 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{Duration, Instant};
+    use valkey_module::test_shims;
 
     #[test]
     fn static_data_round_trips_through_thread_safe_context() {
@@ -120,5 +122,28 @@ mod tests {
                 Ok(ValkeyValue::BulkString(value)) if value == "thread-safe-value"
             ));
         });
+    }
+
+    #[test]
+    fn get_static_data_on_thread_releases_its_blocked_client() {
+        let mut context = Context::test();
+        let fixture = context.expect_block_client();
+
+        assert!(matches!(
+            get_static_data_on_thread(&context, Vec::new()),
+            Ok(ValkeyValue::NoReply)
+        ));
+
+        wait_for_unblock(&fixture);
+        assert_eq!(fixture.thread_safe_context_count(), 1);
+        assert!(!fixture.was_aborted());
+    }
+
+    fn wait_for_unblock(fixture: &test_shims::TestBlockedClient) {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !fixture.was_unblocked() {
+            assert!(Instant::now() < deadline, "blocked client was not released");
+            thread::sleep(Duration::from_millis(10));
+        }
     }
 }

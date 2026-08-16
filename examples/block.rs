@@ -29,3 +29,33 @@ valkey_module! {
         ["block", block, "", 0, 0, 0],
     ],
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+    use valkey_module::test_shims::TestBlockedClient;
+
+    #[test]
+    fn block_command_releases_its_blocked_client() {
+        let mut context = Context::test();
+        let fixture = context.expect_block_client();
+
+        assert!(matches!(
+            block(&context, Vec::new()),
+            Ok(ValkeyValue::NoReply)
+        ));
+
+        wait_for_unblock(&fixture);
+        assert_eq!(fixture.thread_safe_context_count(), 1);
+        assert!(!fixture.was_aborted());
+    }
+
+    fn wait_for_unblock(fixture: &TestBlockedClient) {
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !fixture.was_unblocked() {
+            assert!(Instant::now() < deadline, "blocked client was not released");
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
+}

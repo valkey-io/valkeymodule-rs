@@ -239,6 +239,11 @@ impl TestContext {
         self.expect_call_reply(expectation)
     }
 
+    /// Configures one client blocking operation and returns its lifecycle observer.
+    pub fn expect_block_client(&mut self) -> super::blocked::TestBlockedClient {
+        super::blocked::expect_block_client(self.context.ctx)
+    }
+
     /// Adds an already normalized expectation for use by another test fixture.
     pub(super) fn expect_call_reply(&mut self, expectation: TestCallExpectation) -> &mut Self {
         self.data.call_expectations.push(expectation);
@@ -263,6 +268,7 @@ impl Drop for TestContext {
                 .borrow_mut()
                 .remove(&(self.context.ctx as usize));
         });
+        super::blocked::forget_context(self.context.ctx);
     }
 }
 

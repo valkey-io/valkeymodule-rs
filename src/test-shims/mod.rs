@@ -1,3 +1,4 @@
+mod blocked;
 mod call;
 mod command_filter_ctx;
 mod context;
@@ -5,6 +6,7 @@ mod info_context;
 mod thread_safe;
 mod valkey_string;
 
+pub use blocked::TestBlockedClient;
 pub use command_filter_ctx::TestCommandFilterCtx;
 pub(crate) use context::try_call;
 pub use context::TestContext;
@@ -31,6 +33,7 @@ fn setup_test_shims() {
         call::install();
         info_context::install();
         command_filter_ctx::install();
+        blocked::install();
         thread_safe::install();
     });
 }
