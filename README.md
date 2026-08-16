@@ -150,7 +150,7 @@ let reply = context.with_lock(|guard| guard.call("INCR", &["counter"]));
 assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
 ```
 
-The fixture synchronizes its test state so it can be moved between threads. It does not model Valkey's process-wide GIL or command scheduling.
+The fixture synchronizes its test state so it can be moved between threads. Each lock receives an independent guard context with a fresh copy of the configured expectations, so expectations can be reused across repeated or concurrent locks. Concurrent test guards may coexist because the shim does not model Valkey's process-wide GIL or command scheduling; this behavior tests fixture isolation, not production locking guarantees. The shim supports only `ThreadSafeContext<DetachedFromClient>` and does not simulate a `ThreadSafeContext` associated with a `BlockedClient`.
 
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 

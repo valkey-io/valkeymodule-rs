@@ -77,17 +77,21 @@ pub struct TestContext {
 impl TestContext {
     fn new() -> Self {
         super::setup_test_shims();
+        Self::reset_thread_local_expectations();
+        Self::new_registered()
+    }
 
+    /// Creates a guard context without resetting expectations owned by its locking thread.
+    pub(super) fn new_thread_safe_guard() -> Self {
+        super::setup_test_shims();
+        Self::new_registered()
+    }
+
+    /// Allocates context data and registers its opaque pointer on the current thread.
+    fn new_registered() -> Self {
         let mut data = Box::new(ContextData::default());
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
-        // GetClientInfoById has no context parameter, so its shim uses per-thread state.
-        // Reset that state before each test context to prevent stale expectations leaking.
-        CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
-        // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
-        CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
-        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
-        SERVER_VERSION.with(|server_version| server_version.set(0));
         // Register the backing allocation before callbacks can receive its opaque context pointer.
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts.borrow_mut().insert(ctx as usize);
@@ -97,6 +101,17 @@ impl TestContext {
             context: Context::new(ctx),
             data,
         }
+    }
+
+    /// Clears expectations shared by top-level test contexts on the current thread.
+    fn reset_thread_local_expectations() {
+        // GetClientInfoById has no context parameter, so its shim uses per-thread state.
+        // Reset that state before each test context to prevent stale expectations leaking.
+        CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
+        // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
+        CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
+        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
+        SERVER_VERSION.with(|server_version| server_version.set(0));
     }
 
     /// Configures the value returned by [`Context::get_client_id`].
