@@ -110,12 +110,8 @@ impl Deref for TestThreadSafeContext {
 }
 
 pub(super) extern "C" fn get_thread_safe_context(
-    blocked_client: *mut raw::RedisModuleBlockedClient,
+    _blocked_client: *mut raw::RedisModuleBlockedClient,
 ) -> *mut raw::RedisModuleCtx {
-    if !blocked_client.is_null() {
-        return super::blocked::thread_safe_context(blocked_client);
-    }
-
     PENDING_LOCK_STATE
         .with(|pending| pending.borrow_mut().take())
         .map_or_else(register_new, create_guard_context)
@@ -141,7 +137,7 @@ pub(super) extern "C" fn free_thread_safe_context(ctx: *mut raw::RedisModuleCtx)
 }
 
 /// Allocates a new opaque thread-safe context token with default synchronized state.
-pub(super) fn register_new() -> *mut raw::RedisModuleCtx {
+fn register_new() -> *mut raw::RedisModuleCtx {
     register_shared(Arc::new(Mutex::new(ThreadSafeContextData::default())))
 }
 

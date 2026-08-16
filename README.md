@@ -152,35 +152,6 @@ assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
 
 The fixture synchronizes its test state so it can be moved between threads. It does not model Valkey's process-wide GIL or command scheduling.
 
-To test a handler that blocks a client and replies from a worker, configure a fixture with `expect_block_client()`. The returned `TestBlockedClient` observes the lifecycle while the production code continues to use `Context::block_client()` and `ThreadSafeContext::with_blocked_client()`:
-
-```rust
-use std::thread;
-use valkey_module::test_shims::TestBlockedClient;
-use valkey_module::{Context, ThreadSafeContext, ValkeyResult, ValkeyValue};
-
-fn async_reply(context: &Context) -> ValkeyResult {
-    let blocked_client = context.block_client();
-    thread::spawn(move || {
-        let context = ThreadSafeContext::with_blocked_client(blocked_client);
-        context.reply(Ok("done".into()));
-    });
-    Ok(ValkeyValue::NoReply)
-}
-
-let mut context = Context::test();
-let fixture: TestBlockedClient = context.expect_block_client();
-
-assert!(matches!(async_reply(&context), Ok(ValkeyValue::NoReply)));
-while !fixture.was_unblocked() {
-    thread::yield_now();
-}
-assert_eq!(fixture.thread_safe_context_count(), 1);
-assert!(!fixture.was_aborted());
-```
-
-Dropping a blocked client marks it unblocked; calling `BlockedClient::abort()` marks it aborted instead. Authentication blocking, timeout callbacks, key-based blocking, and private callback data are not currently shimmed.
-
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust
