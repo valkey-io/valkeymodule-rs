@@ -86,6 +86,15 @@ mod tests {
 }
 ```
 
+Use `test_shims::create_test_args()` to convert text or binary values implementing `AsRef<[u8]>` into a `Vec<ValkeyString>`:
+
+```rust
+use valkey_module::test_shims::create_test_args;
+
+let args = create_test_args(&["example.command", "first", "second"]);
+let binary_args = create_test_args(&[b"example.command".as_slice(), b"\0\xff".as_slice()]);
+```
+
 Use `InfoContext::test()` to invoke an INFO handler directly and inspect the typed sections it emits. `sections()` returns an owned snapshot that preserves section, field, and dictionary insertion order:
 
 ```rust

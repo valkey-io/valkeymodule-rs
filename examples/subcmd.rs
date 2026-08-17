@@ -125,22 +125,22 @@ valkey_module! {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn test_args(args: &[&str]) -> Vec<ValkeyString> {
-        args.iter().map(|arg| ValkeyString::test(*arg)).collect()
-    }
+    use valkey_module::test_shims::create_test_args;
 
     #[test]
     fn routes_nested_subcommands_case_insensitively() {
-        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "S1", "s1", "S1"]))
-            .expect("nested subcommand should succeed");
+        let result = cmd1(
+            &Context::dummy(),
+            create_test_args(&["cmd1", "S1", "s1", "S1"]),
+        )
+        .expect("nested subcommand should succeed");
 
         assert_eq!(result, ValkeyValue::BulkString("sub111".into()));
     }
 
     #[test]
     fn rejects_unknown_top_level_subcommand() {
-        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "unknown"]));
+        let result = cmd1(&Context::dummy(), create_test_args(&["cmd1", "unknown"]));
 
         assert!(matches!(
             result,
@@ -150,8 +150,11 @@ mod tests {
 
     #[test]
     fn filters_info_to_requested_section() {
-        let result = cmd1(&Context::dummy(), test_args(&["cmd1", "info", "integer"]))
-            .expect("known info section should succeed");
+        let result = cmd1(
+            &Context::dummy(),
+            create_test_args(&["cmd1", "info", "integer"]),
+        )
+        .expect("known info section should succeed");
 
         assert_eq!(
             result,
