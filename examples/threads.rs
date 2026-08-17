@@ -1,5 +1,4 @@
 use lazy_static::lazy_static;
-use std::mem::drop;
 use std::thread;
 use std::time::Duration;
 use valkey_module::alloc::ValkeyAlloc;
@@ -13,10 +12,9 @@ fn threads(_: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
         let thread_ctx = ThreadSafeContext::new();
 
         loop {
-            let ctx = thread_ctx.lock();
-            ctx.call("INCR", &["threads"]).unwrap();
-            // release the lock as soon as we're done accessing valkey memory
-            drop(ctx);
+            thread_ctx.with_lock(|ctx| {
+                ctx.call("INCR", &["threads"]).unwrap();
+            });
             thread::sleep(Duration::from_millis(1000));
         }
     });
@@ -94,4 +92,33 @@ valkey_module! {
         ["get_static_data_on_thread", get_static_data_on_thread, "", 0, 0, 0],
         ["info_field_on_thread", info_field_on_thread, "", 0, 0, 0],
     ],
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_data_round_trips_through_thread_safe_context() {
+        let context = ThreadSafeContext::test();
+        let command = ValkeyString::test("set_static_data");
+        let value = ValkeyString::test("thread-safe-value");
+
+        context.with_lock(|guard| {
+            let set_result = set_static_data(
+                guard,
+                vec![command.safe_clone(guard), value.safe_clone(guard)],
+            );
+            assert!(matches!(
+                set_result,
+                Ok(ValkeyValue::SimpleStringStatic("OK"))
+            ));
+
+            let get_result = get_static_data(guard, Vec::new());
+            assert!(matches!(
+                get_result,
+                Ok(ValkeyValue::BulkString(value)) if value == "thread-safe-value"
+            ));
+        });
+    }
 }

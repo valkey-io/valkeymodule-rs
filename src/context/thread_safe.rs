@@ -173,6 +173,16 @@ impl<B: Send> ThreadSafeContext<B> {
         let ctx = Context::new(ctx);
         ContextGuard { ctx }
     }
+
+    /// Locks this context for the duration of `f`.
+    ///
+    /// The closure receives a [`ContextGuard`], and its return value is passed through unchanged.
+    /// When the closure returns (or unwinds), the guard is dropped and the context is unlocked.
+    /// Use [`Self::lock`] instead when the guard must outlive a single closure invocation.
+    pub fn with_lock<R>(&self, f: impl FnOnce(&ContextGuard) -> R) -> R {
+        let guard = self.lock();
+        f(&guard)
+    }
 }
 
 impl<B: Send> Drop for ThreadSafeContext<B> {

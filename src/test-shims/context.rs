@@ -1,4 +1,4 @@
-use super::call::TestCallReply;
+use super::call::{TestCallExpectation, TestCallReply};
 use crate::{raw, Context, RedisModuleClientInfo, ValkeyString, ValkeyValue};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -49,14 +49,7 @@ struct ContextData {
     current_user: Option<Vec<u8>>,
     acl_user: Option<Vec<u8>>,
     deauthentication_expected: bool,
-    call_expectations: Vec<CallExpectation>,
-}
-
-/// Matches one exact test-context command invocation to its configured reply.
-struct CallExpectation {
-    command: Vec<u8>,
-    args: Vec<Vec<u8>>,
-    reply: TestCallReply,
+    call_expectations: Vec<TestCallExpectation>,
 }
 
 // Establishes the baseline state used by a newly created test context.
@@ -84,17 +77,21 @@ pub struct TestContext {
 impl TestContext {
     fn new() -> Self {
         super::setup_test_shims();
+        Self::reset_thread_local_expectations();
+        Self::new_registered()
+    }
 
+    /// Creates a guard context without resetting expectations owned by its locking thread.
+    pub(super) fn new_thread_safe_guard() -> Self {
+        super::setup_test_shims();
+        Self::new_registered()
+    }
+
+    /// Allocates context data and registers its opaque pointer on the current thread.
+    fn new_registered() -> Self {
         let mut data = Box::new(ContextData::default());
         let ctx = (data.as_mut() as *mut ContextData).cast::<raw::RedisModuleCtx>();
 
-        // GetClientInfoById has no context parameter, so its shim uses per-thread state.
-        // Reset that state before each test context to prevent stale expectations leaking.
-        CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
-        // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
-        CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
-        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
-        SERVER_VERSION.with(|server_version| server_version.set(0));
         // Register the backing allocation before callbacks can receive its opaque context pointer.
         TEST_CONTEXTS.with(|test_contexts| {
             test_contexts.borrow_mut().insert(ctx as usize);
@@ -104,6 +101,17 @@ impl TestContext {
             context: Context::new(ctx),
             data,
         }
+    }
+
+    /// Clears expectations shared by top-level test contexts on the current thread.
+    fn reset_thread_local_expectations() {
+        // GetClientInfoById has no context parameter, so its shim uses per-thread state.
+        // Reset that state before each test context to prevent stale expectations leaking.
+        CLIENT_INFO_BY_ID.with(|client_info_by_id| client_info_by_id.borrow_mut().clear());
+        // CLIENT_NAME_BY_ID outlives TestContext, so clear names configured by earlier tests.
+        CLIENT_NAME_BY_ID.with(|client_name_by_id| client_name_by_id.borrow_mut().clear());
+        // GetServerVersion has no context parameter, so reset its per-thread expectation too.
+        SERVER_VERSION.with(|server_version| server_version.set(0));
     }
 
     /// Configures the value returned by [`Context::get_client_id`].
@@ -241,13 +249,14 @@ impl TestContext {
         args: &[T],
         reply: ValkeyValue,
     ) -> &mut Self {
-        let reply = TestCallReply::from_value(reply)
+        let expectation = TestCallExpectation::new(command, args, reply)
             .expect("unsupported reply type configured for test-shim call");
-        self.data.call_expectations.push(CallExpectation {
-            command: command.as_ref().to_vec(),
-            args: args.iter().map(|arg| arg.as_ref().to_vec()).collect(),
-            reply,
-        });
+        self.expect_call_reply(expectation)
+    }
+
+    /// Adds an already normalized expectation for use by another test fixture.
+    pub(super) fn expect_call_reply(&mut self, expectation: TestCallExpectation) -> &mut Self {
+        self.data.call_expectations.push(expectation);
         self
     }
 }
@@ -996,6 +1005,23 @@ mod tests {
                 .call("TEST", &["argument"])
                 .expect("configured call reply should be returned"),
             expected
+        );
+    }
+
+    #[test]
+    fn returns_bulk_valkey_string_call_reply() {
+        let mut context = Context::test();
+        context.expect_call(
+            "ECHO",
+            &[] as &[&str],
+            ValkeyValue::BulkValkeyString(ValkeyString::test("value")),
+        );
+
+        assert_eq!(
+            context
+                .call("ECHO", &[] as &[&str])
+                .expect("configured call reply should be returned"),
+            ValkeyValue::SimpleString("value".to_owned())
         );
     }
 

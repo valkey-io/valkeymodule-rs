@@ -49,7 +49,7 @@ cargo test
 
 ### Unit testing without a Valkey server
 
-The `test-shims` feature provides `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
+The `test-shims` feature provides `Context::test()`, `ThreadSafeContext::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, and `ValkeyString::test()` for unit tests that run without starting a Valkey process. Add `valkey-module` with this feature to your development dependencies, using the same version or source as your normal dependency:
 
 ```toml
 [dev-dependencies]
@@ -134,6 +134,24 @@ context.expect_call(
 
 For [`Context::config_get()`], use `expect_config_get("hz", "10")` instead of configuring the underlying `CONFIG GET` reply directly.
 
+Use `ThreadSafeContext::test()` to configure a thread-safe context and exercise code through its locked `ContextGuard`:
+
+```rust
+use valkey_module::{ThreadSafeContext, ValkeyValue};
+
+let mut context = ThreadSafeContext::test();
+context.expect_call(
+    "INCR",
+    &["counter"],
+    ValkeyValue::Integer(1),
+);
+
+let reply = context.with_lock(|guard| guard.call("INCR", &["counter"]));
+assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
+```
+
+The fixture synchronizes its test state so it can be moved between threads. Each lock receives an independent guard context with a fresh copy of the configured expectations, so expectations can be reused across repeated or concurrent locks. Concurrent test guards may coexist because the shim does not model Valkey's process-wide GIL or command scheduling; this behavior tests fixture isolation, not production locking guarantees. The shim supports only `ThreadSafeContext<DetachedFromClient>` and does not simulate a `ThreadSafeContext` associated with a `BlockedClient`.
+
 Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
 
 ```rust
@@ -201,7 +219,7 @@ Run these tests normally:
 cargo test
 ```
 
-The first call to `Context::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Create each test context and invoke its callbacks on the same thread: live contexts are tracked in thread-local registries, so callbacks on another thread reject the context pointer as foreign. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `RedisModule_GetServerInfo` and `ValkeyString::append()`, still require a running server.
+The first call to `Context::test()`, `ThreadSafeContext::test()`, `CommandFilterCtx::test()`, `InfoContext::test()`, or `ValkeyString::test()` installs process-wide test callbacks. Create ordinary test contexts and invoke their callbacks on the same thread: live contexts are tracked in thread-local registries, so callbacks on another thread reject the context pointer as foreign. `ThreadSafeContext::test()` is the exception: its synchronized fixture can move to another thread before it is locked. Do not invoke the test shims inside a running Valkey process; setup rejects installation after the real Valkey API has been initialized. Only explicitly shimmed APIs work without Valkey. Other APIs, including `RedisModule_GetServerInfo` and `ValkeyString::append()`, still require a running server.
 
 ### Redis Compatibility
 

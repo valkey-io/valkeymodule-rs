@@ -2,6 +2,7 @@ mod call;
 mod command_filter_ctx;
 mod context;
 mod info_context;
+mod thread_safe;
 mod valkey_string;
 
 pub use command_filter_ctx::TestCommandFilterCtx;
@@ -10,6 +11,7 @@ pub use context::TestContext;
 pub use info_context::{
     TestInfoContext, TestInfoEntry, TestInfoField, TestInfoSection, TestInfoValue,
 };
+pub use thread_safe::TestThreadSafeContext;
 
 use crate::raw;
 use std::ptr::addr_of;
@@ -29,6 +31,7 @@ fn setup_test_shims() {
         call::install();
         info_context::install();
         command_filter_ctx::install();
+        thread_safe::install();
     });
 }
 
