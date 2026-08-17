@@ -190,8 +190,10 @@ context
 
 rewrite_set(&context);
 
-assert_eq!(context.args_count(), 3);
-assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+assert_eq!(
+    context.args(),
+    vec![b"SET".as_slice(), b"new-key", b"value"]
+);
 assert_eq!(context.get_client_id(), 42);
 ```
 
@@ -210,10 +212,13 @@ context.expect_args(&["SET", "key", "value"]);
 
 rewrite_set_filter(context.as_raw_ctx_ptr());
 
-assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+assert_eq!(
+    context.args(),
+    vec![b"SET".as_slice(), b"new-key", b"value"]
+);
 ```
 
-`expect_args()` configures the complete binary-safe argument list and its reported count. Use `expect_args_count()` and `expect_arg_get()` when a test needs to configure those values independently. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
+`expect_args()` configures the complete binary-safe argument list and its reported count, while `args()` returns the current list in position order for assertions. Use `expect_args_count()` and `expect_arg_get()` when a test needs to configure those values independently. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
 
 Run these tests normally:
 

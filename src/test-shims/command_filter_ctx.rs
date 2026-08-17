@@ -97,6 +97,14 @@ impl TestCommandFilterCtx {
         self
     }
 
+    /// Returns the configured arguments in position order without UTF-8 conversion.
+    #[must_use]
+    pub fn args(&self) -> Vec<&[u8]> {
+        (0..self.data.args_count)
+            .filter_map(|position| self.data.args.get(&position).map(ValkeyString::as_slice))
+            .collect()
+    }
+
     /// Configures the value returned by [`CommandFilterCtx::args_count`].
     pub fn expect_args_count(&mut self, args_count: libc::c_int) -> &mut Self {
         self.data.args_count = args_count;
@@ -332,6 +340,18 @@ mod tests {
         assert_eq!(context.cmd_get_try_as_str(), Ok("SET"));
         assert_eq!(context.arg_get_try_as_str(1), Ok("key"));
         assert_eq!(context.arg_get_try_as_str(2), Ok("value"));
+    }
+
+    #[test]
+    fn returns_mutated_arguments_in_order_without_utf8_conversion() {
+        let mut context = CommandFilterCtx::test();
+        context.expect_args(&[b"SET".as_slice(), b"\0\xff", b"old"]);
+
+        context.arg_replace(2, "new");
+        context.arg_insert(3, "tail");
+        context.arg_delete(2);
+
+        assert_eq!(context.args(), vec![b"SET".as_slice(), b"\0\xff", b"tail"]);
     }
 
     #[test]

@@ -122,7 +122,7 @@ mod tests {
 
         info_filter_fn(context.as_raw_ctx_ptr());
 
-        assert_eq!(context.cmd_get_try_as_str(), Ok("info2"));
+        assert_eq!(context.args(), vec![b"info2".as_slice()]);
     }
 
     #[test]
@@ -132,7 +132,7 @@ mod tests {
 
         info_filter_fn(context.as_raw_ctx_ptr());
 
-        assert_eq!(context.cmd_get_try_as_str(), Ok("PING"));
+        assert_eq!(context.args(), vec![b"PING".as_slice()]);
     }
 
     #[test]
@@ -142,10 +142,10 @@ mod tests {
 
         set_filter_fn(context.as_raw_ctx_ptr());
 
-        assert_eq!(context.args_count(), 3);
-        assert_eq!(context.cmd_get_try_as_str(), Ok("SET"));
-        assert_eq!(context.arg_get_try_as_str(1), Ok("new_key"));
-        assert_eq!(context.arg_get_try_as_str(2), Ok("new_value"));
+        assert_eq!(
+            context.args(),
+            vec![b"SET".as_slice(), b"new_key", b"new_value"]
+        );
     }
 
     #[test]
@@ -155,9 +155,7 @@ mod tests {
 
         set_filter_fn(context.as_raw_ctx_ptr());
 
-        assert_eq!(context.args_count(), 2);
-        assert_eq!(context.cmd_get_try_as_str(), Ok("SET"));
-        assert_eq!(context.arg_get_try_as_str(1), Ok("key"));
+        assert_eq!(context.args(), vec![b"SET".as_slice(), b"key"]);
     }
 
     #[test]
@@ -167,9 +165,6 @@ mod tests {
 
         set_filter_fn(context.as_raw_ctx_ptr());
 
-        assert_eq!(context.args_count(), 3);
-        assert_eq!(context.cmd_get_try_as_str(), Ok("GET"));
-        assert_eq!(context.arg_get_try_as_str(1), Ok("key"));
-        assert_eq!(context.arg_get_try_as_str(2), Ok("value"));
+        assert_eq!(context.args(), vec![b"GET".as_slice(), b"key", b"value"]);
     }
 }
