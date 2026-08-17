@@ -86,6 +86,15 @@ mod tests {
 }
 ```
 
+Use `test_shims::create_test_args()` to convert text or binary values implementing `AsRef<[u8]>` into a `Vec<ValkeyString>`:
+
+```rust
+use valkey_module::test_shims::create_test_args;
+
+let args = create_test_args(&["example.command", "first", "second"]);
+let binary_args = create_test_args(&[b"example.command".as_slice(), b"\0\xff".as_slice()]);
+```
+
 Use `InfoContext::test()` to invoke an INFO handler directly and inspect the typed sections it emits. `sections()` returns an owned snapshot that preserves section, field, and dictionary insertion order:
 
 ```rust
@@ -176,16 +185,15 @@ fn rewrite_set(context: &CommandFilterCtx) {
 
 let mut context = CommandFilterCtx::test();
 context
-    .expect_args_count(3)
-    .expect_arg_get(0, "SET")
-    .expect_arg_get(1, "key")
-    .expect_arg_get(2, "value")
+    .expect_args(&["SET", "key", "value"])
     .expect_get_client_id(42);
 
 rewrite_set(&context);
 
-assert_eq!(context.args_count(), 3);
-assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+assert_eq!(
+    context.args(),
+    vec![b"SET".as_slice(), b"new-key", b"value"]
+);
 assert_eq!(context.get_client_id(), 42);
 ```
 
@@ -200,18 +208,17 @@ fn rewrite_set_filter(ctx: *mut RedisModuleCommandFilterCtx) {
 }
 
 let mut context = CommandFilterCtx::test();
-context
-    .expect_args_count(3)
-    .expect_arg_get(0, "SET")
-    .expect_arg_get(1, "key")
-    .expect_arg_get(2, "value");
+context.expect_args(&["SET", "key", "value"]);
 
 rewrite_set_filter(context.as_raw_ctx_ptr());
 
-assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
+assert_eq!(
+    context.args(),
+    vec![b"SET".as_slice(), b"new-key", b"value"]
+);
 ```
 
-`expect_args_count()` configures the reported number of arguments, while `expect_arg_get()` configures the binary-safe value at an individual position. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
+`expect_args()` configures the complete binary-safe argument list and its reported count, while `args()` returns the current list in position order for assertions. Use `expect_args_count()` and `expect_arg_get()` when a test needs to configure those values independently. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
 
 Run these tests normally:
 
