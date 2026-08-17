@@ -118,10 +118,7 @@ mod tests {
     #[test]
     fn info_filter_rewrites_info_command() {
         let mut context = CommandFilterCtx::test();
-        context
-            .expect_args_count(1)
-            .expect_arg_get(0, "INFO")
-            .expect_get_client_id(42);
+        context.expect_args(&["INFO"]).expect_get_client_id(42);
 
         info_filter_fn(context.as_raw_ctx_ptr());
 
@@ -131,7 +128,7 @@ mod tests {
     #[test]
     fn info_filter_leaves_unrelated_command_unchanged() {
         let mut context = CommandFilterCtx::test();
-        context.expect_args_count(1).expect_arg_get(0, "PING");
+        context.expect_args(&["PING"]);
 
         info_filter_fn(context.as_raw_ctx_ptr());
 
@@ -141,11 +138,7 @@ mod tests {
     #[test]
     fn set_filter_rewrites_key_and_value() {
         let mut context = CommandFilterCtx::test();
-        context
-            .expect_args_count(3)
-            .expect_arg_get(0, "SET")
-            .expect_arg_get(1, "old_key")
-            .expect_arg_get(2, "old_value");
+        context.expect_args(&["SET", "old_key", "old_value"]);
 
         set_filter_fn(context.as_raw_ctx_ptr());
 
@@ -158,10 +151,7 @@ mod tests {
     #[test]
     fn set_filter_leaves_wrong_arity_unchanged() {
         let mut context = CommandFilterCtx::test();
-        context
-            .expect_args_count(2)
-            .expect_arg_get(0, "SET")
-            .expect_arg_get(1, "key");
+        context.expect_args(&["SET", "key"]);
 
         set_filter_fn(context.as_raw_ctx_ptr());
 
@@ -173,11 +163,7 @@ mod tests {
     #[test]
     fn set_filter_leaves_unrelated_command_unchanged() {
         let mut context = CommandFilterCtx::test();
-        context
-            .expect_args_count(3)
-            .expect_arg_get(0, "GET")
-            .expect_arg_get(1, "key")
-            .expect_arg_get(2, "value");
+        context.expect_args(&["GET", "key", "value"]);
 
         set_filter_fn(context.as_raw_ctx_ptr());
 

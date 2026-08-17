@@ -185,10 +185,7 @@ fn rewrite_set(context: &CommandFilterCtx) {
 
 let mut context = CommandFilterCtx::test();
 context
-    .expect_args_count(3)
-    .expect_arg_get(0, "SET")
-    .expect_arg_get(1, "key")
-    .expect_arg_get(2, "value")
+    .expect_args(&["SET", "key", "value"])
     .expect_get_client_id(42);
 
 rewrite_set(&context);
@@ -209,18 +206,14 @@ fn rewrite_set_filter(ctx: *mut RedisModuleCommandFilterCtx) {
 }
 
 let mut context = CommandFilterCtx::test();
-context
-    .expect_args_count(3)
-    .expect_arg_get(0, "SET")
-    .expect_arg_get(1, "key")
-    .expect_arg_get(2, "value");
+context.expect_args(&["SET", "key", "value"]);
 
 rewrite_set_filter(context.as_raw_ctx_ptr());
 
 assert_eq!(context.arg_get_try_as_str(1), Ok("new-key"));
 ```
 
-`expect_args_count()` configures the reported number of arguments, while `expect_arg_get()` configures the binary-safe value at an individual position. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
+`expect_args()` configures the complete binary-safe argument list and its reported count. Use `expect_args_count()` and `expect_arg_get()` when a test needs to configure those values independently. The test context also supports command lookup, client ID lookup, and argument replacement, insertion, and deletion. Insertions and deletions update the argument count and shift subsequent arguments.
 
 Run these tests normally:
 
