@@ -477,17 +477,11 @@ impl Context {
         self.call_internal(command, options.options.as_ptr() as *const c_char, args)
     }
 
+    /// Returns a C string with CR, LF, and NUL replaced by spaces while preserving the UTF-8
+    /// encoding of every other character.
     #[must_use]
     pub fn str_as_legal_resp_string(s: &str) -> CString {
-        CString::new(
-            s.chars()
-                .map(|c| match c {
-                    '\r' | '\n' | '\0' => b' ',
-                    _ => c as u8,
-                })
-                .collect::<Vec<_>>(),
-        )
-        .unwrap()
+        CString::new(s.replace(|c| matches!(c, '\r' | '\n' | '\0'), " ")).unwrap()
     }
 
     #[allow(clippy::must_use_candidate)]
@@ -939,6 +933,51 @@ bitflags! {
 
         /// User can update existing data inside the key.
         const UPDATE = raw::REDISMODULE_CMD_KEY_UPDATE as c_int;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Context;
+
+    #[test]
+    fn legal_resp_string_preserves_ascii() {
+        assert_eq!(
+            Context::str_as_legal_resp_string("ordinary ASCII")
+                .to_str()
+                .unwrap(),
+            "ordinary ASCII"
+        );
+    }
+
+    #[test]
+    fn legal_resp_string_preserves_utf8() {
+        assert_eq!(
+            Context::str_as_legal_resp_string("café 東京 😀")
+                .to_str()
+                .unwrap(),
+            "café 東京 😀"
+        );
+    }
+
+    #[test]
+    fn legal_resp_string_replaces_forbidden_characters() {
+        assert_eq!(
+            Context::str_as_legal_resp_string("before\r\n\0after")
+                .to_str()
+                .unwrap(),
+            "before   after"
+        );
+    }
+
+    #[test]
+    fn legal_resp_string_handles_mixed_utf8_and_forbidden_characters() {
+        assert_eq!(
+            Context::str_as_legal_resp_string("café\n東京\0😀")
+                .to_str()
+                .unwrap(),
+            "café 東京 😀"
+        );
     }
 }
 
