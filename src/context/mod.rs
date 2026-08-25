@@ -477,6 +477,8 @@ impl Context {
         self.call_internal(command, options.options.as_ptr() as *const c_char, args)
     }
 
+    /// Returns a C string with CR, LF, and NUL replaced by spaces while preserving the UTF-8
+    /// encoding of every other character.
     #[must_use]
     pub fn str_as_legal_resp_string(s: &str) -> CString {
         CString::new(s.replace(|c| matches!(c, '\r' | '\n' | '\0'), " ")).unwrap()
