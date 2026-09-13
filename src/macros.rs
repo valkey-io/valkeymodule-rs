@@ -135,7 +135,7 @@ macro_rules! valkey_module {
         ],)?
         $(acl_categories: [
             $($acl_category:expr),* $(,)*
-        ])?
+        ] $(,)* )?
         commands: [
             $([
                 $name:expr,
