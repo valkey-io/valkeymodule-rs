@@ -809,6 +809,7 @@ mod tests {
             raw::ModuleOptions::NO_IMPLICIT_SIGNAL_MODIFIED,
             raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD,
             raw::ModuleOptions::ALLOW_NESTED_KEYSPACE_NOTIFICATIONS,
+            raw::ModuleOptions::HANDLE_ATOMIC_SLOT_MIGRATION,
         ];
 
         for options in module_options {
