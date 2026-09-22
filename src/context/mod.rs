@@ -695,6 +695,50 @@ impl Context {
         self.ctx
     }
 
+    /// Server wall-clock time in milliseconds since the Unix epoch.
+    ///
+    /// Wraps [`ValkeyModule_Milliseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_Milliseconds).
+    /// Prefer this over `std::time::SystemTime` so timestamps line up with the
+    /// values the server uses for expiry and replication.
+    #[must_use]
+    pub fn unix_time_millis(&self) -> i64 {
+        raw::unix_time_millis()
+    }
+
+    /// Monotonic timer in microseconds, with no relation to wall-clock time.
+    ///
+    /// Wraps [`ValkeyModule_MonotonicMicroseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_MonotonicMicroseconds).
+    /// Use for measuring elapsed time without risking the backwards jumps a
+    /// wall-clock source can produce.
+    #[must_use]
+    pub fn monotonic_micros(&self) -> u64 {
+        raw::monotonic_micros()
+    }
+
+    api!(
+        [RedisModule_Microseconds],
+        /// Server wall-clock time in microseconds since the Unix epoch.
+        ///
+        /// Wraps [`ValkeyModule_Microseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_Microseconds).
+        /// Microsecond-resolution counterpart of [`Self::unix_time_millis`].
+        pub fn unix_time_micros(&self) -> i64 {
+            unsafe { RedisModule_Microseconds() }
+        }
+    );
+
+    api!(
+        [RedisModule_CachedMicroseconds],
+        /// Cached server wall-clock time in microseconds since the Unix epoch.
+        ///
+        /// Wraps [`ValkeyModule_CachedMicroseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_CachedMicroseconds).
+        /// The value is refreshed on each event-loop iteration, so reads avoid
+        /// the syscall that [`Self::unix_time_micros`] performs at the cost of
+        /// being up to one event-loop tick stale.
+        pub fn cached_unix_time_micros(&self) -> i64 {
+            unsafe { RedisModule_CachedMicroseconds() }
+        }
+    );
+
     /// # Safety
     ///
     /// See [raw::export_shared_api].

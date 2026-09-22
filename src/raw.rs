@@ -509,6 +509,28 @@ pub fn set_expire(key: *mut RedisModuleKey, expire: c_longlong) -> Status {
     unsafe { RedisModule_SetExpire.unwrap()(key, expire).into() }
 }
 
+/// Server wall-clock time in milliseconds since the Unix epoch.
+///
+/// Wrapper for [`ValkeyModule_Milliseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_Milliseconds).
+/// Use this instead of `std::time::SystemTime` so timestamps line up with the
+/// values the server uses for expiry and replication.
+#[inline]
+#[must_use]
+pub fn unix_time_millis() -> i64 {
+    unsafe { RedisModule_Milliseconds.unwrap()() }
+}
+
+/// Monotonic timer in microseconds, with no relation to wall-clock time.
+///
+/// Wrapper for [`ValkeyModule_MonotonicMicroseconds`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_MonotonicMicroseconds).
+/// Use for measuring elapsed time without risking the backwards jumps a
+/// wall-clock source can produce.
+#[inline]
+#[must_use]
+pub fn monotonic_micros() -> u64 {
+    unsafe { RedisModule_MonotonicMicroseconds.unwrap()() }
+}
+
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[inline]
 pub fn string_dma(key: *mut RedisModuleKey, len: *mut size_t, mode: KeyMode) -> *mut c_char {
