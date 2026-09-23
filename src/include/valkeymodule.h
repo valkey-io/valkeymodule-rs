@@ -325,6 +325,9 @@ typedef uint64_t ValkeyModuleTimerID;
  * If enabled, the module is responsible to break endless loop. */
 #define VALKEYMODULE_OPTIONS_ALLOW_NESTED_KEYSPACE_NOTIFICATIONS (1 << 3)
 
+/* Declare that the module can skip command validation. */
+#define VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION (1 << 4)
+
 /* Declare that the module can handle atomic slot migration. When not set,
  * CLUSTER MIGRATESLOTS will return an error, and the CLUSTER SETSLOTS based
  * slot migration must be used. */

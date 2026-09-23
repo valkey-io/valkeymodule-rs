@@ -804,13 +804,17 @@ mod tests {
     #[test]
     fn accepts_all_module_options() {
         let context = Context::test();
-        let module_options = vec![
+        let mut module_options = vec![
             raw::ModuleOptions::HANDLE_IO_ERRORS,
             raw::ModuleOptions::NO_IMPLICIT_SIGNAL_MODIFIED,
             raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD,
             raw::ModuleOptions::ALLOW_NESTED_KEYSPACE_NOTIFICATIONS,
-            raw::ModuleOptions::HANDLE_ATOMIC_SLOT_MIGRATION,
         ];
+
+        #[cfg(feature = "min-valkey-compatibility-version-8-0")]
+        module_options.push(raw::ModuleOptions::SKIP_COMMAND_VALIDATION);
+        #[cfg(feature = "min-valkey-compatibility-version-9-0")]
+        module_options.push(raw::ModuleOptions::HANDLE_ATOMIC_SLOT_MIGRATION);
 
         for options in module_options {
             context.set_module_options(options);

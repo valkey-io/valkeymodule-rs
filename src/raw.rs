@@ -38,6 +38,9 @@ bitflags! {
         const NO_IMPLICIT_SIGNAL_MODIFIED = REDISMODULE_OPTION_NO_IMPLICIT_SIGNAL_MODIFIED as c_int;
         const HANDLE_REPL_ASYNC_LOAD = REDISMODULE_OPTIONS_HANDLE_REPL_ASYNC_LOAD as c_int;
         const ALLOW_NESTED_KEYSPACE_NOTIFICATIONS = REDISMODULE_OPTIONS_ALLOW_NESTED_KEYSPACE_NOTIFICATIONS as c_int;
+        #[cfg(feature = "min-valkey-compatibility-version-8-0")]
+        const SKIP_COMMAND_VALIDATION = VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION as c_int;
+        #[cfg(feature = "min-valkey-compatibility-version-9-0")]
         const HANDLE_ATOMIC_SLOT_MIGRATION = VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION as c_int;
     }
 }
