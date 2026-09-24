@@ -104,10 +104,7 @@ impl CommandFilterCtx {
     }
 
     /// wrapper for RedisModule_CommandFilterGetClientId, not supported in Redis 7.0
-    #[cfg(all(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ),))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     pub fn get_client_id(&self) -> u64 {
         unsafe { RedisModule_CommandFilterGetClientId.unwrap()(self.inner) }
     }

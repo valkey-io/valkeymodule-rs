@@ -37,7 +37,7 @@ lazy_static::lazy_static! {
 
 pub(crate) fn get_feature_flags(
     min_required_version: usize,
-) -> (Vec<TokenStream>, Vec<TokenStream>) {
+) -> (Vec<TokenStream>, TokenStream, Vec<TokenStream>) {
     let all_lower_versions: Vec<&str> = ALL_VERSIONS
         .iter()
         .filter_map(|(v, s)| {
@@ -48,24 +48,90 @@ pub(crate) fn get_feature_flags(
             }
         })
         .collect();
-    let all_upper_versions: Vec<&str> = ALL_VERSIONS
+    let required_feature = ALL_VERSIONS
         .iter()
-        .filter_map(|(v, s)| {
-            if *v >= min_required_version {
-                Some(s.as_str())
-            } else {
-                None
-            }
-        })
+        .find_map(|(v, s)| (*v == min_required_version).then_some(s.as_str()))
+        .expect("every mapped API version must have a compatibility feature");
+    let all_higher_versions: Vec<&str> = ALL_VERSIONS
+        .iter()
+        .filter_map(|(v, s)| (*v > min_required_version).then_some(s.as_str()))
         .collect();
     (
         all_lower_versions
             .into_iter()
             .map(|s| quote!(feature = #s).into())
             .collect(),
-        all_upper_versions
+        quote!(feature = #required_feature).into(),
+        all_higher_versions
             .into_iter()
             .map(|s| quote!(feature = #s).into())
             .collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_feature_flags;
+
+    #[test]
+    fn redis_7_2_uses_its_existing_minimum_feature() {
+        let (_, required, _) = get_feature_flags(70200);
+        assert_eq!(
+            required.to_string(),
+            "feature = \"min-redis-compatibility-version-7-2\""
+        );
+    }
+
+    #[test]
+    fn valkey_8_uses_its_existing_minimum_feature() {
+        let (_, required, _) = get_feature_flags(80000);
+        assert_eq!(
+            required.to_string(),
+            "feature = \"min-valkey-compatibility-version-8-0\""
+        );
+    }
+
+    #[test]
+    fn valkey_9_uses_its_existing_minimum_feature() {
+        let (_, required, _) = get_feature_flags(90000);
+        assert_eq!(
+            required.to_string(),
+            "feature = \"min-valkey-compatibility-version-9-0\""
+        );
+    }
+
+    #[test]
+    fn lower_features_exclude_the_api_minimum_feature() {
+        let (lower_features, required, _) = get_feature_flags(80000);
+        let lower_features: Vec<String> = lower_features.iter().map(ToString::to_string).collect();
+
+        assert_eq!(
+            required.to_string(),
+            "feature = \"min-valkey-compatibility-version-8-0\""
+        );
+        assert_eq!(
+            lower_features,
+            vec![
+                "feature = \"min-redis-compatibility-version-6-0\"",
+                "feature = \"min-redis-compatibility-version-6-2\"",
+                "feature = \"min-redis-compatibility-version-7-0\"",
+                "feature = \"min-redis-compatibility-version-7-2\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn valkey_9_selection_has_a_direct_valkey_8_gate() {
+        let (_, required, newer_features) = get_feature_flags(80000);
+        let newer_features: Vec<String> = newer_features.iter().map(ToString::to_string).collect();
+
+        assert_eq!(
+            required.to_string(),
+            "feature = \"min-valkey-compatibility-version-8-0\""
+        );
+        assert_eq!(
+            newer_features,
+            vec!["feature = \"min-valkey-compatibility-version-9-0\""]
+        );
+    }
 }

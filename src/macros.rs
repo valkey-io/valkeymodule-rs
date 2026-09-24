@@ -558,16 +558,10 @@ macro_rules! valkey_module_auth {
                         }
                     }
 
-                    #[cfg(not(any(
-                        feature = "min-redis-compatibility-version-7-2",
-                        feature = "min-valkey-compatibility-version-8-0"
-                    )))]
+                    #[cfg(not(feature = "min-redis-compatibility-version-7-2"))]
                     compile_error!("Auth callbacks require Redis 7.2 or Valkey 7.2 and above");
 
-                    #[cfg(any(
-                        feature = "min-redis-compatibility-version-7-2",
-                        feature = "min-valkey-compatibility-version-8-0"
-                    ))]
+                    #[cfg(feature = "min-redis-compatibility-version-7-2")]
                     unsafe {
                         $crate::raw::RedisModule_RegisterAuthCallback.expect("RedisModule_RegisterAuthCallback should exist on Redis/Valkey 7.2 and above")($ctx, Some([<__do_auth_ $module_name _ $auth_callback>]));
                     }

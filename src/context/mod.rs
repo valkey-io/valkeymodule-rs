@@ -58,10 +58,7 @@ pub struct CallOptions {
 }
 
 #[derive(Clone)]
-#[cfg(all(any(
-    feature = "min-valkey-compatibility-version-8-0",
-    feature = "min-redis-compatibility-version-7-2"
-)))]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 pub struct BlockingCallOptions {
     options: CString,
 }
@@ -143,10 +140,7 @@ impl CallOptionsBuilder {
     /// Construct a CallOption object that can be used to run commands using call_blocking.
     /// The commands can be either blocking or none blocking. In case the command are blocking
     /// (like `blpop`) a [FutureCallReply] will be returned.
-    #[cfg(all(any(
-        feature = "min-valkey-compatibility-version-8-0",
-        feature = "min-redis-compatibility-version-7-2"
-    )))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     pub fn build_blocking(mut self) -> BlockingCallOptions {
         self.add_flag("K");
         BlockingCallOptions {
@@ -459,10 +453,7 @@ impl Context {
     }
 
     /// Same as [call_ext] but also allow to perform blocking commands like BLPOP.
-    #[cfg(all(any(
-        feature = "min-valkey-compatibility-version-8-0",
-        feature = "min-redis-compatibility-version-7-2"
-    )))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     pub fn call_blocking<
         'ctx,
         'a,
@@ -508,10 +499,7 @@ impl Context {
         unsafe { raw::RedisModule_AddACLCategory.unwrap()(self.ctx, acl_flags.as_ptr()).into() }
     }
 
-    #[cfg(all(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ),))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     pub fn set_acl_category(
         &self,
         command_name: *const c_char,

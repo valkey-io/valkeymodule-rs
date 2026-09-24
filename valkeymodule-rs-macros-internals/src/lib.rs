@@ -134,14 +134,17 @@ pub fn api(item: TokenStream) -> TokenStream {
         }
     );
 
-    let (all_lower_features, all_upper_features) = get_feature_flags(minimum_require_version);
+    let (all_lower_features, required_feature, all_higher_features) =
+        get_feature_flags(minimum_require_version);
 
     let gen = quote! {
         cfg_if::cfg_if! {
-            if #[cfg(any(#(#all_lower_features, )*))] {
-                #old_ver_func
-            } else if #[cfg(any(#(#all_upper_features, )*))] {
+            if #[cfg(#required_feature)] {
                 #new_ver_func
+            } else if #[cfg(any(#(#all_higher_features, )*))] {
+                #new_ver_func
+            } else if #[cfg(any(#(#all_lower_features, )*))] {
+                #old_ver_func
             } else {
                 compile_error!("min-redis-compatibility-version is not set correctly")
             }
