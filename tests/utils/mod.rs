@@ -108,6 +108,14 @@ impl ChildGuard {
     }
 }
 
+#[derive(Debug)]
+pub(super) enum AuthExpectedResult {
+    Success,
+    Denied,
+    EngineDenied,
+    Aborted,
+}
+
 pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
     let port = get_available_port()?;
     let guard = start_server_with_module(module_name, port)
@@ -120,85 +128,6 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
         _guard: guard,
         connection,
     })
-}
-
-fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
-    let module_path = get_module_path(module_name)?;
-    let data_dir = create_data_dir()?;
-    let port_arg = port.to_string();
-    let data_dir_arg = data_dir
-        .path()
-        .to_str()
-        .context("Valkey data directory is not valid UTF-8")?;
-
-    let args = &[
-        "--port",
-        port_arg.as_str(),
-        "--dir",
-        data_dir_arg,
-        "--dbfilename",
-        "dump.rdb",
-        "--loadmodule",
-        module_path.as_str(),
-        "--enable-debug-command",
-        "yes",
-        "--enable-module-command",
-        "yes",
-    ];
-
-    let (server_name, server_path) = selected_test_server();
-    let child = Command::new(&server_path)
-        .args(args)
-        .current_dir(data_dir.path())
-        .spawn()
-        .with_context(|| {
-            format!(
-                "failed to start {} at {}; run ./setup-integration-servers.sh first",
-                server_name,
-                server_path.display()
-            )
-        });
-    let child = match child {
-        Ok(child) => child,
-        Err(error) => return Err(error.into()),
-    };
-
-    Ok(ChildGuard {
-        name: "server",
-        port,
-        data_dir,
-        child,
-    })
-}
-
-fn selected_test_server() -> (&'static str, PathBuf) {
-    let server = if cfg!(feature = "min-valkey-compatibility-version-9-0") {
-        TEST_SERVERS[3]
-    } else if cfg!(feature = "min-valkey-compatibility-version-8-0") {
-        TEST_SERVERS[2]
-    } else if cfg!(feature = "min-redis-compatibility-version-7-2") {
-        TEST_SERVERS[1]
-    } else {
-        TEST_SERVERS[0]
-    };
-    let engine = server.split_once('-').unwrap().0;
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tmp/integration-servers")
-        .join(server)
-        .join(format!("src/{engine}-server"));
-    (server, path)
-}
-
-fn create_data_dir() -> Result<TempDir> {
-    tempfile::Builder::new()
-        .prefix("valkeymodule-rs-")
-        .tempdir()
-        .context("failed to create Valkey data directory")
-}
-
-fn get_available_port() -> Result<u16> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    Ok(listener.local_addr()?.port())
 }
 
 pub(super) fn get_module_path(module_name: &str) -> Result<String> {
@@ -247,14 +176,6 @@ pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub(super) enum AuthExpectedResult {
-    Success,
-    Denied,
-    EngineDenied,
-    Aborted,
 }
 
 // Helper function to validate the authentication
@@ -367,28 +288,6 @@ pub(super) fn wait_for_client_connection_count(
     }
 }
 
-fn wait_for_blocked_client_count(
-    con: &mut redis::Connection,
-    predicate: impl Fn(i32) -> bool,
-    expected: &str,
-) -> Result<()> {
-    let start = Instant::now();
-
-    loop {
-        let blocked_clients = check_blocked_clients(con)?;
-        if predicate(blocked_clients) {
-            return Ok(());
-        }
-        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
-            anyhow::bail!(
-                "timed out waiting for {expected}; last observed {blocked_clients} blocked clients"
-            );
-        }
-
-        std::thread::sleep(EVENT_POLL_INTERVAL);
-    }
-}
-
 pub(super) fn wait_for_replica_change_events(
     con: &mut redis::Connection,
     expected: i64,
@@ -490,6 +389,107 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
             anyhow::bail!(
                 "timed out waiting for expected contents in {}",
                 path.display()
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+    let module_path = get_module_path(module_name)?;
+    let data_dir = create_data_dir()?;
+    let port_arg = port.to_string();
+    let data_dir_arg = data_dir
+        .path()
+        .to_str()
+        .context("Valkey data directory is not valid UTF-8")?;
+
+    let args = &[
+        "--port",
+        port_arg.as_str(),
+        "--dir",
+        data_dir_arg,
+        "--dbfilename",
+        "dump.rdb",
+        "--loadmodule",
+        module_path.as_str(),
+        "--enable-debug-command",
+        "yes",
+        "--enable-module-command",
+        "yes",
+    ];
+
+    let (server_name, server_path) = selected_test_server();
+    let child = Command::new(&server_path)
+        .args(args)
+        .current_dir(data_dir.path())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to start {} at {}; run ./setup-integration-servers.sh first",
+                server_name,
+                server_path.display()
+            )
+        });
+    let child = match child {
+        Ok(child) => child,
+        Err(error) => return Err(error.into()),
+    };
+
+    Ok(ChildGuard {
+        name: "server",
+        port,
+        data_dir,
+        child,
+    })
+}
+
+fn selected_test_server() -> (&'static str, PathBuf) {
+    let server = if cfg!(feature = "min-valkey-compatibility-version-9-0") {
+        TEST_SERVERS[3]
+    } else if cfg!(feature = "min-valkey-compatibility-version-8-0") {
+        TEST_SERVERS[2]
+    } else if cfg!(feature = "min-redis-compatibility-version-7-2") {
+        TEST_SERVERS[1]
+    } else {
+        TEST_SERVERS[0]
+    };
+    let engine = server.split_once('-').unwrap().0;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tmp/integration-servers")
+        .join(server)
+        .join(format!("src/{engine}-server"));
+    (server, path)
+}
+
+fn create_data_dir() -> Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix("valkeymodule-rs-")
+        .tempdir()
+        .context("failed to create Valkey data directory")
+}
+
+fn get_available_port() -> Result<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    Ok(listener.local_addr()?.port())
+}
+
+fn wait_for_blocked_client_count(
+    con: &mut redis::Connection,
+    predicate: impl Fn(i32) -> bool,
+    expected: &str,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let blocked_clients = check_blocked_clients(con)?;
+        if predicate(blocked_clients) {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected}; last observed {blocked_clients} blocked clients"
             );
         }
 
