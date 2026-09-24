@@ -1899,3 +1899,30 @@ fn test_swapdb_event() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_borrowed_strings() -> Result<()> {
+    let port: u16 = 6529;
+    let _guards = vec![start_valkey_server_with_module("borrowed_strings", port)
+        .with_context(|| FAILED_TO_START_SERVER)?];
+    let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+
+    // Bytes containing embedded NULs would panic if routed through
+    // `Context::create_string`'s `CString::new`, but the `_from_slice`
+    // variant accepts arbitrary bytes.
+    let with_nul: &[u8] = &[b'a', 0, b'b', 0, b'c'];
+
+    let res: Vec<u8> = redis::cmd("borrowed_strings.echo_string")
+        .arg(with_nul)
+        .arg(&[0u8, 0, 0][..])
+        .query(&mut con)?;
+    assert_eq!(res, [b'a', 0, b'b', 0, b'c', 0, 0, 0]);
+
+    let res: Vec<u8> = redis::cmd("borrowed_strings.echo_slice")
+        .arg(with_nul)
+        .arg(&[0u8, 0, 0][..])
+        .query(&mut con)?;
+    assert_eq!(res, [b'a', 0, b'b', 0, b'c', 0, 0, 0]);
+
+    Ok(())
+}

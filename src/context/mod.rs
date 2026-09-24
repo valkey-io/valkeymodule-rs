@@ -502,6 +502,28 @@ impl Context {
         unsafe { raw::RedisModule_ReplyWithError.unwrap()(self.ctx, msg.as_ptr()).into() }
     }
 
+    /// Reply with a borrowed byte slice, without copying into a [`ValkeyValue`].
+    ///
+    /// Use this on hot paths where you already hold a `&[u8]` (for example a
+    /// slice borrowed from an open key) and do not want to allocate a `Vec`
+    /// just to construct [`ValkeyValue::StringBuffer`]. Wraps
+    /// [`ValkeyModule_ReplyWithStringBuffer`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_ReplyWithStringBuffer).
+    #[allow(clippy::must_use_candidate)]
+    pub fn reply_with_slice(&self, s: &[u8]) -> raw::Status {
+        raw::reply_with_string_buffer(self.ctx, s.as_ptr().cast::<c_char>(), s.len())
+    }
+
+    /// Reply with a borrowed [`ValkeyString`], without cloning it.
+    ///
+    /// [`Self::reply`] with [`ValkeyValue::BulkValkeyString`] requires owning
+    /// the `ValkeyString`. When the value is borrowed (for example from an
+    /// open key) this method hands the pointer straight to the C API. Wraps
+    /// [`ValkeyModule_ReplyWithString`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_ReplyWithString).
+    #[allow(clippy::must_use_candidate)]
+    pub fn reply_with_valkey_string(&self, s: &ValkeyString) -> raw::Status {
+        raw::reply_with_string(self.ctx, s.inner)
+    }
+
     #[cfg(feature = "min-valkey-compatibility-version-8-0")]
     pub fn add_acl_category(&self, s: &str) -> raw::Status {
         let acl_flags = Self::str_as_legal_resp_string(s);
@@ -688,6 +710,18 @@ impl Context {
     #[must_use]
     pub fn create_string<T: Into<Vec<u8>>>(&self, s: T) -> ValkeyString {
         ValkeyString::create(NonNull::new(self.ctx), s)
+    }
+
+    /// Binary-safe variant of [`Self::create_string`].
+    ///
+    /// [`Self::create_string`] routes its input through `CString::new`, which
+    /// allocates and panics on inputs containing a NUL byte. This method
+    /// hands the slice straight to
+    /// [`ValkeyModule_CreateString`](https://valkey.io/topics/modules-api-ref/#ValkeyModule_CreateString),
+    /// so any byte sequence is accepted unchanged.
+    #[must_use]
+    pub fn create_string_from_slice(&self, s: &[u8]) -> ValkeyString {
+        ValkeyString::create_from_slice(self.ctx, s)
     }
 
     #[must_use]
