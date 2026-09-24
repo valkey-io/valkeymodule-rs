@@ -60,33 +60,10 @@ clone_and_build() {
 
 mkdir -p "${ENGINE_ROOT}"
 
-clone_and_build \
-    "redis-7.0" \
-    "https://github.com/redis/redis.git" \
-    "7.0" \
-    "src/redis-server"
-
-clone_and_build \
-    "valkey-7.2" \
-    "https://github.com/valkey-io/valkey.git" \
-    "7.2" \
-    "src/valkey-server"
-
-clone_and_build \
-    "valkey-8.1" \
-    "https://github.com/valkey-io/valkey.git" \
-    "8.1" \
-    "src/valkey-server"
-
-clone_and_build \
-    "valkey-9.1" \
-    "https://github.com/valkey-io/valkey.git" \
-    "9.1" \
-    "src/valkey-server"
+while IFS='|' read -r name repository branch features; do
+    [[ -z "$name" || "$name" == \#* ]] && continue
+    clone_and_build "$name" "$repository" "$branch" "src/${name%%-*}-server"
+done < "${SCRIPT_DIR}/integration-servers.conf"
 
 echo
-echo "Integration servers are ready under ${ENGINE_ROOT}:"
-echo "  Redis 7.0:  ${ENGINE_ROOT}/redis-7.0/src/redis-server"
-echo "  Valkey 7.2: ${ENGINE_ROOT}/valkey-7.2/src/valkey-server"
-echo "  Valkey 8.1: ${ENGINE_ROOT}/valkey-8.1/src/valkey-server"
-echo "  Valkey 9.1: ${ENGINE_ROOT}/valkey-9.1/src/valkey-server"
+echo "Integration servers are ready under ${ENGINE_ROOT}"

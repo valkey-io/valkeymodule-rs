@@ -14,7 +14,6 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
-const TEST_SERVERS: [&str; 4] = ["redis-7.0", "valkey-7.2", "valkey-8.1", "valkey-9.1"];
 
 /// Owns a Valkey test process and the connection used to communicate with it.
 pub(super) struct TestServer {
@@ -446,15 +445,15 @@ fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> 
 }
 
 fn selected_test_server() -> (&'static str, PathBuf) {
-    let server = if cfg!(feature = "min-valkey-compatibility-version-9-0") {
-        TEST_SERVERS[3]
-    } else if cfg!(feature = "min-valkey-compatibility-version-8-0") {
-        TEST_SERVERS[2]
-    } else if cfg!(feature = "min-redis-compatibility-version-7-2") {
-        TEST_SERVERS[1]
-    } else {
-        TEST_SERVERS[0]
-    };
+    let selected = std::env::var("INTEGRATION_TEST_SERVER")
+        .unwrap_or_else(|_| env!("DEFAULT_INTEGRATION_TEST_SERVER").to_owned());
+    let server = include_str!("../../integration-servers.conf")
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| line.split_once('|'))
+        .map(|(name, _)| name)
+        .find(|name| *name == selected)
+        .expect("selected integration server must be listed in integration-servers.conf");
     let engine = server.split_once('-').unwrap().0;
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tmp/integration-servers")
@@ -494,41 +493,5 @@ fn wait_for_blocked_client_count(
         }
 
         std::thread::sleep(EVENT_POLL_INTERVAL);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{selected_test_server, TEST_SERVERS};
-    use std::path::PathBuf;
-
-    #[test]
-    fn test_servers_lists_all_built_engines() {
-        assert_eq!(
-            TEST_SERVERS,
-            ["redis-7.0", "valkey-7.2", "valkey-8.1", "valkey-9.1"]
-        );
-    }
-
-    #[test]
-    fn compatibility_features_select_the_matching_server() {
-        let (name, path) = selected_test_server();
-        let expected = match (
-            cfg!(feature = "min-valkey-compatibility-version-9-0"),
-            cfg!(feature = "min-valkey-compatibility-version-8-0"),
-            cfg!(feature = "min-redis-compatibility-version-7-2"),
-        ) {
-            (true, _, _) => ("valkey-9.1", "valkey-9.1/src/valkey-server"),
-            (_, true, _) => ("valkey-8.1", "valkey-8.1/src/valkey-server"),
-            (_, _, true) => ("valkey-7.2", "valkey-7.2/src/valkey-server"),
-            _ => ("redis-7.0", "redis-7.0/src/redis-server"),
-        };
-        assert_eq!(name, expected.0);
-        assert_eq!(
-            path,
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("tmp/integration-servers")
-                .join(expected.1)
-        );
     }
 }

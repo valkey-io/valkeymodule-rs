@@ -18,7 +18,7 @@ use utils::{
     wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
 };
 
-const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
+const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to server";
 const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 

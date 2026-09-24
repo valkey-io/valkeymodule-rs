@@ -47,6 +47,26 @@ impl ParseCallbacks for ValkeyModuleCallback {
 }
 
 fn main() {
+    // Share the integration engine matrix with the setup and test scripts.
+    println!("cargo:rerun-if-changed=integration-servers.conf");
+    let mut selected = None;
+    for line in include_str!("integration-servers.conf").lines() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let fields: Vec<_> = line.split('|').collect();
+        assert_eq!(fields.len(), 4, "invalid integration server row: {line}");
+        let feature = fields[3].split(',').next().unwrap();
+        let feature_env = format!("CARGO_FEATURE_{}", feature.replace('-', "_").to_uppercase());
+        if selected.is_none() || env::var_os(feature_env).is_some() {
+            selected = Some(fields[0]);
+        }
+    }
+    println!(
+        "cargo:rustc-env=DEFAULT_INTEGRATION_TEST_SERVER={}",
+        selected.expect("integration server matrix must not be empty")
+    );
+
     // Build a Valkey pseudo-library so that we have symbols that we can link
     // against while building Rust code.
     //
