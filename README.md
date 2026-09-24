@@ -242,3 +242,41 @@ default = []
 ```sh
 cargo build --release --features use-redismodule-api
 ```
+
+# Running integration tests
+
+Run these commands from the repository root. First, build the local Redis and Valkey servers:
+
+```sh
+./setup-integration-servers.sh
+```
+
+The setup script clones the Redis `7.0` branch and Valkey `7.2`, `8.1`, and `9.1` branches from GitHub into separate directories under `tmp/integration-servers`. Each engine is compiled with `make noopt BUILD_TLS=yes MALLOC=jemalloc`. You need Git, a C build toolchain, Make, and OpenSSL development files; `test.sh` also requires Zsh.
+
+Rerunning setup pulls each branch with `git pull --ff-only` and rebuilds when the commit changes, the build marker is missing, or the executable is missing. Existing builds are reused otherwise. Setup only prepares the engines; regular test runs do not download or compile them.
+
+Run the full test suite with:
+
+```sh
+./test.sh
+```
+
+The script runs the test-shim unit tests, then builds the example modules and runs integration tests for each row below in order, and finally runs documentation tests. Each integration build uses `--release --no-default-features` with the listed features.
+
+| Engine | Executable under `tmp/integration-servers/` | Cargo features |
+| --- | --- | --- |
+| Redis 7.0 | `redis-7.0/src/redis-server` | `min-redis-compatibility-version-7-0,use-redismodule-api` |
+| Valkey 7.2 | `valkey-7.2/src/valkey-server` | `min-redis-compatibility-version-7-2` |
+| Valkey 8.1 | `valkey-8.1/src/valkey-server` | `min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2` |
+| Valkey 9.1 | `valkey-9.1/src/valkey-server` | `min-valkey-compatibility-version-9-0,min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2` |
+
+The test helpers select the executable from the enabled compatibility features, giving newer versions priority. Tests run sequentially with `--test-threads=1`; server instances use separate temporary data directories and available local ports, and are shut down after use. Feature-gated tests run only in applicable rows, so test counts differ between engines.
+
+To run one integration test on Valkey 7.2, build its example modules with matching features first:
+
+```sh
+cargo build --examples --release --no-default-features --features min-redis-compatibility-version-7-2
+cargo test --test integration --release --no-default-features --features min-redis-compatibility-version-7-2 test_defrag -- --exact --test-threads=1
+```
+
+Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine. The `cargo build-examples` and `cargo test-integration` aliases target only Valkey 8.1; use `./test.sh` for all four versions.
