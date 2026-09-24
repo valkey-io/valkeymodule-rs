@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly ENGINE_ROOT="${SCRIPT_DIR}/tmp/integration-servers"
+readonly BUILD_MARKER=".valkeymodule-rs-build-noopt-tls-jemalloc"
+
+clone_and_build() {
+    local name="$1"
+    local repository="$2"
+    local branch="$3"
+    local server_binary="$4"
+    local checkout_dir="${ENGINE_ROOT}/${name}"
+    local marker_path="${checkout_dir}/${BUILD_MARKER}"
+
+    if [[ ! -d "${checkout_dir}/.git" ]]; then
+        if [[ -e "${checkout_dir}" ]]; then
+            echo "error: ${checkout_dir} exists but is not a Git checkout" >&2
+            return 1
+        fi
+
+        git clone --depth 1 --branch "${branch}" "${repository}" "${checkout_dir}"
+    else
+        local current_branch
+        current_branch="$(git -C "${checkout_dir}" branch --show-current)"
+        if [[ "${current_branch}" != "${branch}" ]]; then
+            echo "error: ${checkout_dir} is on branch ${current_branch}, expected ${branch}" >&2
+            return 1
+        fi
+
+        echo "${name}: checking branch ${branch} for updates"
+        git -C "${checkout_dir}" pull --ff-only origin "${branch}"
+    fi
+
+    local current_commit
+    current_commit="$(git -C "${checkout_dir}" rev-parse HEAD)"
+
+    local built_commit=""
+    if [[ -f "${marker_path}" ]]; then
+        built_commit="$(<"${marker_path}")"
+    fi
+
+    if [[ "${built_commit}" == "${current_commit}" && -x "${checkout_dir}/${server_binary}" ]]; then
+        echo "${name}: commit ${current_commit} is already built (${checkout_dir}/${server_binary})"
+        return
+    fi
+
+    echo "${name}: building branch ${branch}"
+    make -C "${checkout_dir}" noopt BUILD_TLS=yes MALLOC=jemalloc
+
+    if [[ ! -x "${checkout_dir}/${server_binary}" ]]; then
+        echo "error: build did not produce ${checkout_dir}/${server_binary}" >&2
+        return 1
+    fi
+
+    printf '%s\n' "${current_commit}" > "${marker_path}"
+    echo "${name}: built commit ${current_commit} (${checkout_dir}/${server_binary})"
+}
+
+mkdir -p "${ENGINE_ROOT}"
+
+clone_and_build \
+    "redis-7.0" \
+    "https://github.com/redis/redis.git" \
+    "7.0" \
+    "src/redis-server"
+
+clone_and_build \
+    "valkey-7.2" \
+    "https://github.com/valkey-io/valkey.git" \
+    "7.2" \
+    "src/valkey-server"
+
+clone_and_build \
+    "valkey-8.1" \
+    "https://github.com/valkey-io/valkey.git" \
+    "8.1" \
+    "src/valkey-server"
+
+clone_and_build \
+    "valkey-9.1" \
+    "https://github.com/valkey-io/valkey.git" \
+    "9.1" \
+    "src/valkey-server"
+
+echo
+echo "Integration servers are ready under ${ENGINE_ROOT}:"
+echo "  Redis 7.0:  ${ENGINE_ROOT}/redis-7.0/src/redis-server"
+echo "  Valkey 7.2: ${ENGINE_ROOT}/valkey-7.2/src/valkey-server"
+echo "  Valkey 8.1: ${ENGINE_ROOT}/valkey-8.1/src/valkey-server"
+echo "  Valkey 9.1: ${ENGINE_ROOT}/valkey-9.1/src/valkey-server"
