@@ -14,6 +14,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
+const TEST_SERVERS: [&str; 4] = ["redis-7.0", "valkey-7.2", "valkey-8.1", "valkey-9.1"];
 
 /// Owns a Valkey test process and the connection used to communicate with it.
 pub(super) struct TestServer {
@@ -109,7 +110,7 @@ impl ChildGuard {
 
 pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
     let port = get_available_port()?;
-    let guard = start_valkey_server_with_module(module_name, port)
+    let guard = start_server_with_module(module_name, port)
         .with_context(|| "failed to start valkey server")?;
     let connection =
         get_valkey_connection(port).with_context(|| "failed to connect to valkey server")?;
@@ -121,7 +122,7 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
     })
 }
 
-fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let module_path = get_module_path(module_name)?;
     let data_dir = create_data_dir()?;
     let port_arg = port.to_string();
@@ -145,10 +146,18 @@ fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<Child
         "yes",
     ];
 
-    let child = Command::new("valkey-server")
+    let (server_name, server_path) = selected_test_server();
+    let child = Command::new(&server_path)
         .args(args)
         .current_dir(data_dir.path())
-        .spawn();
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to start {} at {}; run ./setup-integration-servers.sh first",
+                server_name,
+                server_path.display()
+            )
+        });
     let child = match child {
         Ok(child) => child,
         Err(error) => return Err(error.into()),
@@ -160,6 +169,24 @@ fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<Child
         data_dir,
         child,
     })
+}
+
+fn selected_test_server() -> (&'static str, PathBuf) {
+    let server = if cfg!(feature = "min-valkey-compatibility-version-9-0") {
+        TEST_SERVERS[3]
+    } else if cfg!(feature = "min-valkey-compatibility-version-8-0") {
+        TEST_SERVERS[2]
+    } else if cfg!(feature = "min-redis-compatibility-version-7-2") {
+        TEST_SERVERS[1]
+    } else {
+        TEST_SERVERS[0]
+    };
+    let engine = server.split_once('-').unwrap().0;
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tmp/integration-servers")
+        .join(server)
+        .join(format!("src/{engine}-server"));
+    (server, path)
 }
 
 fn create_data_dir() -> Result<TempDir> {
@@ -187,14 +214,13 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
         "debug"
     };
 
-    let module_path: PathBuf = [
-        std::env::current_dir()?,
-        PathBuf::from(format!(
-            "target/{profile}/examples/lib{module_name}.{extension}"
-        )),
-    ]
-    .iter()
-    .collect();
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::current_dir()?.join("target"));
+    let module_path = target_dir
+        .join(profile)
+        .join("examples")
+        .join(format!("lib{module_name}.{extension}"));
 
     assert!(fs::metadata(&module_path)
         .with_context(|| format!("Loading valkey module: {}", module_path.display()))?
@@ -204,7 +230,7 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
     Ok(module_path)
 }
 
-// Get connection to Redis
+// Get connection
 pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
     let client = redis::Client::open(format!("redis://127.0.0.1:{port}/"))?;
     loop {
@@ -468,5 +494,41 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
         }
 
         std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{selected_test_server, TEST_SERVERS};
+    use std::path::PathBuf;
+
+    #[test]
+    fn test_servers_lists_all_built_engines() {
+        assert_eq!(
+            TEST_SERVERS,
+            ["redis-7.0", "valkey-7.2", "valkey-8.1", "valkey-9.1"]
+        );
+    }
+
+    #[test]
+    fn compatibility_features_select_the_matching_server() {
+        let (name, path) = selected_test_server();
+        let expected = match (
+            cfg!(feature = "min-valkey-compatibility-version-9-0"),
+            cfg!(feature = "min-valkey-compatibility-version-8-0"),
+            cfg!(feature = "min-redis-compatibility-version-7-2"),
+        ) {
+            (true, _, _) => ("valkey-9.1", "valkey-9.1/src/valkey-server"),
+            (_, true, _) => ("valkey-8.1", "valkey-8.1/src/valkey-server"),
+            (_, _, true) => ("valkey-7.2", "valkey-7.2/src/valkey-server"),
+            _ => ("redis-7.0", "redis-7.0/src/redis-server"),
+        };
+        assert_eq!(name, expected.0);
+        assert_eq!(
+            path,
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("tmp/integration-servers")
+                .join(expected.1)
+        );
     }
 }

@@ -7,12 +7,15 @@ use anyhow::Result;
 use redis::Commands;
 use redis::Value;
 use redis::{RedisError, RedisResult};
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 use utils::{
-    check_auth, get_valkey_connection, setup_acl_users, start_server_w_module_get_connection,
-    wait_for_blocked_clients, wait_for_client_connection_count, wait_for_event_count,
-    wait_for_event_count_greater_than, wait_for_file_contents, wait_for_master_link_state,
-    wait_for_no_blocked_clients, wait_for_repl_async_load_events, wait_for_replica_change_events,
+    check_auth, setup_acl_users, wait_for_blocked_clients, wait_for_no_blocked_clients,
     AuthExpectedResult,
+};
+use utils::{
+    get_valkey_connection, start_server_w_module_get_connection, wait_for_client_connection_count,
+    wait_for_event_count, wait_for_event_count_greater_than, wait_for_file_contents,
+    wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to valkey server";
@@ -412,6 +415,7 @@ fn test_stream_reader() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call() -> Result<()> {
     let mut con = start_server_w_module_get_connection("call")?;
 
@@ -436,6 +440,7 @@ fn test_ctx_flags() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_get_current_user() -> Result<()> {
     let mut con = start_server_w_module_get_connection("acl")?;
 
@@ -447,6 +452,7 @@ fn test_get_current_user() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_verify_acl_on_user() -> Result<()> {
     let mut con = start_server_w_module_get_connection("acl")?;
 
@@ -482,6 +488,7 @@ fn test_verify_acl_on_user() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_key_space_notifications() -> Result<()> {
     let mut con = start_server_w_module_get_connection("events")?;
 
@@ -530,6 +537,7 @@ fn test_context_mutex() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event() -> Result<()> {
     let mut con = start_server_w_module_get_connection("server_events")?;
 
@@ -616,6 +624,7 @@ fn test_server_event() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event_shutdown() -> Result<()> {
     let mut con = start_server_w_module_get_connection("server_events")?;
     let shutdown_log_path = con.data_dir().join("shutdown_log.txt");
@@ -652,6 +661,7 @@ fn test_server_event_shutdown() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_client_change_event() -> Result<()> {
     let mut con = start_server_w_module_get_connection("server_events")?;
     let con2: redis::Connection =
@@ -861,6 +871,7 @@ fn test_valkey_value_derive() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call_blocking() -> Result<()> {
     let mut con = start_server_w_module_get_connection("call")?;
 
@@ -880,6 +891,7 @@ fn test_call_blocking() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_open_key_with_flags() -> Result<()> {
     let mut con = start_server_w_module_get_connection("open_key_with_flags")?;
 
@@ -1149,6 +1161,7 @@ fn test_debug() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_acl_categories() -> Result<()> {
     let mut con = start_server_w_module_get_connection("acl")?;
     // Get all commands that have the ACL read
@@ -1184,6 +1197,7 @@ fn test_acl_categories() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_defrag() -> Result<()> {
     let mut con = start_server_w_module_get_connection("data_type")?;
     // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
@@ -1216,12 +1230,18 @@ fn test_defrag() -> Result<()> {
             .query(&mut con)
             .with_context(|| "failed to run alloc.set")?;
     }
-    let info: String = redis::cmd("info")
-        .arg("stats")
-        .query(&mut con)
-        .with_context(|| "failed to run info stats")?;
-    assert!(!(info.contains("active_defrag_misses:0") || !(info.contains("active_defrag_hits:0"))));
-    assert!(!(info.contains("total_active_defrag_time:0")));
+    let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
+    loop {
+        let info: redis::InfoDict = redis::cmd("info").arg("stats").query(&mut con)?;
+        if ["active_defrag_hits", "active_defrag_misses"]
+            .iter()
+            .any(|key| info.get::<u64>(key).unwrap_or(0) > 0)
+        {
+            break;
+        }
+        assert!(Instant::now() < deadline, "active defrag did not run");
+        thread::sleep(EVENT_POLL_INTERVAL);
+    }
     // Check that the getting the values that have been defragged doesn't crash and that the return value is what we expect
     for i in 1..1000 {
         let key = format!("test_key_{}", i);
@@ -1291,6 +1311,7 @@ fn test_client() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_filter() -> Result<()> {
     let mut con = start_server_w_module_get_connection("filter1")?;
     // load filter2 module
@@ -1331,6 +1352,7 @@ fn test_filter() -> Result<()> {
 // - Users can be created and authenticated successfully with correct credentials
 // - Authentication fails when incorrect passwords are provided
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_non_blocking_auth_callbacks() -> Result<()> {
     let mut con = start_server_w_module_get_connection("auth")?;
 
@@ -1385,6 +1407,7 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 // - Successful and failed authentications work as expected
 // - Authentication can be aborted
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_blocking_auth_callbacks() -> Result<()> {
     let server = start_server_w_module_get_connection("auth")?;
     let port = server.port;
@@ -1483,6 +1506,7 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 // - Callbacks are not mixed up even when faster authentications (auth1)
 //   complete while slower ones (auth2 with delay) are still processing
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
     let mut setup_con = start_server_w_module_get_connection("auth")?;
     let port = setup_con.port;
@@ -1611,6 +1635,7 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 // This simulates real-world scenarios where clients may disconnect during authentication,
 // such as network issues or client termination.
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_disconnect_client_during_blocking_auth() -> Result<()> {
     let server = start_server_w_module_get_connection("auth")?;
     let port = server.port;
@@ -1777,6 +1802,7 @@ fn test_crontab() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_master_link_change_event() -> Result<()> {
     let mut primary_con = start_server_w_module_get_connection("server_events")?;
     let primary_port = primary_con.port;
@@ -1816,6 +1842,7 @@ fn test_master_link_change_event() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_fork_child_event() -> Result<()> {
     let mut con = start_server_w_module_get_connection("server_events")?;
 
@@ -1829,6 +1856,7 @@ fn test_fork_child_event() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_replica_change_event() -> Result<()> {
     let mut primary_con = start_server_w_module_get_connection("server_events")?;
     let primary_port = primary_con.port;
@@ -1853,6 +1881,7 @@ fn test_replica_change_event() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_repl_asnc_load_event() -> Result<()> {
     let mut primary_con = start_server_w_module_get_connection("server_events")?;
     let primary_port = primary_con.port;
@@ -1882,6 +1911,7 @@ fn test_repl_asnc_load_event() -> Result<()> {
 }
 
 #[test]
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_swapdb_event() -> Result<()> {
     let mut con = start_server_w_module_get_connection("server_events")?;
 
