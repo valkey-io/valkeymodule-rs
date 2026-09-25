@@ -85,10 +85,12 @@ crate-type = ["cdylib"]
 [[example]]
 name = "server_events"
 crate-type = ["cdylib"]
+required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
 name = "events"
 crate-type = ["cdylib"]
+required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
 name = "test_helper"
@@ -129,6 +131,7 @@ crate-type = ["cdylib"]
 [[example]]
 name = "open_key_with_flags"
 crate-type = ["cdylib"]
+required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
 name = "expire"
@@ -141,10 +144,12 @@ crate-type = ["cdylib"]
 [[example]]
 name = "filter1"
 crate-type = ["cdylib"]
+required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
 name = "filter2"
 crate-type = ["cdylib"]
+required-features = ["min-redis-compatibility-version-7-2"]
 
 [[example]]
 name = "preload"
@@ -180,7 +185,7 @@ redis = "0.28"
 lazy_static = "1"
 tempfile = "3"
 valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.1.14" }
-valkey-module = { path = "./", default-features = false, features = ["min-valkey-compatibility-version-8-0", "min-redis-compatibility-version-7-2"] }
+valkey-module = { path = "./", default-features = false }
 cron = "0.15.0"
 chrono = "0.4.41"
 dashmap = "6.1.0"

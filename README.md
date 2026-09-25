@@ -242,3 +242,38 @@ default = []
 ```sh
 cargo build --release --features use-redismodule-api
 ```
+
+# Running integration tests
+
+Run these commands from the repository root. First, build the local Redis and Valkey servers:
+
+```sh
+./setup-integration-servers.sh
+```
+
+The setup script clones the repositories and branches listed in [integration-servers.conf](integration-servers.conf) into separate directories under `tmp/integration-servers`. Each engine is compiled with `make noopt BUILD_TLS=yes MALLOC=jemalloc`. You need Git, a C build toolchain, Make, and OpenSSL development files; `test.sh` also requires Zsh.
+
+Rerunning setup pulls each branch with `git pull --ff-only` and rebuilds when the commit changes, the build marker is missing, or the executable is missing. Existing builds are reused otherwise. Setup only prepares the engines; regular test runs do not download or compile them.
+
+Run the full test suite with:
+
+```sh
+./test.sh
+```
+
+The script runs the test-shim unit tests, then builds the example modules and runs integration tests for each row in [integration-servers.conf](integration-servers.conf) in order, and finally runs documentation tests. Each integration build uses `--release --no-default-features` with that row's features.
+
+For the matrix format, engine-selection rules, and instructions for adding versions, see the comments in [integration-servers.conf](integration-servers.conf).
+
+Direct Cargo runs with default features select Valkey 7.2. Redis servers are eligible only when `use-redismodule-api` is enabled; an incompatible `INTEGRATION_TEST_SERVER` override returns an error before starting the server. Build both the example modules and integration tests with matching features, including `use-redismodule-api` when targeting Redis. Valkey supports either API mode.
+
+Tests run sequentially with `--test-threads=1`; server instances use separate temporary data directories and available local ports, and are shut down after use. Feature-gated tests run only in applicable rows, so test counts differ between engines.
+
+To run one integration test on Valkey 7.2, build its example modules with matching features first:
+
+```sh
+cargo build --examples --release --no-default-features --features min-redis-compatibility-version-7-2
+cargo test --test integration --release --no-default-features --features min-redis-compatibility-version-7-2 test_defrag -- --exact --test-threads=1
+```
+
+Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine. The `cargo build-examples` and `cargo test-integration` aliases target a single configuration defined in [.cargo/config.toml](.cargo/config.toml); use `./test.sh` for the full matrix.
