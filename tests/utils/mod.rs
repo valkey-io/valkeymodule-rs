@@ -154,6 +154,10 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
         .with_context(|| format!("Loading valkey module: {}", module_path.display()))?
         .is_file());
 
+    // The server runs in a temporary directory, so resolve relative target paths here.
+    let module_path = module_path
+        .canonicalize()
+        .with_context(|| format!("Resolving module: {}", module_path.display()))?;
     let module_path = format!("{}", module_path.display());
     Ok(module_path)
 }
@@ -396,6 +400,7 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
 }
 
 fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+    let (server_name, server_path) = selected_test_server()?;
     let module_path = get_module_path(module_name)?;
     let data_dir = create_data_dir()?;
     let port_arg = port.to_string();
@@ -419,7 +424,6 @@ fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> 
         "yes",
     ];
 
-    let (server_name, server_path) = selected_test_server();
     let child = Command::new(&server_path)
         .args(args)
         .current_dir(data_dir.path())
@@ -444,7 +448,7 @@ fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> 
     })
 }
 
-fn selected_test_server() -> (&'static str, PathBuf) {
+fn selected_test_server() -> Result<(&'static str, PathBuf)> {
     let selected = std::env::var("INTEGRATION_TEST_SERVER")
         .unwrap_or_else(|_| env!("DEFAULT_INTEGRATION_TEST_SERVER").to_owned());
     let server = include_str!("../../integration-servers.conf")
@@ -455,11 +459,15 @@ fn selected_test_server() -> (&'static str, PathBuf) {
         .find(|name| *name == selected)
         .expect("selected integration server must be listed in integration-servers.conf");
     let engine = server.split_once('-').unwrap().0;
+    anyhow::ensure!(
+        engine != "redis" || valkey_module::raw::use_redis_module_api(),
+        "integration server {server} requires use-redismodule-api; rebuild both the example modules and integration tests with --features use-redismodule-api, or select a Valkey server"
+    );
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("tmp/integration-servers")
         .join(server)
         .join(format!("src/{engine}-server"));
-    (server, path)
+    Ok((server, path))
 }
 
 fn create_data_dir() -> Result<TempDir> {
@@ -494,4 +502,13 @@ fn wait_for_blocked_client_count(
 
         std::thread::sleep(EVENT_POLL_INTERVAL);
     }
+}
+
+#[test]
+fn automatic_selection_respects_api_mode() {
+    let server = env!("DEFAULT_INTEGRATION_TEST_SERVER");
+    assert!(
+        !server.starts_with("redis-") || valkey_module::raw::use_redis_module_api(),
+        "selected {server} without use-redismodule-api"
+    );
 }

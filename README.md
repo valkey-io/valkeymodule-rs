@@ -265,6 +265,8 @@ The script runs the test-shim unit tests, then builds the example modules and ru
 
 For the matrix format, engine-selection rules, and instructions for adding versions, see the comments in [integration-servers.conf](integration-servers.conf).
 
+Direct Cargo runs with default features select Valkey 7.2. Redis servers are eligible only when `use-redismodule-api` is enabled; an incompatible `INTEGRATION_TEST_SERVER` override returns an error before starting the server. Build both the example modules and integration tests with matching features, including `use-redismodule-api` when targeting Redis. Valkey supports either API mode.
+
 Tests run sequentially with `--test-threads=1`; server instances use separate temporary data directories and available local ports, and are shut down after use. Feature-gated tests run only in applicable rows, so test counts differ between engines.
 
 To run one integration test on Valkey 7.2, build its example modules with matching features first:

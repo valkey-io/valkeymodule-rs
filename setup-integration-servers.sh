@@ -1,5 +1,20 @@
 #!/usr/bin/env bash
 
+# Prepare the Redis and Valkey binaries used by the SDK integration tests.
+# Usage: ./setup-integration-servers.sh
+# Requires Git, Make, a C build toolchain, and OpenSSL development files.
+#
+# Reads repository/branch entries from integration-servers.conf and clones them
+# into tmp/integration-servers/<directory> relative to this script. Builds use
+# make noopt BUILD_TLS=yes MALLOC=jemalloc (unoptimized, with TLS and jemalloc).
+# Existing checkouts must be on the configured branch and are updated with
+# git pull --ff-only. A build is reused when its commit matches the build marker
+# and its server executable exists; otherwise the engine is rebuilt.
+#
+# Add versions in integration-servers.conf, then rerun this script. Setup needs
+# network access to clone or update engines; it does not build SDK examples or
+# run tests. Run ./test.sh afterward to build and test the configured matrix.
+
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
