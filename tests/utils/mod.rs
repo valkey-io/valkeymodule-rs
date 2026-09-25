@@ -107,9 +107,17 @@ impl ChildGuard {
     }
 }
 
+#[derive(Debug)]
+pub(super) enum AuthExpectedResult {
+    Success,
+    Denied,
+    EngineDenied,
+    Aborted,
+}
+
 pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
     let port = get_available_port()?;
-    let guard = start_valkey_server_with_module(module_name, port)
+    let guard = start_server_with_module(module_name, port)
         .with_context(|| "failed to start valkey server")?;
     let connection =
         get_valkey_connection(port).with_context(|| "failed to connect to valkey server")?;
@@ -119,59 +127,6 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
         _guard: guard,
         connection,
     })
-}
-
-fn start_valkey_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
-    let module_path = get_module_path(module_name)?;
-    let data_dir = create_data_dir()?;
-    let port_arg = port.to_string();
-    let data_dir_arg = data_dir
-        .path()
-        .to_str()
-        .context("Valkey data directory is not valid UTF-8")?;
-
-    let args = &[
-        "--port",
-        port_arg.as_str(),
-        "--dir",
-        data_dir_arg,
-        "--dbfilename",
-        "dump.rdb",
-        "--loadmodule",
-        module_path.as_str(),
-        "--enable-debug-command",
-        "yes",
-        "--enable-module-command",
-        "yes",
-    ];
-
-    let child = Command::new("valkey-server")
-        .args(args)
-        .current_dir(data_dir.path())
-        .spawn();
-    let child = match child {
-        Ok(child) => child,
-        Err(error) => return Err(error.into()),
-    };
-
-    Ok(ChildGuard {
-        name: "server",
-        port,
-        data_dir,
-        child,
-    })
-}
-
-fn create_data_dir() -> Result<TempDir> {
-    tempfile::Builder::new()
-        .prefix("valkeymodule-rs-")
-        .tempdir()
-        .context("failed to create Valkey data directory")
-}
-
-fn get_available_port() -> Result<u16> {
-    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
-    Ok(listener.local_addr()?.port())
 }
 
 pub(super) fn get_module_path(module_name: &str) -> Result<String> {
@@ -187,24 +142,27 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
         "debug"
     };
 
-    let module_path: PathBuf = [
-        std::env::current_dir()?,
-        PathBuf::from(format!(
-            "target/{profile}/examples/lib{module_name}.{extension}"
-        )),
-    ]
-    .iter()
-    .collect();
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or(std::env::current_dir()?.join("target"));
+    let module_path = target_dir
+        .join(profile)
+        .join("examples")
+        .join(format!("lib{module_name}.{extension}"));
 
     assert!(fs::metadata(&module_path)
         .with_context(|| format!("Loading valkey module: {}", module_path.display()))?
         .is_file());
 
+    // The server runs in a temporary directory, so resolve relative target paths here.
+    let module_path = module_path
+        .canonicalize()
+        .with_context(|| format!("Resolving module: {}", module_path.display()))?;
     let module_path = format!("{}", module_path.display());
     Ok(module_path)
 }
 
-// Get connection to Redis
+// Get connection
 pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
     let client = redis::Client::open(format!("redis://127.0.0.1:{port}/"))?;
     loop {
@@ -221,14 +179,6 @@ pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub(super) enum AuthExpectedResult {
-    Success,
-    Denied,
-    EngineDenied,
-    Aborted,
 }
 
 // Helper function to validate the authentication
@@ -334,28 +284,6 @@ pub(super) fn wait_for_client_connection_count(
         if start.elapsed() >= EVENT_WAIT_TIMEOUT {
             anyhow::bail!(
                 "timed out waiting for {expected} connected clients; last observed {actual}"
-            );
-        }
-
-        std::thread::sleep(EVENT_POLL_INTERVAL);
-    }
-}
-
-fn wait_for_blocked_client_count(
-    con: &mut redis::Connection,
-    predicate: impl Fn(i32) -> bool,
-    expected: &str,
-) -> Result<()> {
-    let start = Instant::now();
-
-    loop {
-        let blocked_clients = check_blocked_clients(con)?;
-        if predicate(blocked_clients) {
-            return Ok(());
-        }
-        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
-            anyhow::bail!(
-                "timed out waiting for {expected}; last observed {blocked_clients} blocked clients"
             );
         }
 
@@ -469,4 +397,118 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
 
         std::thread::sleep(EVENT_POLL_INTERVAL);
     }
+}
+
+fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+    let (server_name, server_path) = selected_test_server()?;
+    let module_path = get_module_path(module_name)?;
+    let data_dir = create_data_dir()?;
+    let port_arg = port.to_string();
+    let data_dir_arg = data_dir
+        .path()
+        .to_str()
+        .context("Valkey data directory is not valid UTF-8")?;
+
+    let args = &[
+        "--port",
+        port_arg.as_str(),
+        "--dir",
+        data_dir_arg,
+        "--dbfilename",
+        "dump.rdb",
+        "--loadmodule",
+        module_path.as_str(),
+        "--enable-debug-command",
+        "yes",
+        "--enable-module-command",
+        "yes",
+    ];
+
+    let child = Command::new(&server_path)
+        .args(args)
+        .current_dir(data_dir.path())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to start {} at {}; run ./setup-integration-servers.sh first",
+                server_name,
+                server_path.display()
+            )
+        });
+    let child = match child {
+        Ok(child) => child,
+        Err(error) => return Err(error.into()),
+    };
+
+    Ok(ChildGuard {
+        name: "server",
+        port,
+        data_dir,
+        child,
+    })
+}
+
+fn selected_test_server() -> Result<(&'static str, PathBuf)> {
+    let selected = std::env::var("INTEGRATION_TEST_SERVER")
+        .unwrap_or_else(|_| env!("DEFAULT_INTEGRATION_TEST_SERVER").to_owned());
+    let server = include_str!("../../integration-servers.conf")
+        .lines()
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| line.split_once('|'))
+        .map(|(name, _)| name)
+        .find(|name| *name == selected)
+        .expect("selected integration server must be listed in integration-servers.conf");
+    let engine = server.split_once('-').unwrap().0;
+    anyhow::ensure!(
+        engine != "redis" || valkey_module::raw::use_redis_module_api(),
+        "integration server {server} requires use-redismodule-api; rebuild both the example modules and integration tests with --features use-redismodule-api, or select a Valkey server"
+    );
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tmp/integration-servers")
+        .join(server)
+        .join(format!("src/{engine}-server"));
+    Ok((server, path))
+}
+
+fn create_data_dir() -> Result<TempDir> {
+    tempfile::Builder::new()
+        .prefix("valkeymodule-rs-")
+        .tempdir()
+        .context("failed to create Valkey data directory")
+}
+
+fn get_available_port() -> Result<u16> {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0")?;
+    Ok(listener.local_addr()?.port())
+}
+
+fn wait_for_blocked_client_count(
+    con: &mut redis::Connection,
+    predicate: impl Fn(i32) -> bool,
+    expected: &str,
+) -> Result<()> {
+    let start = Instant::now();
+
+    loop {
+        let blocked_clients = check_blocked_clients(con)?;
+        if predicate(blocked_clients) {
+            return Ok(());
+        }
+        if start.elapsed() >= EVENT_WAIT_TIMEOUT {
+            anyhow::bail!(
+                "timed out waiting for {expected}; last observed {blocked_clients} blocked clients"
+            );
+        }
+
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+}
+
+#[test]
+fn automatic_selection_respects_api_mode() {
+    let server = env!("DEFAULT_INTEGRATION_TEST_SERVER");
+    assert!(
+        !server.starts_with("redis-") || valkey_module::raw::use_redis_module_api(),
+        "selected {server} without use-redismodule-api"
+    );
 }

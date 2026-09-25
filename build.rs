@@ -47,6 +47,45 @@ impl ParseCallbacks for ValkeyModuleCallback {
 }
 
 fn main() {
+    // Share the integration engine matrix with the setup and test scripts.
+    // Recompute the default test server whenever the matrix changes.
+    println!("cargo:rerun-if-changed=integration-servers.conf");
+    // Cargo exposes enabled features to build scripts as CARGO_FEATURE_* variables.
+    // Read the API mode explicitly: a Redis compatibility level alone does not
+    // enable RedisModule initialization.
+    let use_redis_api = env::var_os("CARGO_FEATURE_USE_REDISMODULE_API").is_some();
+    let mut selected = None;
+    for line in include_str!("integration-servers.conf").lines() {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // Each row contains: directory | repository | branch | features.
+        let fields: Vec<_> = line.split('|').collect();
+        assert_eq!(fields.len(), 4, "invalid integration server row: {line}");
+        // Redis cannot load modules initialized through ValkeyModule_Init.
+        // Valkey supports both API modes, so it remains eligible in either mode.
+        if fields[0].starts_with("redis-") && !use_redis_api {
+            continue;
+        }
+        // The first feature identifies the row's compatibility level. Translate
+        // its name to Cargo's environment-variable form to check whether it is enabled.
+        let feature = fields[3].split(',').next().unwrap();
+        let feature_env = format!("CARGO_FEATURE_{}", feature.replace('-', "_").to_uppercase());
+        // Keep the first API-compatible row as a fallback. Rows are ordered oldest
+        // to newest, so later feature matches replace earlier choices. With default
+        // features and no Redis API mode, the fallback is currently Valkey 7.2.
+        if selected.is_none() || env::var_os(feature_env).is_some() {
+            selected = Some(fields[0]);
+        }
+    }
+    // Embed the choice in the integration-test binary. INTEGRATION_TEST_SERVER
+    // can override it at runtime; the test harness validates that override's API mode.
+    println!(
+        "cargo:rustc-env=DEFAULT_INTEGRATION_TEST_SERVER={}",
+        selected
+            .expect("integration server matrix has no server compatible with the enabled API mode")
+    );
+
     // Build a Valkey pseudo-library so that we have symbols that we can link
     // against while building Rust code.
     //
