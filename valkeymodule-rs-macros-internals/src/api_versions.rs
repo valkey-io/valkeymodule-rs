@@ -69,3 +69,45 @@ pub(crate) fn get_feature_flags(
             .collect(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::get_feature_flags;
+
+    #[test]
+    fn partitions_features_at_the_minimum_required_version() {
+        // Keep expectations independent of ALL_VERSIONS so missing or misnamed
+        // features are caught as well as incorrect boundary comparisons.
+        let features = [
+            "feature = \"min-redis-compatibility-version-6-0\"",
+            "feature = \"min-redis-compatibility-version-6-2\"",
+            "feature = \"min-redis-compatibility-version-7-0\"",
+            "feature = \"min-redis-compatibility-version-7-2\"",
+            "feature = \"min-valkey-compatibility-version-8-0\"",
+            "feature = \"min-valkey-compatibility-version-9-0\"",
+        ];
+
+        // The split index is the number of features strictly below the minimum.
+        // Versions use major * 10000 + minor * 100 + patch (e.g. 70200 = 7.2.0).
+        for (minimum, split) in [
+            (59999, 0), // Below the oldest version: every feature meets the minimum.
+            (60000, 0), // Exact matches belong to the upper group, including the oldest.
+            (60200, 1),
+            (70000, 2),
+            (70100, 3), // Between known versions: Redis 7.2 is the first eligible feature.
+            (70200, 3),
+            (80000, 4),
+            (90000, 5),
+            (90001, 6), // Above the newest version: no feature meets the minimum.
+        ] {
+            let (lower, upper) = get_feature_flags(minimum);
+            let lower: Vec<String> = lower.iter().map(ToString::to_string).collect();
+            let upper: Vec<String> = upper.iter().map(ToString::to_string).collect();
+
+            // Check both complete groups to catch omissions, duplicates, and
+            // off-by-one errors that place the minimum in the wrong group.
+            assert_eq!(lower, features[..split], "lower features for {minimum}");
+            assert_eq!(upper, features[split..], "upper features for {minimum}");
+        }
+    }
+}

@@ -531,6 +531,7 @@ macro_rules! valkey_module {
 /// # Note
 /// Callbacks are registered in LIFO order (last callback is called first).
 /// Requires Redis 7.2+ or Valkey 7.2+.
+#[cfg(feature = "min-redis-compatibility-version-7-2")]
 #[macro_export]
 macro_rules! valkey_module_auth {
     ($module_name:expr, $ctx:expr, $($auth_callback:expr),* $(,)*) => {
@@ -558,21 +559,21 @@ macro_rules! valkey_module_auth {
                         }
                     }
 
-                    #[cfg(not(any(
-                        feature = "min-redis-compatibility-version-7-2",
-                        feature = "min-valkey-compatibility-version-8-0"
-                    )))]
-                    compile_error!("Auth callbacks require Redis 7.2 or Valkey 7.2 and above");
-
-                    #[cfg(any(
-                        feature = "min-redis-compatibility-version-7-2",
-                        feature = "min-valkey-compatibility-version-8-0"
-                    ))]
                     unsafe {
                         $crate::raw::RedisModule_RegisterAuthCallback.expect("RedisModule_RegisterAuthCallback should exist on Redis/Valkey 7.2 and above")($ctx, Some([<__do_auth_ $module_name _ $auth_callback>]));
                     }
                 }
             }
         )*
+    };
+}
+
+#[cfg(not(feature = "min-redis-compatibility-version-7-2"))]
+#[macro_export]
+macro_rules! valkey_module_auth {
+    // An empty auth list does not require authentication callback support.
+    ($module_name:expr, $ctx:expr $(,)*) => {};
+    ($($args:tt)*) => {
+        compile_error!("Auth callbacks require Redis 7.2 or Valkey 7.2 and above");
     };
 }

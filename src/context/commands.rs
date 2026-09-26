@@ -462,52 +462,37 @@ api! {[
     }
 }
 
-#[cfg(all(
-    any(
-        feature = "min-valkey-compatibility-version-8-0",
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-redis-compatibility-version-7-0"
-    ),
-    not(any(
-        feature = "min-redis-compatibility-version-6-2",
-        feature = "min-redis-compatibility-version-6-0"
-    ))
-))]
-pub fn register_commands(ctx: &Context) -> Status {
-    register_commands_internal(ctx).map_or_else(
-        |e| {
-            ctx.log_warning(&e.to_string());
-            Status::Err
-        },
-        |_| Status::Ok,
-    )
-}
-
-#[cfg(all(
-    any(
-        feature = "min-redis-compatibility-version-6-2",
-        feature = "min-redis-compatibility-version-6-0"
-    ),
-    not(any(
-        feature = "min-valkey-compatibility-version-8-0",
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-redis-compatibility-version-7-0"
-    ))
-))]
-pub fn register_commands(ctx: &Context) -> Status {
-    register_commands_internal(ctx).map_or_else(
-        |e| {
-            ctx.log_warning(&e.to_string());
-            Status::Err
-        },
-        |v| {
-            v.map_or_else(
+cfg_if::cfg_if! {
+    if #[cfg(feature = "min-redis-compatibility-version-7-0")] {
+        pub fn register_commands(ctx: &Context) -> Status {
+            register_commands_internal(ctx).map_or_else(
                 |e| {
                     ctx.log_warning(&e.to_string());
                     Status::Err
                 },
                 |_| Status::Ok,
             )
-        },
-    )
+        }
+    } else if #[cfg(any(
+        feature = "min-redis-compatibility-version-6-2",
+        feature = "min-redis-compatibility-version-6-0"
+    ))] {
+        pub fn register_commands(ctx: &Context) -> Status {
+            register_commands_internal(ctx).map_or_else(
+                |e| {
+                    ctx.log_warning(&e.to_string());
+                    Status::Err
+                },
+                |v| {
+                    v.map_or_else(
+                        |e| {
+                            ctx.log_warning(&e.to_string());
+                            Status::Err
+                        },
+                        |_| Status::Ok,
+                    )
+                },
+            )
+        }
+    }
 }

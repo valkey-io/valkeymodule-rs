@@ -138,10 +138,10 @@ pub fn api(item: TokenStream) -> TokenStream {
 
     let gen = quote! {
         cfg_if::cfg_if! {
-            if #[cfg(any(#(#all_lower_features, )*))] {
-                #old_ver_func
-            } else if #[cfg(any(#(#all_upper_features, )*))] {
+            if #[cfg(any(#(#all_upper_features, )*))] {
                 #new_ver_func
+            } else if #[cfg(any(#(#all_lower_features, )*))] {
+                #old_ver_func
             } else {
                 compile_error!("min-redis-compatibility-version is not set correctly")
             }

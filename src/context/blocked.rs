@@ -208,10 +208,7 @@ impl Context {
     /// # Returns
     /// * `BlockedClient<T>` - Handle to manage the blocked client
     #[must_use]
-    #[cfg(all(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ),))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     pub fn block_client_on_auth<T: 'static + Send>(
         &self,
         auth_reply_callback: fn(

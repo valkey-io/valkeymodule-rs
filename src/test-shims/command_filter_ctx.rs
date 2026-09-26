@@ -549,10 +549,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     fn returns_configured_client_id() {
         let mut context = CommandFilterCtx::test();
         context.expect_get_client_id(42);
@@ -561,10 +558,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     fn defaults_client_id_when_no_expectation_is_configured() {
         let context = CommandFilterCtx::test();
 
@@ -572,10 +566,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(any(
-        feature = "min-redis-compatibility-version-7-2",
-        feature = "min-valkey-compatibility-version-8-0"
-    ))]
+    #[cfg(feature = "min-redis-compatibility-version-7-2")]
     fn replaces_configured_client_id() {
         let mut context = CommandFilterCtx::test();
         context.expect_get_client_id(10).expect_get_client_id(20);
