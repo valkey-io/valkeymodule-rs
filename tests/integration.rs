@@ -143,6 +143,18 @@ fn test_load_unload() -> Result<()> {
         .query(&mut con)?;
     assert_eq!(reloaded, "OK");
 
+    // Logs through the `log` crate logger after the module context of the
+    // first load was freed on unload.
+    let logged: String = redis::cmd("load_unload.log")
+        .arg("after reload")
+        .query(&mut con)?;
+    assert_eq!(logged, "OK");
+
+    let unloaded: String = redis::cmd("MODULE")
+        .arg(&["UNLOAD", "load_unload"])
+        .query(&mut con)?;
+    assert_eq!(unloaded, "OK");
+
     Ok(())
 }
 
