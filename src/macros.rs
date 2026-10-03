@@ -502,6 +502,15 @@ macro_rules! valkey_module {
                 context.unregister_command_filter(&filter);
             }
 
+            // Free the detached module context last, once unload can no
+            // longer be canceled.
+            // SAFETY: Valkey calls OnUnload on the main thread with the GIL
+            // held, and `deinit` must have stopped any module threads, so
+            // nothing else uses MODULE_CONTEXT now or after the module unloads.
+            unsafe {
+                $crate::MODULE_CONTEXT.free_context();
+            }
+
             $crate::raw::Status::Ok as c_int
         }
     }
