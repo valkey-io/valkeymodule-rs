@@ -1,0 +1,5 @@
+error[E0308]: mismatched types
+ --> tests/ui/config_group/mismatched_default.rs:5:22
+  |
+5 |         count: i64 = "ten",
+  |                      ^^^^^ expected `i64`, found `&str`

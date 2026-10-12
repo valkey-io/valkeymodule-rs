@@ -4,8 +4,10 @@ use std::sync::{
 };
 
 use lazy_static::lazy_static;
+use serde::{Deserialize, Serialize};
 use valkey_module::alloc::ValkeyAlloc;
 use valkey_module::{
+    config_group,
     configuration::{ConfigurationContext, ConfigurationFlags},
     enum_configuration, valkey_module, ConfigurationValue, Context, ValkeyError, ValkeyGILGuard,
     ValkeyResult, ValkeyString, ValkeyValue,
@@ -17,6 +19,13 @@ enum_configuration! {
         Val1 = 1,
         Val2 = 2,
     }
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum FeatureMode {
+    Safe,
+    Fast,
 }
 
 lazy_static! {
@@ -39,6 +48,43 @@ lazy_static! {
         ValkeyGILGuard::new(EnumConfiguration::Val1);
     static ref CONFIGURATION_MUTEX_ENUM: Mutex<EnumConfiguration> =
         Mutex::new(EnumConfiguration::Val1);
+    static ref FEATURE_CHANGE: ValkeyGILGuard<(i64, i64, i64)> = ValkeyGILGuard::new((10, 10, 0));
+}
+
+fn validate_feature(
+    _ctx: &ConfigurationContext,
+    _name: &str,
+    proposed: &feature::Config,
+) -> Result<(), ValkeyError> {
+    if proposed.minimum > proposed.maximum {
+        return Err(ValkeyError::Str("minimum must not exceed maximum"));
+    }
+    Ok(())
+}
+
+fn on_feature_changed(
+    config_ctx: &ConfigurationContext,
+    _name: &str,
+    previous: &feature::Config,
+    current: &feature::Config,
+) {
+    let mut change = FEATURE_CHANGE.lock(config_ctx);
+    *change = (previous.minimum, current.minimum, change.2 + 1);
+}
+
+config_group! {
+    pub feature {
+        minimum: i64 = 10, range = 0..=100,
+        maximum: i64 = 100, range = 0..=100,
+        enabled: bool = false,
+        #[serde(alias = "legacy_mode")]
+        mode: FeatureMode = FeatureMode::Safe,
+        label: Option<String> = Some("default".to_owned()),
+    }
+
+    validate: validate_feature,
+    on_changed: on_feature_changed,
+    flags: ConfigurationFlags::DEFAULT,
 }
 
 fn on_configuration_changed<G, T: ConfigurationValue<G>>(
@@ -102,6 +148,20 @@ fn num_changes(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::Integer(*val))
 }
 
+fn feature_minimum(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
+    let config = feature::CONFIG.lock(ctx);
+    Ok(ValkeyValue::Integer(config.minimum))
+}
+
+fn feature_change(ctx: &Context, _: Vec<ValkeyString>) -> ValkeyResult {
+    let change = FEATURE_CHANGE.lock(ctx);
+    Ok(ValkeyValue::Array(vec![
+        ValkeyValue::Integer(change.0),
+        ValkeyValue::Integer(change.1),
+        ValkeyValue::Integer(change.2),
+    ]))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -111,8 +171,11 @@ valkey_module! {
     data_types: [],
     commands: [
         ["configuration.num_changes", num_changes, "", 0, 0, 0],
+        ["configuration.feature_minimum", feature_minimum, "", 0, 0, 0],
+        ["configuration.feature_change", feature_change, "", 0, 0, 0],
     ],
     configurations: [
+        group: [feature],
         i64: [
             ["i64", &*CONFIGURATION_I64, 10, 0, 1000, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed))],
             ["reject_i64", &*CONFIGURATION_REJECT_I64, 10, 0, 1000, ConfigurationFlags::DEFAULT, Some(Box::new(on_configuration_changed)), Some(Box::new(on_i64_config_set::<ValkeyString, ValkeyGILGuard<i64>>))],

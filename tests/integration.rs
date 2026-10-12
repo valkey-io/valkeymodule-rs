@@ -13,9 +13,10 @@ use utils::{
     AuthExpectedResult,
 };
 use utils::{
-    get_valkey_connection, start_server_w_module_get_connection, wait_for_client_connection_count,
-    wait_for_event_count, wait_for_event_count_greater_than, wait_for_file_contents,
-    wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
+    create_module_config_file, get_valkey_connection, start_server_w_module_get_connection,
+    wait_for_client_connection_count, wait_for_event_count, wait_for_event_count_greater_than,
+    wait_for_file_contents, wait_for_master_link_state, wait_for_repl_async_load_events,
+    wait_for_replica_change_events,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to server";
@@ -700,6 +701,96 @@ fn test_configuration() -> Result<()> {
         Ok(())
     };
 
+    let config_set_bytes = |config: &str, val: &[u8]| -> Result<()> {
+        let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        let res: String = redis::cmd("config")
+            .arg("set")
+            .arg(config)
+            .arg(val)
+            .query(&mut con)
+            .map_err(|e| anyhow::anyhow!("Failed to run config set: {}", e))?;
+        assert_eq!(res, "OK");
+        Ok(())
+    };
+
+    assert_eq!(
+        config_get("configuration.feature")?,
+        r#"{"minimum":10,"maximum":100,"enabled":false,"mode":"safe","label":"default"}"#
+    );
+    let feature_change = |con: &mut redis::Connection| -> Result<Vec<i64>> {
+        redis::cmd("configuration.feature_change")
+            .query(con)
+            .with_context(|| "failed to read feature change state")
+    };
+    assert_eq!(feature_change(&mut con)?, vec![10, 10, 1]);
+
+    config_set(
+        "configuration.feature",
+        r#"{"minimum":20,"maximum":80,"enabled":true,"mode":"fast","label":"live"}"#,
+    )?;
+    assert_eq!(
+        config_get("configuration.feature")?,
+        r#"{"minimum":20,"maximum":80,"enabled":true,"mode":"fast","label":"live"}"#
+    );
+    let typed_minimum: i64 = redis::cmd("configuration.feature_minimum")
+        .query(&mut con)
+        .with_context(|| "failed to read typed feature minimum")?;
+    assert_eq!(typed_minimum, 20);
+    assert_eq!(feature_change(&mut con)?, vec![10, 20, 2]);
+
+    config_set("configuration.feature", r#"{"maximum":60}"#)?;
+    assert_eq!(
+        config_get("configuration.feature")?,
+        r#"{"minimum":20,"maximum":60,"enabled":true,"mode":"fast","label":"live"}"#
+    );
+    assert_eq!(feature_change(&mut con)?, vec![20, 20, 3]);
+
+    config_set("configuration.feature", r#"{"label":null}"#)?;
+    assert_eq!(
+        config_get("configuration.feature")?,
+        r#"{"minimum":20,"maximum":60,"enabled":true,"mode":"fast","label":null}"#
+    );
+    assert_eq!(feature_change(&mut con)?, vec![20, 20, 4]);
+
+    config_set("configuration.feature", "{}")?;
+    assert_eq!(feature_change(&mut con)?, vec![20, 20, 5]);
+
+    let stable_feature = config_get("configuration.feature")?;
+    let rejected_payloads: Vec<Vec<u8>> = vec![
+        br#"{"minimum":}"#.to_vec(),
+        br#"[1,2,3]"#.to_vec(),
+        br#"{"minimum":30,"minimum":40}"#.to_vec(),
+        br#"{"label":{"nested":true}}"#.to_vec(),
+        br#"{"label":["nested"]}"#.to_vec(),
+        br#"{"unknown":true}"#.to_vec(),
+        br#"{"minimum":"twenty"}"#.to_vec(),
+        br#"{"minimum":101}"#.to_vec(),
+        br#"{"minimum":70}"#.to_vec(),
+        b"{\"label\":\"\xff\"}".to_vec(),
+        vec![b' '; valkey_module::MAX_CONFIGURATION_GROUP_JSON_BYTES + 1],
+    ];
+    for payload in rejected_payloads {
+        let error = config_set_bytes("configuration.feature", &payload)
+            .expect_err("invalid group update must be rejected");
+        assert!(error.to_string().contains("Failed to run config set"));
+        assert_eq!(config_get("configuration.feature")?, stable_feature);
+        assert_eq!(feature_change(&mut con)?, vec![20, 20, 5]);
+    }
+
+    let rejected_transaction: RedisResult<String> = redis::cmd("CONFIG")
+        .arg(&[
+            "SET",
+            "configuration.feature",
+            r#"{"minimum":30}"#,
+            "configuration.reject_i64",
+            "123",
+        ])
+        .query(&mut con);
+    rejected_transaction.expect_err("a later invalid config must roll back the group update");
+    assert_eq!(config_get("configuration.feature")?, stable_feature);
+    assert_eq!(config_get("configuration.reject_i64")?, "10");
+    assert_eq!(feature_change(&mut con)?, vec![20, 20, 5]);
+
     assert_eq!(config_get("configuration.i64")?, "10");
     config_set("configuration.i64", "100")?;
     assert_eq!(config_get("configuration.i64")?, "100");
@@ -761,7 +852,7 @@ fn test_configuration() -> Result<()> {
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
-    assert_eq!(res, 26); // the first configuration initialisation is counted as well, so we will get 22 changes.
+    assert_eq!(res, 27);
 
     // Validate that configs with logic to reject values can also succeed
     assert_eq!(config_get("configuration.reject_valkey_string")?, "default");
@@ -782,7 +873,53 @@ fn test_configuration() -> Result<()> {
     let res: i64 = redis::cmd("configuration.num_changes")
         .query(&mut con)
         .with_context(|| "failed to run configuration.num_changes")?;
-    assert_eq!(res, 28);
+    assert_eq!(res, 29);
+
+    Ok(())
+}
+
+#[test]
+fn test_configuration_group_startup_and_rewrite() -> Result<()> {
+    let fixture = create_module_config_file(
+        "configuration",
+        &[(
+            "feature",
+            r#"{"minimum":30,"legacy_mode":"fast","label":null}"#,
+        )],
+    )?;
+    let mut server = fixture.start()?;
+
+    let feature: Vec<String> = redis::cmd("CONFIG")
+        .arg(&["GET", "configuration.feature"])
+        .query(&mut server)?;
+    assert_eq!(
+        feature[1],
+        r#"{"minimum":30,"maximum":100,"enabled":false,"mode":"fast","label":null}"#
+    );
+
+    let _: String = redis::cmd("CONFIG")
+        .arg(&[
+            "SET",
+            "configuration.feature",
+            r#"{"maximum":70,"enabled":true}"#,
+        ])
+        .query(&mut server)?;
+    let _: String = redis::cmd("CONFIG").arg("REWRITE").query(&mut server)?;
+
+    let rewritten = std::fs::read_to_string(fixture.config_path())?;
+    assert!(rewritten.contains(
+        r#"{\"minimum\":30,\"maximum\":70,\"enabled\":true,\"mode\":\"fast\",\"label\":null}"#
+    ));
+
+    drop(server);
+    let mut restarted = fixture.start()?;
+    let feature: Vec<String> = redis::cmd("CONFIG")
+        .arg(&["GET", "configuration.feature"])
+        .query(&mut restarted)?;
+    assert_eq!(
+        feature[1],
+        r#"{"minimum":30,"maximum":70,"enabled":true,"mode":"fast","label":null}"#
+    );
 
     Ok(())
 }
