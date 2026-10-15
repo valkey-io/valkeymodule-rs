@@ -55,6 +55,33 @@ fn test_block() -> Result<()> {
 }
 
 #[test]
+fn test_block_measure_time() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("block")?;
+
+    let response: i64 = redis::cmd("block.measured")
+        .query(&mut con)
+        .with_context(|| "failed to run block.measured")?;
+    assert_eq!(response, 42);
+
+    // The thread's 200 ms sleep counts toward the command's time.
+    let stats: String = redis::cmd("info")
+        .arg("commandstats")
+        .query(&mut con)
+        .with_context(|| "failed to run info commandstats")?;
+    let line = stats
+        .lines()
+        .find(|l| l.starts_with("cmdstat_block.measured:"))
+        .with_context(|| "no commandstats for block.measured")?;
+    let usec: u64 = line
+        .split(',')
+        .find_map(|f| f.strip_prefix("usec="))
+        .with_context(|| "no usec field")?
+        .parse()?;
+    assert!(usec >= 200_000, "{line}");
+    Ok(())
+}
+
+#[test]
 fn test_info() -> Result<()> {
     let mut con = start_server_w_module_get_connection("info")?;
 
