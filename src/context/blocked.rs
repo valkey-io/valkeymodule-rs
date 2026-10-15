@@ -24,6 +24,7 @@ pub struct BlockedClient<T: 'static = ()> {
     reply_callback: Option<ReplyCallback<T>>,
     free_callback: Option<FreePrivateDataCallback<T>>,
     data: Option<Box<T>>,
+    measuring_time: bool,
 }
 
 #[allow(dead_code)]
@@ -94,6 +95,7 @@ impl<T> BlockedClient<T> {
             reply_callback: None,
             free_callback: None,
             data: None,
+            measuring_time: false,
         }
     }
 
@@ -116,6 +118,7 @@ impl<T> BlockedClient<T> {
             reply_callback: Some(ReplyCallback::Auth(auth_reply_callback)),
             free_callback,
             data: None,
+            measuring_time: false,
         }
     }
 
@@ -135,6 +138,33 @@ impl<T> BlockedClient<T> {
         }
         self.data = Some(Box::new(data));
         Ok(())
+    }
+
+    /// Starts counting time toward the command's `INFO commandstats`, latency
+    /// histogram and slow log entry, so they include the background work, not only
+    /// the time spent in the command callback. Counting stops at [`Self::measure_time_end`] or when the
+    /// client unblocks, whichever comes first. Each start-end interval adds to the
+    /// total. Does nothing if time is already being counted.
+    pub fn measure_time_start(&mut self) {
+        if self.measuring_time || self.inner.is_null() {
+            return;
+        }
+        unsafe {
+            raw::RedisModule_BlockedClientMeasureTimeStart.unwrap()(self.inner);
+        }
+        self.measuring_time = true;
+    }
+
+    /// Stops counting time started by [`Self::measure_time_start`]. Does nothing if
+    /// time is not being counted.
+    pub fn measure_time_end(&mut self) {
+        if !self.measuring_time || self.inner.is_null() {
+            return;
+        }
+        unsafe {
+            raw::RedisModule_BlockedClientMeasureTimeEnd.unwrap()(self.inner);
+        }
+        self.measuring_time = false;
     }
 
     /// Aborts the blocked client operation
@@ -163,6 +193,8 @@ impl<T> BlockedClient<T> {
 impl<T: 'static> Drop for BlockedClient<T> {
     fn drop(&mut self) {
         if !self.inner.is_null() {
+            // The server reads the counted time when the client unblocks.
+            self.measure_time_end();
             let callback_data_ptr = if self.reply_callback.is_some() || self.free_callback.is_some()
             {
                 Box::into_raw(Box::new(BlockedClientPrivateData {
