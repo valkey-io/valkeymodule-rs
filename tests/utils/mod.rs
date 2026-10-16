@@ -6,6 +6,7 @@ use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tempfile::TempDir;
 
@@ -53,8 +54,50 @@ impl TestServer {
 pub(super) struct ChildGuard {
     name: &'static str,
     port: u16,
-    data_dir: TempDir,
+    data_dir: Arc<TempDir>,
     child: std::process::Child,
+}
+
+/// A reusable config file and data directory for restart and CONFIG REWRITE tests.
+pub(super) struct ModuleConfigFile {
+    server_name: &'static str,
+    server_path: PathBuf,
+    port: u16,
+    config_path: PathBuf,
+    data_dir: Arc<TempDir>,
+}
+
+impl ModuleConfigFile {
+    pub(super) fn config_path(&self) -> &std::path::Path {
+        &self.config_path
+    }
+
+    pub(super) fn start(&self) -> Result<TestServer> {
+        let child = Command::new(&self.server_path)
+            .arg(&self.config_path)
+            .current_dir(self.data_dir.path())
+            .spawn()
+            .with_context(|| {
+                format!(
+                    "failed to start {} at {}; run ./setup-integration-servers.sh first",
+                    self.server_name,
+                    self.server_path.display()
+                )
+            })?;
+        let connection = get_valkey_connection(self.port)
+            .with_context(|| "failed to connect to valkey server")?;
+
+        Ok(TestServer {
+            port: self.port,
+            _guard: ChildGuard {
+                name: "server",
+                port: self.port,
+                data_dir: Arc::clone(&self.data_dir),
+                child,
+            },
+            connection,
+        })
+    }
 }
 
 // Gracefully stops the child process before its isolated data directory is removed.
@@ -127,6 +170,54 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
         _guard: guard,
         connection,
     })
+}
+
+pub(super) fn create_module_config_file(
+    module_name: &str,
+    configuration_values: &[(&str, &str)],
+) -> Result<ModuleConfigFile> {
+    let (server_name, server_path) = selected_test_server()?;
+    let module_path = get_module_path(module_name)?;
+    let data_dir = Arc::new(create_data_dir()?);
+    let port = get_available_port()?;
+    let config_path = data_dir.path().join("valkey.conf");
+
+    let loadmodule = format!("loadmodule {}", quote_config_argument(&module_path));
+    let mut module_configurations = String::new();
+    for (name, value) in configuration_values {
+        module_configurations.push_str(module_name);
+        module_configurations.push('.');
+        module_configurations.push_str(name);
+        module_configurations.push(' ');
+        module_configurations.push_str(&quote_config_argument(value));
+        module_configurations.push('\n');
+    }
+    let contents = format!(
+        "port {port}\ndir {}\ndbfilename dump.rdb\n{loadmodule}\n{module_configurations}enable-debug-command yes\nenable-module-command yes\n",
+        quote_config_argument(
+            data_dir
+                .path()
+                .to_str()
+                .context("Valkey data directory is not valid UTF-8")?
+        )
+    );
+    fs::write(&config_path, contents)
+        .with_context(|| format!("failed to write {}", config_path.display()))?;
+
+    Ok(ModuleConfigFile {
+        server_name,
+        server_path,
+        port,
+        config_path,
+        data_dir,
+    })
+}
+
+fn quote_config_argument(argument: &str) -> String {
+    format!(
+        "\"{}\"",
+        argument.replace('\\', "\\\\").replace('\"', "\\\"")
+    )
 }
 
 pub(super) fn get_module_path(module_name: &str) -> Result<String> {
@@ -402,7 +493,7 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
 fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
     let (server_name, server_path) = selected_test_server()?;
     let module_path = get_module_path(module_name)?;
-    let data_dir = create_data_dir()?;
+    let data_dir = Arc::new(create_data_dir()?);
     let port_arg = port.to_string();
     let data_dir_arg = data_dir
         .path()

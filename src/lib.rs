@@ -5,6 +5,13 @@ pub use crate::context::filter::{CommandFilter, CommandFilterCtx};
 pub use crate::context::InfoContext;
 extern crate num_traits;
 
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::configuration::ConfigurationGroupPatchField;
+    pub use serde;
+    pub use serde_json;
+}
+
 pub mod alloc;
 pub mod apierror;
 pub mod defrag;
@@ -35,8 +42,11 @@ pub use crate::context::thread_safe::{
 };
 pub use crate::raw::NotifyEvent;
 
-pub use crate::configuration::ConfigurationValue;
-pub use crate::configuration::EnumConfigurationValue;
+pub use crate::configuration::{
+    ConfigurationGroup, ConfigurationGroupChanged, ConfigurationGroupGuard,
+    ConfigurationGroupValidator, ConfigurationValue, EnumConfigurationValue,
+    MAX_CONFIGURATION_GROUP_JSON_BYTES,
+};
 pub use crate::context::call_reply::FutureCallReply;
 pub use crate::context::call_reply::{CallReply, CallResult, ErrorReply, PromiseCallReply};
 pub use crate::context::commands;

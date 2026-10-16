@@ -164,6 +164,9 @@ macro_rules! valkey_module {
             ]),* $(,)*
         ] $(,)* )?
         $(configurations: [
+            $(group: [
+                $($configuration_group:ident),* $(,)?
+            ],)?
             $(i64:[$([
                 $i64_configuration_name:expr,
                 $i64_configuration_val:expr,
@@ -352,6 +355,14 @@ macro_rules! valkey_module {
             )?
 
             $(
+                $(
+                    $(
+                        if let Err(error) = $configuration_group::CONFIG.register(&context) {
+                            context.log_warning(&format!("{error}"));
+                            return raw::Status::Err as c_int;
+                        }
+                    )*
+                )?
                 $(
                     $(
                         let default = if $use_module_args {

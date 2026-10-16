@@ -173,6 +173,7 @@ strum_macros = "0.26"
 backtrace = "0.3"
 linkme = "0.3"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 nix = "0.26"
 cfg-if = "1"
 valkey-module-macros-internals = { path = "valkeymodule-rs-macros-internals", version = "0.1.15"}
@@ -189,6 +190,7 @@ valkey-module = { path = "./", default-features = false }
 cron = "0.15.0"
 chrono = "0.4.41"
 dashmap = "6.1.0"
+trybuild = "1"
 
 [build-dependencies]
 bindgen = "0.70"
