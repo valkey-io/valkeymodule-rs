@@ -12,7 +12,7 @@ build-examples = [
     "--examples",
     "--no-default-features",
     "--features",
-    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2,enable-usage-tracking",
 ]
 test-integration = [
     "test",
@@ -20,7 +20,7 @@ test-integration = [
     "integration",
     "--no-default-features",
     "--features",
-    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2",
+    "min-valkey-compatibility-version-8-0,min-redis-compatibility-version-7-2,enable-usage-tracking",
 ]
 test-docs = [
     "test",

@@ -1,5 +1,7 @@
 use std::alloc::{GlobalAlloc, Layout};
 
+#[cfg(feature = "enable-usage-tracking")]
+use crate::module_stats;
 use crate::raw;
 
 /// Panics with a message without using an allocator.
@@ -43,10 +45,17 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
         }
 
         let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
-        match raw::RedisModule_Alloc {
+        let ptr: *mut u8 = match raw::RedisModule_Alloc {
             Some(alloc) => alloc(size).cast(),
             None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
+        };
+
+        #[cfg(feature = "enable-usage-tracking")]
+        if !ptr.is_null() {
+            module_stats::add_alloc(size as u64);
         }
+
+        ptr
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
@@ -66,15 +75,27 @@ unsafe impl GlobalAlloc for ValkeyAlloc {
         }
         let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
         let num_elements = size / layout.align();
-        match raw::RedisModule_Calloc {
+        let ptr: *mut u8 = match raw::RedisModule_Calloc {
             Some(calloc) => calloc(num_elements, layout.align()).cast(),
             None => allocation_free_panic(VALKEY_ALLOCATOR_NOT_AVAILABLE_MESSAGE),
+        };
+
+        #[cfg(feature = "enable-usage-tracking")]
+        if !ptr.is_null() {
+            module_stats::add_alloc(size as u64);
         }
+
+        ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
         if cfg!(feature = "enable-system-alloc") {
             return std::alloc::System.dealloc(ptr, layout);
+        }
+        #[cfg(feature = "enable-usage-tracking")]
+        if !ptr.is_null() {
+            let size = (layout.size() + layout.align() - 1) & (!(layout.align() - 1));
+            module_stats::add_free(size as u64);
         }
         match raw::RedisModule_Free {
             Some(f) => f(ptr.cast()),
