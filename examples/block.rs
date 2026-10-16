@@ -18,6 +18,20 @@ fn block(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
     Ok(ValkeyValue::NoReply)
 }
 
+fn block_measured(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyResult {
+    let mut blocked_client = ctx.block_client();
+    // Count the thread's work toward the command's stats.
+    blocked_client.measure_time_start();
+
+    thread::spawn(move || {
+        let thread_ctx = ThreadSafeContext::with_blocked_client(blocked_client);
+        thread::sleep(Duration::from_millis(200));
+        thread_ctx.reply(Ok("42".into()));
+    });
+
+    Ok(ValkeyValue::NoReply)
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -27,5 +41,6 @@ valkey_module! {
     data_types: [],
     commands: [
         ["block", block, "", 0, 0, 0],
+        ["block.measured", block_measured, "", 0, 0, 0],
     ],
 }
