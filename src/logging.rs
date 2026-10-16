@@ -106,7 +106,16 @@ pub mod standard_log_implementation {
     /// Valkey does not support logging at the [log::Level::Error] level,
     /// so logging at this level will be converted to logging at the
     /// [log::Level::Warn] level under the hood.
-    struct ValkeyGlobalLogger(*mut raw::RedisModuleCtx);
+    struct ValkeyGlobalLogger(LoggerContext);
+
+    /// The module context a [ValkeyGlobalLogger] logs with.
+    enum LoggerContext {
+        /// Read [crate::MODULE_CONTEXT] on each log call, so the logger
+        /// never holds a pointer to a context freed on module unload.
+        Module,
+        /// A context passed to [setup_for_context].
+        Custom(*mut raw::RedisModuleCtx),
+    }
 
     // The pointer of the Global logger can only be changed once during
     // the startup. Once one of the [std::sync::OnceLock] or
@@ -146,19 +155,23 @@ pub mod standard_log_implementation {
         if pointer.is_null() {
             return Err(ValkeyError::Str(NOT_INITIALISED_MESSAGE));
         }
-        setup_for_context(pointer)
+        set_logger(LoggerContext::Module)
             .map_err(|e| ValkeyError::String(format!("Couldn't set up the logger: {e}")))
     }
 
-    fn logger(context: *mut raw::RedisModuleCtx) -> &'static ValkeyGlobalLogger {
+    fn logger(context: LoggerContext) -> &'static ValkeyGlobalLogger {
         static LOGGER: OnceLock<ValkeyGlobalLogger> = OnceLock::new();
         LOGGER.get_or_init(|| ValkeyGlobalLogger(context))
+    }
+
+    fn set_logger(context: LoggerContext) -> Result<(), SetLoggerError> {
+        log::set_logger(logger(context)).map(|()| log::set_max_level(log::LevelFilter::Trace))
     }
 
     /// The same as [setup] but sets the custom module context.
     #[allow(dead_code)]
     pub fn setup_for_context(context: *mut raw::RedisModuleCtx) -> Result<(), SetLoggerError> {
-        log::set_logger(logger(context)).map(|()| log::set_max_level(log::LevelFilter::Trace))
+        set_logger(LoggerContext::Custom(context))
     }
 
     impl log::Log for ValkeyGlobalLogger {
@@ -184,7 +197,11 @@ pub mod standard_log_implementation {
                 _ => record.args().to_string(),
             };
 
-            log_internal(self.0, record.level(), &message);
+            let context = match self.0 {
+                LoggerContext::Module => crate::MODULE_CONTEXT.ctx.load(Ordering::Relaxed),
+                LoggerContext::Custom(context) => context,
+            };
+            log_internal(context, record.level(), &message);
         }
 
         fn flush(&self) {
