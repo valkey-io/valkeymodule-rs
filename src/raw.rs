@@ -440,7 +440,7 @@ pub fn reply_with_attribute(ctx: *mut RedisModuleCtx, len: c_long) -> Status {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn reply_with_error(ctx: *mut RedisModuleCtx, err: *const c_char) {
     unsafe {
-        let msg = Context::str_as_legal_resp_string(CStr::from_ptr(err).to_str().unwrap());
+        let msg = Context::str_as_legal_resp_string(&CStr::from_ptr(err).to_string_lossy());
         RedisModule_ReplyWithError.unwrap()(ctx, msg.as_ptr());
     }
 }
