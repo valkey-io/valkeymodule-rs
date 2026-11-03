@@ -230,10 +230,46 @@ impl DetachedContext {
         Ok(())
     }
 
+    /// Frees the detached context set by [DetachedContext::set_context] and
+    /// resets it to null, so it can be set again. Calling it when no context
+    /// is set does nothing.
+    ///
+    /// The [valkey_module](crate::valkey_module) macro calls this on module
+    /// unload; modules do not need to call it themselves.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// // On module unload, after all module threads have stopped:
+    /// // SAFETY: no other thread uses MODULE_CONTEXT any more.
+    /// unsafe { valkey_module::MODULE_CONTEXT.free_context() };
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// No other thread may use this context (through the `log*` methods,
+    /// [DetachedContext::lock] or a live [DetachedContextGuard]) while this
+    /// function runs or afterwards, until a new context is set.
+    #[doc(hidden)]
+    pub unsafe fn free_context(&self) {
+        let c = self.ctx.swap(ptr::null_mut(), Ordering::AcqRel);
+        if !c.is_null() {
+            // SAFETY: `c` was returned by `GetDetachedThreadSafeContext` in
+            // `set_context` and has not been freed: the swap above takes it
+            // out of `self`, so only this call can free it. The caller
+            // guarantees no other thread still uses it.
+            unsafe { raw::RedisModule_FreeThreadSafeContext.unwrap()(c) };
+        }
+    }
+
     /// Lock Valkey for command invocation. Returns [DetachedContextGuard] which will unlock Valkey when dispose.
     /// [DetachedContextGuard] implements [Deref<Target = Context>] so it can be used just like any Valkey [Context] for command invocation.
     /// Locking Valkey when Valkey is already locked by the current thread is left unspecified.
     /// However, this function will not return on the second call (it might panic or deadlock, for example)..
+    ///
+    /// If no context is set (before the module is loaded, or after it is
+    /// unloaded), the returned guard wraps a null context and must not be
+    /// used to call Valkey commands.
     pub fn lock(&self) -> DetachedContextGuard {
         let c = self.ctx.load(Ordering::Relaxed);
         unsafe { raw::RedisModule_ThreadSafeContextLock.unwrap()(c) };
