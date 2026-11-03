@@ -1,0 +1,20 @@
+{
+  "name": "valkeymodule-rs-skills",
+  "interface": {
+    "displayName": "valkeymodule-rs-skills"
+  },
+  "plugins": [
+    {
+      "name": "valkeymodule-rs-skills",
+      "source": {
+        "source": "local",
+        "path": "./plugins/valkeymodule-rs-skills"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

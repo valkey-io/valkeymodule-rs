@@ -1,0 +1,10 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "valkeymodule-rs-skills",
+  "version": "0.1.0",
+  "description": "AI skills for building and extending well-structured Valkey modules with the valkeymodule-rs Rust SDK.",
+  "author": {
+    "name": "dmitrypol"
+  },
+  "keywords": ["valkey", "rust", "sdk", "modules", "testing"]
+}

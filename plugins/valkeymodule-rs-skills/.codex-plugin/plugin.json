@@ -1,0 +1,22 @@
+{
+  "name": "valkeymodule-rs-skills",
+  "version": "0.1.0",
+  "description": "AI skills for building and extending well-structured Valkey modules with the valkeymodule-rs Rust SDK.",
+  "author": {
+    "name": "dmitrypol"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "valkeymodule-rs-skills",
+    "shortDescription": "Build well-structured Rust modules with the valkeymodule-rs SDK.",
+    "longDescription": "Workflows for creating, updating and testing Valkey modules with the valkeymodule-rs Rust SDK. Includes command, configuration, filter, native-type and event-handler guidance, shared architecture rules and server-free test-helper limitations.",
+    "developerName": "dmitrypol",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "defaultPrompt": [
+      "Create a well-structured Rust Valkey module with my local valkeymodule-rs SDK.",
+      "Add a command to my module and test it with the SDK helpers.",
+      "Review my module's structure, tests and lifecycle handling."
+    ]
+  }
+}
