@@ -13,9 +13,10 @@ use utils::{
     AuthExpectedResult,
 };
 use utils::{
-    get_valkey_connection, start_server_w_module_get_connection, wait_for_client_connection_count,
-    wait_for_event_count, wait_for_event_count_greater_than, wait_for_file_contents,
-    wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
+    get_valkey_connection, module_load_is_refused, start_server_w_module_args_get_connection,
+    start_server_w_module_get_connection, wait_for_client_connection_count, wait_for_event_count,
+    wait_for_event_count_greater_than, wait_for_file_contents, wait_for_master_link_state,
+    wait_for_repl_async_load_events, wait_for_replica_change_events,
 };
 
 const FAILED_TO_CONNECT_TO_SERVER: &str = "failed to connect to server";
@@ -699,6 +700,46 @@ fn test_client_change_event() -> Result<()> {
     drop(con2);
 
     wait_for_client_connection_count(&mut con, 1)?;
+
+    Ok(())
+}
+
+#[test]
+fn test_configuration_from_module_args() -> Result<()> {
+    let con = start_server_w_module_args_get_connection(
+        "configuration",
+        &[
+            "i64",
+            "1000",
+            "valkey_string",
+            "from-args",
+            "atomic_bool",
+            "no",
+        ],
+    )?;
+    let port = con.port;
+    let config_get = |config: &str| -> Result<String> {
+        let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        let res: Vec<String> = redis::cmd("config")
+            .arg(&["get", config])
+            .query(&mut con)
+            .with_context(|| "failed to run config get")?;
+        Ok(res[1].clone())
+    };
+    assert_eq!(config_get("configuration.i64")?, "1000");
+    assert_eq!(config_get("configuration.valkey_string")?, "from-args");
+    assert_eq!(config_get("configuration.atomic_bool")?, "no");
+    drop(con);
+
+    // Outside the config's range (0..=1000).
+    assert!(module_load_is_refused("configuration", &["i64", "1001"])?);
+    assert!(module_load_is_refused(
+        "configuration",
+        &["atomic_i64", "-1"]
+    )?);
+    // An unknown name, and a name with no value.
+    assert!(module_load_is_refused("configuration", &["i46", "10"])?);
+    assert!(module_load_is_refused("configuration", &["i64"])?);
 
     Ok(())
 }

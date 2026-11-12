@@ -116,8 +116,16 @@ pub(super) enum AuthExpectedResult {
 }
 
 pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
+    start_server_w_module_args_get_connection(module_name, &[])
+}
+
+/// Like `start_server_w_module_get_connection`, passing `module_args` to the module.
+pub(super) fn start_server_w_module_args_get_connection(
+    module_name: &str,
+    module_args: &[&str],
+) -> Result<TestServer> {
     let port = get_available_port()?;
-    let guard = start_server_with_module(module_name, port)
+    let guard = start_server_with_module(module_name, port, module_args)
         .with_context(|| "failed to start valkey server")?;
     let connection =
         get_valkey_connection(port).with_context(|| "failed to connect to valkey server")?;
@@ -127,6 +135,21 @@ pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<
         _guard: guard,
         connection,
     })
+}
+
+/// Whether a server started with `module_args` exits with a failure.
+pub(super) fn module_load_is_refused(module_name: &str, module_args: &[&str]) -> Result<bool> {
+    let port = get_available_port()?;
+    let mut guard = start_server_with_module(module_name, port, module_args)
+        .with_context(|| "failed to start valkey server")?;
+    let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
+    while Instant::now() < deadline {
+        if let Some(status) = guard.child.try_wait()? {
+            return Ok(!status.success());
+        }
+        std::thread::sleep(EVENT_POLL_INTERVAL);
+    }
+    Ok(false)
 }
 
 pub(super) fn get_module_path(module_name: &str) -> Result<String> {
@@ -399,7 +422,11 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
     }
 }
 
-fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
+fn start_server_with_module(
+    module_name: &str,
+    port: u16,
+    module_args: &[&str],
+) -> Result<ChildGuard> {
     let (server_name, server_path) = selected_test_server()?;
     let module_path = get_module_path(module_name)?;
     let data_dir = create_data_dir()?;
@@ -409,7 +436,7 @@ fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> 
         .to_str()
         .context("Valkey data directory is not valid UTF-8")?;
 
-    let args = &[
+    let mut args = vec![
         "--port",
         port_arg.as_str(),
         "--dir",
@@ -418,14 +445,17 @@ fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> 
         "dump.rdb",
         "--loadmodule",
         module_path.as_str(),
+    ];
+    args.extend_from_slice(module_args);
+    args.extend_from_slice(&[
         "--enable-debug-command",
         "yes",
         "--enable-module-command",
         "yes",
-    ];
+    ]);
 
     let child = Command::new(&server_path)
-        .args(args)
+        .args(&args)
         .current_dir(data_dir.path())
         .spawn()
         .with_context(|| {
