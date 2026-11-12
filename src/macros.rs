@@ -243,7 +243,8 @@ macro_rules! valkey_module {
             use $crate::configuration::register_enum_configuration;
             use $crate::configuration::module_config_get;
             use $crate::configuration::module_config_set;
-            use $crate::configuration::get_i64_default_config_value;
+            use $crate::configuration::get_i64_default_config_value_in_range;
+            use $crate::configuration::verify_config_args;
             use $crate::configuration::get_string_default_config_value;
             use $crate::configuration::get_bool_default_config_value;
             use $crate::configuration::get_enum_default_config_value;
@@ -352,10 +353,12 @@ macro_rules! valkey_module {
             )?
 
             $(
+                #[allow(unused_mut)]
+                let mut config_names: Vec<&str> = Vec::new();
                 $(
                     $(
                         let default = if $use_module_args {
-                            match get_i64_default_config_value(&args, $i64_configuration_name, $i64_default) {
+                            match get_i64_default_config_value_in_range(&args, $i64_configuration_name, $i64_default, $i64_min, $i64_max) {
                                 Ok(v) => v,
                                 Err(e) => {
                                     context.log_warning(&format!("{e}"));
@@ -365,6 +368,7 @@ macro_rules! valkey_module {
                         } else {
                             $i64_default
                         };
+                        config_names.push($i64_configuration_name);
                         let mut use_fallback = true;
                         $(
                             use_fallback = false;
@@ -388,6 +392,7 @@ macro_rules! valkey_module {
                         } else {
                             $string_default
                         };
+                        config_names.push($string_configuration_name);
                         let mut use_fallback = true;
                         $(
                             use_fallback = false;
@@ -411,6 +416,7 @@ macro_rules! valkey_module {
                         } else {
                             $bool_default
                         };
+                        config_names.push($bool_configuration_name);
                         let mut use_fallback = true;
                         $(
                             use_fallback = false;
@@ -434,6 +440,7 @@ macro_rules! valkey_module {
                         } else {
                             $enum_default
                         };
+                        config_names.push($enum_configuration_name);
                         let mut use_fallback = true;
                         $(
                             use_fallback = false;
@@ -443,6 +450,15 @@ macro_rules! valkey_module {
                             register_enum_configuration(&context, $enum_configuration_name, $enum_configuration_val, default.clone(), $enum_flags_options, $enum_on_changed, None);
                         }
                     )*
+                )?
+                // An argument that names no config would otherwise be ignored.
+                $(
+                    if $use_module_args {
+                        if let Err(e) = verify_config_args(&args, &config_names) {
+                            context.log_warning(&format!("{e}"));
+                            return raw::Status::Err as c_int;
+                        }
+                    }
                 )?
                 raw::RedisModule_LoadConfigs.unwrap()(ctx);
 
