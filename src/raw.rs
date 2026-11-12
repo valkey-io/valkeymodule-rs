@@ -55,11 +55,25 @@ pub enum KeyType {
     ZSet = REDISMODULE_KEYTYPE_ZSET,
     Module = REDISMODULE_KEYTYPE_MODULE,
     Stream = REDISMODULE_KEYTYPE_STREAM,
+    PathHash = VALKEYMODULE_KEYTYPE_PATH_HASH,
+    /// A key type this crate does not know.
+    Unknown = 0x7fff_ffff,
 }
 
 impl From<c_int> for KeyType {
     fn from(v: c_int) -> Self {
-        Self::from_i32(v).unwrap()
+        Self::from_i32(v).unwrap_or(Self::Unknown)
+    }
+}
+
+#[cfg(test)]
+mod key_type_tests {
+    use super::KeyType;
+
+    #[test]
+    fn key_type_from_int() {
+        assert_eq!(KeyType::from(8), KeyType::PathHash);
+        assert_eq!(KeyType::from(99), KeyType::Unknown);
     }
 }
 
