@@ -159,7 +159,9 @@ assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
 
 The fixture synchronizes its test state so it can be moved between threads. Each lock receives an independent guard context with a fresh copy of the configured expectations, so expectations can be reused across repeated or concurrent locks. Concurrent test guards may coexist because the shim does not model Valkey's process-wide GIL or command scheduling; this behavior tests fixture isolation, not production locking guarantees. The shim supports only `ThreadSafeContext<DetachedFromClient>` and does not simulate a `ThreadSafeContext` associated with a `BlockedClient`.
 
-Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
+Calls to `set_module_options` record the latest flags, which you can inspect with `context.module_options()`. Options are initially empty; each call replaces the recorded flags, and passing `ModuleOptions::empty()` clears them. Testing the options' effects requires a running server.
+
+`Context::create_string()` also works with a test context:
 
 ```rust
 let context = Context::test();
@@ -274,4 +276,13 @@ cargo build --examples --release --no-default-features --features min-redis-comp
 cargo test --test integration --release --no-default-features --features min-redis-compatibility-version-7-2 test_defrag -- --exact --test-threads=1
 ```
 
-Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine. The `cargo build-examples` and `cargo test-integration` aliases target a single configuration defined in [.cargo/config.toml](.cargo/config.toml); use `./test.sh` for the full matrix.
+Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine.
+
+The aliases in [.cargo/config.toml](.cargo/config.toml) use `--no-default-features` and enable `min-valkey-compatibility-version-9-2`:
+
+- `cargo build-examples` builds examples with Valkey 9.2 as the minimum compatibility target.
+- `cargo test-integration` selects the configured Valkey 9.2 server unless `INTEGRATION_TEST_SERVER` overrides it. Build the examples with matching features first.
+- `cargo test-docs` checks documentation examples with the same compatibility features.
+- `cargo test-shims` also enables `test-shims`, covering every currently defined module-option flag without a running server.
+
+For older servers, build and test with their matching compatibility features explicitly, as in the Valkey 7.2 commands above. Use `./test.sh` for the full version matrix; it selects features separately for each engine.

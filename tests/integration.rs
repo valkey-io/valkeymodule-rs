@@ -1954,7 +1954,7 @@ fn test_replica_change_event() -> Result<()> {
 
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
-fn test_repl_asnc_load_event() -> Result<()> {
+fn test_repl_async_load_event() -> Result<()> {
     let mut primary_con = start_server_w_module_get_connection("server_events")?;
     let primary_port = primary_con.port;
     // repl-diskless-load swapdb

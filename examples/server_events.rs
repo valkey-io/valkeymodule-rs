@@ -368,5 +368,9 @@ mod tests {
         let context = Context::test();
 
         assert_eq!(init(&context, &[]), Status::Ok);
+        assert_eq!(
+            context.module_options().bits(),
+            ModuleOptions::HANDLE_REPL_ASYNC_LOAD.bits()
+        );
     }
 }
