@@ -66,17 +66,6 @@ impl From<c_int> for KeyType {
     }
 }
 
-#[cfg(test)]
-mod key_type_tests {
-    use super::KeyType;
-
-    #[test]
-    fn key_type_from_int() {
-        assert_eq!(KeyType::from(8), KeyType::PathHash);
-        assert_eq!(KeyType::from(99), KeyType::Unknown);
-    }
-}
-
 #[derive(Primitive, Debug, PartialEq, Eq)]
 pub enum Where {
     ListHead = REDISMODULE_LIST_HEAD,
@@ -1001,4 +990,15 @@ impl From<c_int> for Version {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn is_io_error(rdb: *mut RedisModuleIO) -> bool {
     unsafe { RedisModule_IsIOError.unwrap()(rdb) != 0 }
+}
+
+#[cfg(test)]
+mod key_type_tests {
+    use super::KeyType;
+
+    #[test]
+    fn key_type_from_int() {
+        assert_eq!(KeyType::from(8), KeyType::PathHash);
+        assert_eq!(KeyType::from(99), KeyType::Unknown);
+    }
 }

@@ -3,6 +3,7 @@
 # Prepare the Redis and Valkey binaries used by the SDK integration tests.
 # Usage: ./setup-integration-servers.sh
 # Requires Git, Make, a C build toolchain, and OpenSSL development files.
+# On macOS with Homebrew, install openssl@3 or set OPENSSL_PREFIX explicitly.
 #
 # Reads repository/branch entries from integration-servers.conf and clones them
 # into tmp/integration-servers/<directory> relative to this script. Builds use
@@ -20,6 +21,17 @@ set -euo pipefail
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly ENGINE_ROOT="${SCRIPT_DIR}/tmp/integration-servers"
 readonly BUILD_MARKER=".valkeymodule-rs-build-noopt-tls-jemalloc"
+
+# The engines use APIs deprecated by OpenSSL 4, with deprecations treated as
+# errors. Avoid Homebrew's unversioned OpenSSL path, which can track that major.
+if [[ "$(uname -s)" == Darwin && -z "${OPENSSL_PREFIX:-}" ]] && command -v brew >/dev/null 2>&1; then
+    OPENSSL_PREFIX="$(brew --prefix openssl@3)"
+    if [[ ! -d "${OPENSSL_PREFIX}/include/openssl" ]]; then
+        echo "error: install OpenSSL 3 with 'brew install openssl@3' or set OPENSSL_PREFIX" >&2
+        exit 1
+    fi
+    export OPENSSL_PREFIX
+fi
 
 clone_and_build() {
     local name="$1"
