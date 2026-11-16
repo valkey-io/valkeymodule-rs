@@ -815,6 +815,8 @@ mod tests {
         module_options.push(raw::ModuleOptions::SKIP_COMMAND_VALIDATION);
         #[cfg(feature = "min-valkey-compatibility-version-9-0")]
         module_options.push(raw::ModuleOptions::HANDLE_ATOMIC_SLOT_MIGRATION);
+        #[cfg(feature = "min-valkey-compatibility-version-9-2")]
+        module_options.push(raw::ModuleOptions::HANDLE_FORKLESS);
 
         for options in module_options {
             context.set_module_options(options);

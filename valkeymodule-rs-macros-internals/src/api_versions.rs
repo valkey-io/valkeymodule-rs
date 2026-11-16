@@ -32,6 +32,7 @@ lazy_static::lazy_static! {
         (70200, "min-redis-compatibility-version-7-2".to_string()),
         (80000, "min-valkey-compatibility-version-8-0".to_string()),
         (90000, "min-valkey-compatibility-version-9-0".to_string()),
+        (90200, "min-valkey-compatibility-version-9-2".to_string()),
     ];
 }
 
@@ -85,6 +86,7 @@ mod tests {
             "feature = \"min-redis-compatibility-version-7-2\"",
             "feature = \"min-valkey-compatibility-version-8-0\"",
             "feature = \"min-valkey-compatibility-version-9-0\"",
+            "feature = \"min-valkey-compatibility-version-9-2\"",
         ];
 
         // The split index is the number of features strictly below the minimum.
@@ -98,7 +100,10 @@ mod tests {
             (70200, 3),
             (80000, 4),
             (90000, 5),
-            (90001, 6), // Above the newest version: no feature meets the minimum.
+            (90001, 6), // Between known versions: Valkey 9.2 is the first eligible feature.
+            (90100, 6),
+            (90200, 6),
+            (90201, 7), // Above the newest version: no feature meets the minimum.
         ] {
             let (lower, upper) = get_feature_flags(minimum);
             let lower: Vec<String> = lower.iter().map(ToString::to_string).collect();

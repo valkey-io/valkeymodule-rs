@@ -47,6 +47,8 @@ impl ParseCallbacks for ValkeyModuleCallback {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=src/include/redismodule.h");
+    println!("cargo:rerun-if-changed=src/include/valkeymodule.h");
     // Share the integration engine matrix with the setup and test scripts.
     // Recompute the default test server whenever the matrix changes.
     println!("cargo:rerun-if-changed=integration-servers.conf");

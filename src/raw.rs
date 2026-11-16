@@ -42,6 +42,11 @@ bitflags! {
         const SKIP_COMMAND_VALIDATION = VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION as c_int;
         #[cfg(feature = "min-valkey-compatibility-version-9-0")]
         const HANDLE_ATOMIC_SLOT_MIGRATION = VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION as c_int;
+        /// Opt in to forkless operations (requires Valkey 9.2). Opening a key for
+        /// write may return null while the key is in use; the module must handle that return.
+        /// Module data type RDB save callbacks must be safe on background threads.
+        #[cfg(feature = "min-valkey-compatibility-version-9-2")]
+        const HANDLE_FORKLESS = VALKEYMODULE_OPTIONS_HANDLE_FORKLESS as c_int;
     }
 }
 
