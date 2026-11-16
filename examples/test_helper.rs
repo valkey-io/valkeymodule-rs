@@ -20,6 +20,15 @@ fn test_helper_command_name(ctx: &Context, _args: Vec<ValkeyString>) -> ValkeyRe
     Ok(ctx.current_command_name()?.into())
 }
 
+fn test_helper_key_type(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    if args.len() != 2 {
+        return Err(ValkeyError::WrongArity);
+    }
+
+    let key = ctx.open_key(&args[1]);
+    Ok(format!("{:?}", key.key_type()).into())
+}
+
 fn test_helper_err(_ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 2 {
         return Err(ValkeyError::WrongArity);
@@ -55,6 +64,7 @@ valkey_module! {
         ["test_helper.version", test_helper_version, "", 0, 0, 0],
         ["test_helper._version_rm_call", test_helper_version_rm_call, "", 0, 0, 0],
         ["test_helper.name", test_helper_command_name, "", 0, 0, 0],
+        ["test_helper.key_type", test_helper_key_type, "readonly", 1, 1, 1],
         ["test_helper.err", test_helper_err, "", 0, 0, 0],
     ],
 }

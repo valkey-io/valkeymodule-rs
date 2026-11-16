@@ -243,6 +243,51 @@ fn test_keys_pos() -> Result<()> {
 }
 
 #[test]
+fn test_path_hash_key_type() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("test_helper")?;
+
+    let _: i64 = redis::cmd("HSET")
+        .arg(&["ordinary-hash", "field", "value"])
+        .query(&mut con)?;
+    for (key, expected) in [("ordinary-hash", "Hash"), ("missing-key", "Empty")] {
+        let actual: String = redis::cmd("test_helper.key_type")
+            .arg(key)
+            .query(&mut con)?;
+        assert_eq!(actual, expected, "SDK key type for {key}");
+    }
+
+    // INFO identifies the engine; a future Redis 9.2 must not pass this gate.
+    // Reuse the module's numeric server-version helper for the version check.
+    let info: redis::InfoDict = redis::cmd("INFO").arg("SERVER").query(&mut con)?;
+    if !info.contains_key(&"valkey_version") {
+        eprintln!("Skipping path-hash creation on a non-Valkey server");
+        return Ok(());
+    }
+    let (major, minor, patch): (i64, i64, i64) = redis::cmd("test_helper.version")
+        .query(&mut con)
+        .context("failed to get the module's numeric server version")?;
+    if (major, minor) < (9, 2) {
+        eprintln!("Skipping path-hash creation on Valkey {major}.{minor}.{patch} (requires 9.2)");
+        return Ok(());
+    }
+
+    // PHSET key path FIELDS numfields field value was introduced in Valkey 9.2.
+    // Any command failure on a supporting server must fail this test.
+    let result: String = redis::cmd("PHSET")
+        .arg(&["path-hash", "/users/alice", "FIELDS", "1", "name", "Alice"])
+        .query(&mut con)
+        .context("failed to create a path hash on Valkey 9.2 or newer")?;
+    assert_eq!(result, "OK");
+
+    let actual: String = redis::cmd("test_helper.key_type")
+        .arg("path-hash")
+        .query(&mut con)?;
+    assert_eq!(actual, "PathHash");
+
+    Ok(())
+}
+
+#[test]
 fn test_helper_version() -> Result<()> {
     let mut con = start_server_w_module_get_connection("test_helper")?;
 
