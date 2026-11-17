@@ -209,7 +209,7 @@ fn my_set_string(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
     let key_arg = args.next_arg()?;
     let value_arg = args.next_string()?;
-    let key = ctx.open_key_writable(&key_arg);
+    let key = ctx.open_key_writable(&key_arg)?;
     let current_value = key.get_value::<MyType>(&MY_TYPE)?;
     match current_value {
         Some(tmp) => {
@@ -236,7 +236,7 @@ fn my_set_number(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
     let key_arg = args.next_arg()?;
     let value_arg = args.next_i64()?;
-    let key = ctx.open_key_writable(&key_arg);
+    let key = ctx.open_key_writable(&key_arg)?;
     let current_value = key.get_value::<MyType>(&MY_TYPE)?;
     match current_value {
         Some(tmp) => {
@@ -263,7 +263,7 @@ fn my_vec_push(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     }
     let key_arg = args.next_arg()?;
     let value_arg = args.next_string()?;
-    let key = ctx.open_key_writable(&key_arg);
+    let key = ctx.open_key_writable(&key_arg)?;
     let current_value = key.get_value::<MyType>(&MY_TYPE)?;
     match current_value {
         Some(tmp) => {
@@ -291,7 +291,7 @@ fn my_map_insert(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let key_arg = args.next_arg()?;
     let value_k_arg = args.next_string()?;
     let value_v_arg = args.next_string()?;
-    let key = ctx.open_key_writable(&key_arg);
+    let key = ctx.open_key_writable(&key_arg)?;
     let current_value = key.get_value::<MyType>(&MY_TYPE)?;
     match current_value {
         Some(tmp) => {

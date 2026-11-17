@@ -26,6 +26,23 @@ See the [examples](examples) directory for some sample modules.
 This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
 Therefore, following the [Valkey Modules API](https://valkey.io/topics/modules-api-ref/) documentation will be mostly relevant here as well.
 
+## Writable keys and forkless operations
+
+Writable opens now return `Result`: `Context::open_key_writable`, `Context::open_key_writable_with_flags`, `ValkeyKeyWritable::open`, and `ValkeyKeyWritable::open_with_redis_string`. Existing callers must handle the error, usually by adding `?`:
+
+```rust
+use valkey_module::{Context, ValkeyResult, ValkeyString};
+
+fn write_value(ctx: &Context, name: &ValkeyString) -> ValkeyResult {
+    let key = ctx.open_key_writable(name)?;
+    key.write("value")
+}
+```
+
+A rejected open returns an error before a writable wrapper is constructed. A missing key still opens successfully with an empty, non-null handle and can be created normally. Opens do not retry or block; callers can return the error or arrange a later retry.
+
+With `min-valkey-compatibility-version-9-2`, modules can opt in to forkless operations using `ModuleOptions::HANDLE_FORKLESS`. Opening a key for writing may then fail while background saving uses it. The server normally defers write commands for their declared keys; timers and access to undeclared keys must handle this failure. RDB save callbacks must be safe on background threads. Auxiliary save callbacks must run only in `AUX_BEFORE_RDB` and export limited data because they block the main thread. The SDK does not enforce these callback obligations, and direct `raw` calls retain the C API's requirements.
+
 ## Feature Flags
 
 ### System Allocator

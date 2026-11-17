@@ -14,8 +14,8 @@ fn lpoprpush(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let src = args.next_arg()?;
     let dst = args.next_arg()?;
 
-    let src_key = ctx.open_key_writable(&src);
-    let dst_key = ctx.open_key_writable(&dst);
+    let src_key = ctx.open_key_writable(&src)?;
+    let dst_key = ctx.open_key_writable(&dst)?;
 
     let src_type = src_key.key_type();
     let dst_type = dst_key.key_type();

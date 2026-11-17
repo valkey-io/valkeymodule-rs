@@ -243,6 +243,27 @@ fn test_keys_pos() -> Result<()> {
 }
 
 #[test]
+// Exercise plain and flagged SDK opens through writable_set, then use GET to verify creation and updates.
+// A missing key must remain writable; it is not the same as a failed (null) open.
+fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("test_helper")?;
+
+    for mode in ["plain", "flags"] {
+        let key = format!("writable-{mode}");
+        for (value, expected_type) in [("created", "Empty"), ("updated", "String")] {
+            let previous_type: String = redis::cmd("test_helper.writable_set")
+                .arg(&[key.as_str(), value, mode])
+                .query(&mut con)?;
+            assert_eq!(previous_type, expected_type, "{mode}");
+            let stored: String = redis::cmd("GET").arg(&key).query(&mut con)?;
+            assert_eq!(stored, value, "{mode}");
+        }
+    }
+
+    Ok(())
+}
+
+#[test]
 fn test_path_hash_key_type() -> Result<()> {
     let mut con = start_server_w_module_get_connection("test_helper")?;
 

@@ -193,51 +193,56 @@ impl Drop for ValkeyKey {
 
 /// `ValkeyKeyWritable` is an abstraction over a Valkey key that allows read and
 /// write operations.
+///
+/// Construction fails if the server rejects the writable open (for example, while
+/// forkless saving uses the key). A successfully constructed wrapper always has a
+/// non-null handle, including when the key does not yet exist.
 pub struct ValkeyKeyWritable {
     ctx: *mut raw::RedisModuleCtx,
     key_inner: *mut raw::RedisModuleKey,
 }
 
 impl ValkeyKeyWritable {
-    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &ValkeyString) -> Self {
+    pub fn open(ctx: *mut raw::RedisModuleCtx, key: &ValkeyString) -> Result<Self, ValkeyError> {
         let key_inner = raw::open_key(ctx, key.inner, to_raw_mode(KeyMode::ReadWrite));
-        Self { ctx, key_inner }
+        Self::from_raw_parts(ctx, key_inner)
     }
 
     pub(crate) fn open_with_flags(
         ctx: *mut raw::RedisModuleCtx,
         key: &ValkeyString,
         flags: KeyFlags,
-    ) -> Self {
+    ) -> Result<Self, ValkeyError> {
         let key_inner = raw::open_key_with_flags(
             ctx,
             key.inner,
             to_raw_mode(KeyMode::ReadWrite),
             flags.bits(),
         );
-        Self { ctx, key_inner }
+        Self::from_raw_parts(ctx, key_inner)
+    }
+
+    fn from_raw_parts(
+        ctx: *mut raw::RedisModuleCtx,
+        key_inner: *mut raw::RedisModuleKey,
+    ) -> Result<Self, ValkeyError> {
+        // With HANDLE_FORKLESS on Valkey 9.2+, a key in use by forkless work can
+        // reject a writable open (e.g. in timers or for undeclared command keys).
+        // Missing keys still get writable handles, even with NONOTIFY/NOEFFECTS;
+        // returning null for a missing key is the read-only open behavior.
+        if key_inner.is_null() {
+            Err(ValkeyError::Str("INUSE Key is being processed"))
+        } else {
+            Ok(Self { ctx, key_inner })
+        }
     }
 
     /// Returns `true` if the key is of type [KeyType::Empty].
     ///
     /// # Note
     ///
-    /// An empty key can be reliably detected by looking for a null
-    /// as the key is opened [ValkeyKeyWritable::open] in read mode,
-    /// but when asking for a write, Valkey returns a non-null pointer
-    /// to allow to write to even an empty key. In that case, the key's
-    /// value should be checked manually instead:
-    ///
-    /// ```
-    /// use valkey_module::key::ValkeyKeyWritable;
-    /// use valkey_module::ValkeyError;
-    ///
-    /// fn is_empty_old(key: &ValkeyKeyWritable) -> Result<bool, ValkeyError> {
-    ///     let mut s = key.as_string_dma()?;
-    ///     let is_empty = s.write(b"new value")?.is_empty();
-    ///     Ok(is_empty)
-    /// }
-    /// ```
+    /// A missing key opened for writing has a non-null handle so it can be
+    /// created. A rejected open returns an error before a wrapper is constructed.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.key_type() == KeyType::Empty
@@ -383,9 +388,9 @@ impl ValkeyKeyWritable {
     pub fn open_with_redis_string(
         ctx: *mut raw::RedisModuleCtx,
         key: *mut raw::RedisModuleString,
-    ) -> Self {
+    ) -> Result<Self, ValkeyError> {
         let key_inner = raw::open_key(ctx, key, to_raw_mode(KeyMode::ReadWrite));
-        Self { ctx, key_inner }
+        Self::from_raw_parts(ctx, key_inner)
     }
 
     /// # Panics
@@ -680,4 +685,121 @@ pub fn verify_type(key_inner: *mut raw::RedisModuleKey, redis_type: &ValkeyType)
     }
 
     VALKEY_OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{test_shims::TestContext, Context};
+    use std::cell::Cell;
+    use std::sync::Once;
+
+    thread_local! {
+        static OPEN_MODE: Cell<c_int> = const { Cell::new(0) };
+        static OPENED_KEY: Cell<*mut raw::RedisModuleKey> = const { Cell::new(ptr::null_mut()) };
+        static CLOSED_KEY: Cell<*mut raw::RedisModuleKey> = const { Cell::new(ptr::null_mut()) };
+        static CLOSE_COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    fn setup() -> TestContext {
+        let context = Context::test();
+        static INSTALL: Once = Once::new();
+        INSTALL.call_once(|| unsafe {
+            // SAFETY: Context::test installs test APIs first. These APIs are then installed
+            // once, before use by these tests, and all observations are thread-local.
+            raw::RedisModule_OpenKey = Some(open_key);
+            raw::RedisModule_CloseKey = Some(close_key);
+        });
+        OPEN_MODE.set(0);
+        OPENED_KEY.set(ptr::null_mut());
+        CLOSED_KEY.set(ptr::null_mut());
+        CLOSE_COUNT.set(0);
+        context
+    }
+
+    // Return a configured opaque handle without dereferencing it or running a server.
+    extern "C" fn open_key(
+        _: *mut raw::RedisModuleCtx,
+        _: *mut raw::RedisModuleString,
+        mode: c_int,
+    ) -> *mut raw::RedisModuleKey {
+        OPEN_MODE.set(mode);
+        OPENED_KEY.get()
+    }
+
+    extern "C" fn close_key(key: *mut raw::RedisModuleKey) {
+        CLOSED_KEY.set(key);
+        CLOSE_COUNT.set(CLOSE_COUNT.get() + 1);
+    }
+
+    #[test]
+    fn rejects_null_writable_open_without_closing_a_handle() {
+        let context = setup();
+        let name = ValkeyString::test("busy");
+
+        let error = context
+            .open_key_writable(&name)
+            .err()
+            .expect("a null writable open must fail");
+        assert_eq!(error.to_string(), "INUSE Key is being processed");
+        assert_eq!(
+            OPEN_MODE.get(),
+            raw::REDISMODULE_READ as c_int | raw::REDISMODULE_WRITE as c_int
+        );
+        assert_eq!(CLOSE_COUNT.get(), 0);
+    }
+
+    #[test]
+    fn rejects_null_writable_open_with_flags_without_closing_a_handle() {
+        let context = setup();
+        let name = ValkeyString::test("busy");
+
+        assert!(context
+            .open_key_writable_with_flags(&name, KeyFlags::NOEFFECTS)
+            .is_err());
+        assert_eq!(
+            OPEN_MODE.get(),
+            raw::REDISMODULE_READ as c_int
+                | raw::REDISMODULE_WRITE as c_int
+                | raw::REDISMODULE_OPEN_KEY_NOEFFECTS as c_int
+        );
+        assert_eq!(CLOSE_COUNT.get(), 0);
+    }
+
+    #[test]
+    fn rejects_null_writable_open_with_raw_string() {
+        let context = setup();
+        let name = ValkeyString::test("busy");
+
+        assert!(ValkeyKeyWritable::open_with_redis_string(context.ctx, name.inner).is_err());
+        assert_eq!(CLOSE_COUNT.get(), 0);
+    }
+
+    #[test]
+    fn successful_opens_close_their_handle_once() {
+        let context = setup();
+        let name = ValkeyString::test("available");
+        // Only the fake close API sees this pointer; it never dereferences it.
+        let handle = NonNull::<raw::RedisModuleKey>::dangling().as_ptr();
+        OPENED_KEY.set(handle);
+
+        drop(
+            context
+                .open_key_writable(&name)
+                .expect("configured valid handle"),
+        );
+        assert_eq!(CLOSED_KEY.get(), handle);
+        assert_eq!(CLOSE_COUNT.get(), 1);
+        drop(
+            context
+                .open_key_writable_with_flags(&name, KeyFlags::NOEFFECTS)
+                .expect("configured valid handle"),
+        );
+        assert_eq!(CLOSE_COUNT.get(), 2);
+        drop(
+            ValkeyKeyWritable::open_with_redis_string(context.ctx, name.inner)
+                .expect("configured valid handle"),
+        );
+        assert_eq!(CLOSE_COUNT.get(), 3);
+    }
 }

@@ -29,6 +29,22 @@ fn test_helper_key_type(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult 
     Ok(format!("{:?}", key.key_type()).into())
 }
 
+fn test_helper_writable_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    use valkey_module::key::KeyFlags;
+
+    if args.len() != 4 {
+        return Err(ValkeyError::WrongArity);
+    }
+    let key = match args[3].try_as_str()? {
+        "plain" => ctx.open_key_writable(&args[1])?,
+        "flags" => ctx.open_key_writable_with_flags(&args[1], KeyFlags::NOEFFECTS)?,
+        _ => return Err(ValkeyError::Str("ERR unknown open mode")),
+    };
+    let previous_type = format!("{:?}", key.key_type());
+    key.write(args[2].try_as_str()?)?;
+    Ok(previous_type.into())
+}
+
 fn test_helper_err(_ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     if args.len() < 2 {
         return Err(ValkeyError::WrongArity);
@@ -65,6 +81,7 @@ valkey_module! {
         ["test_helper._version_rm_call", test_helper_version_rm_call, "", 0, 0, 0],
         ["test_helper.name", test_helper_command_name, "", 0, 0, 0],
         ["test_helper.key_type", test_helper_key_type, "readonly", 1, 1, 1],
+        ["test_helper.writable_set", test_helper_writable_set, "write deny-oom", 1, 1, 1],
         ["test_helper.err", test_helper_err, "", 0, 0, 0],
     ],
 }

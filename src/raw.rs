@@ -42,9 +42,12 @@ bitflags! {
         const SKIP_COMMAND_VALIDATION = VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION as c_int;
         #[cfg(feature = "min-valkey-compatibility-version-9-0")]
         const HANDLE_ATOMIC_SLOT_MIGRATION = VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION as c_int;
-        /// Opt in to forkless operations (requires Valkey 9.2). Opening a key for
-        /// write may return null while the key is in use; the module must handle that return.
-        /// Module data type RDB save callbacks must be safe on background threads.
+        /// Declare that the module handles forkless operations. Opting in has a
+        /// tradeoff: while a forkless operation is running, opening a key for write can
+        /// return NULL if the key is currently in use, and the module must handle that
+        /// NULL return. A module that registers a data type also declares that its RDB
+        /// save callbacks are safe to run on a background thread. When any loaded module
+        /// does not set this, forkless operations are blocked.
         #[cfg(feature = "min-valkey-compatibility-version-9-2")]
         const HANDLE_FORKLESS = VALKEYMODULE_OPTIONS_HANDLE_FORKLESS as c_int;
     }

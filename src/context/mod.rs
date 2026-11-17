@@ -656,17 +656,22 @@ impl Context {
         ValkeyKey::open_with_flags(self.ctx, key, flags)
     }
 
-    #[must_use]
-    pub fn open_key_writable(&self, key: &ValkeyString) -> ValkeyKeyWritable {
+    /// Opens a key for writing, returning an error if the server rejects the open.
+    /// A missing key succeeds with an empty handle that can be used to create it.
+    ///
+    /// In forkless mode, a key being saved may be temporarily unavailable. This
+    /// method does not retry or block; return the error or arrange a later retry.
+    pub fn open_key_writable(&self, key: &ValkeyString) -> Result<ValkeyKeyWritable, ValkeyError> {
         ValkeyKeyWritable::open(self.ctx, key)
     }
 
-    #[must_use]
+    /// Opens a writable key with flags. See [`Self::open_key_writable`] for
+    /// missing-key and rejected-open behavior.
     pub fn open_key_writable_with_flags(
         &self,
         key: &ValkeyString,
         flags: KeyFlags,
-    ) -> ValkeyKeyWritable {
+    ) -> Result<ValkeyKeyWritable, ValkeyError> {
         ValkeyKeyWritable::open_with_flags(self.ctx, key, flags)
     }
 
