@@ -42,6 +42,14 @@ bitflags! {
         const SKIP_COMMAND_VALIDATION = VALKEYMODULE_OPTIONS_SKIP_COMMAND_VALIDATION as c_int;
         #[cfg(feature = "min-valkey-compatibility-version-9-0")]
         const HANDLE_ATOMIC_SLOT_MIGRATION = VALKEYMODULE_OPTIONS_HANDLE_ATOMIC_SLOT_MIGRATION as c_int;
+        /// Declare that the module handles forkless operations. Opting in has a
+        /// tradeoff: while a forkless operation is running, opening a key for write can
+        /// return NULL if the key is currently in use, and the module must handle that
+        /// NULL return. A module that registers a data type also declares that its RDB
+        /// save callbacks are safe to run on a background thread. When any loaded module
+        /// does not set this, forkless operations are blocked.
+        #[cfg(feature = "min-valkey-compatibility-version-9-2")]
+        const HANDLE_FORKLESS = VALKEYMODULE_OPTIONS_HANDLE_FORKLESS as c_int;
     }
 }
 
@@ -63,17 +71,6 @@ pub enum KeyType {
 impl From<c_int> for KeyType {
     fn from(v: c_int) -> Self {
         Self::from_i32(v).unwrap_or(Self::Unknown)
-    }
-}
-
-#[cfg(test)]
-mod key_type_tests {
-    use super::KeyType;
-
-    #[test]
-    fn key_type_from_int() {
-        assert_eq!(KeyType::from(8), KeyType::PathHash);
-        assert_eq!(KeyType::from(99), KeyType::Unknown);
     }
 }
 
@@ -1001,4 +998,15 @@ impl From<c_int> for Version {
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub fn is_io_error(rdb: *mut RedisModuleIO) -> bool {
     unsafe { RedisModule_IsIOError.unwrap()(rdb) != 0 }
+}
+
+#[cfg(test)]
+mod key_type_tests {
+    use super::KeyType;
+
+    #[test]
+    fn key_type_from_int() {
+        assert_eq!(KeyType::from(8), KeyType::PathHash);
+        assert_eq!(KeyType::from(99), KeyType::Unknown);
+    }
 }

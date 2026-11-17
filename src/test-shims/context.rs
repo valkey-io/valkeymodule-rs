@@ -49,6 +49,7 @@ struct ContextData {
     current_user: Option<Vec<u8>>,
     acl_user: Option<Vec<u8>>,
     deauthentication_expected: bool,
+    module_options: libc::c_int,
     call_expectations: Vec<TestCallExpectation>,
 }
 
@@ -62,6 +63,7 @@ impl Default for ContextData {
             current_user: None,
             acl_user: None,
             deauthentication_expected: false,
+            module_options: 0,
             call_expectations: Vec::new(),
         }
     }
@@ -207,6 +209,12 @@ impl TestContext {
             | libc::c_int::from(patch);
         SERVER_VERSION.with(|server_version| server_version.set(version));
         self
+    }
+
+    /// Returns the latest options passed to [`Context::set_module_options`], initially empty.
+    #[must_use]
+    pub fn module_options(&self) -> raw::ModuleOptions {
+        raw::ModuleOptions::from_bits_retain(self.data.module_options)
     }
 
     /// Configures the ACL username accepted by [`Context::authenticate_client_with_acl_user`].
@@ -448,9 +456,9 @@ pub(super) extern "C" fn deauthenticate_and_close_client(
     .unwrap_or(raw::Status::Err as libc::c_int)
 }
 
-/// Accepts module options in tests without applying server-wide behavior.
-pub(super) extern "C" fn set_module_options(ctx: *mut raw::RedisModuleCtx, _options: libc::c_int) {
-    let _ = with_data(ctx, |_| ());
+/// Records module options in tests without applying server-wide behavior.
+pub(super) extern "C" fn set_module_options(ctx: *mut raw::RedisModuleCtx, options: libc::c_int) {
+    let _ = with_data_mut(ctx, |data| data.module_options = options);
 }
 
 pub(super) extern "C" fn get_server_version() -> libc::c_int {
@@ -802,26 +810,6 @@ mod tests {
     }
 
     #[test]
-    fn accepts_all_module_options() {
-        let context = Context::test();
-        let mut module_options = vec![
-            raw::ModuleOptions::HANDLE_IO_ERRORS,
-            raw::ModuleOptions::NO_IMPLICIT_SIGNAL_MODIFIED,
-            raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD,
-            raw::ModuleOptions::ALLOW_NESTED_KEYSPACE_NOTIFICATIONS,
-        ];
-
-        #[cfg(feature = "min-valkey-compatibility-version-8-0")]
-        module_options.push(raw::ModuleOptions::SKIP_COMMAND_VALIDATION);
-        #[cfg(feature = "min-valkey-compatibility-version-9-0")]
-        module_options.push(raw::ModuleOptions::HANDLE_ATOMIC_SLOT_MIGRATION);
-
-        for options in module_options {
-            context.set_module_options(options);
-        }
-    }
-
-    #[test]
     fn returns_configured_client_info() {
         let mut context = Context::test();
         context.expect_get_client_info_by_id(RedisModuleClientInfo {
@@ -984,6 +972,7 @@ mod tests {
             current_user: Some(b"alice".to_vec()),
             acl_user: Some(b"alice".to_vec()),
             deauthentication_expected: true,
+            module_options: 0,
             call_expectations: Vec::new(),
         });
         let foreign_ctx = (&mut *foreign_data as *mut ContextData).cast::<raw::RedisModuleCtx>();
@@ -1174,5 +1163,77 @@ mod tests {
         assert!(try_call(ctx, "TEST", &[]).is_none());
 
         set_module_options(ctx, 0);
+    }
+
+    mod module_options_tests {
+        use crate::{raw, Context};
+
+        #[test]
+        fn records_each_flag() {
+            // Verify that set_module_options records each available flag.
+            for options in raw::ModuleOptions::all().iter() {
+                let context = Context::test();
+                let expected = options.bits();
+                context.set_module_options(options);
+                assert_eq!(context.module_options().bits(), expected);
+            }
+        }
+
+        #[test]
+        fn records_combined_flags() {
+            // test all possible permutations of various ModuleOptions
+            let flags: Vec<_> = raw::ModuleOptions::all().iter().collect();
+            for combination in 0..(1usize << flags.len()) {
+                let context = Context::test();
+                assert!(context.module_options().is_empty());
+
+                let mut expected = 0;
+                for (index, flag) in flags.iter().enumerate() {
+                    if combination & (1usize << index) != 0 {
+                        expected |= flag.bits();
+                    }
+                }
+                let options = raw::ModuleOptions::from_bits(expected)
+                    .expect("combinations of known module options are valid");
+                context.set_module_options(options);
+
+                assert_eq!(context.module_options().bits(), expected);
+            }
+        }
+
+        #[test]
+        fn replaces_and_clears_flags() {
+            let context = Context::test();
+            context.set_module_options(
+                raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD | raw::ModuleOptions::HANDLE_IO_ERRORS,
+            );
+            context.set_module_options(raw::ModuleOptions::NO_IMPLICIT_SIGNAL_MODIFIED);
+            assert_eq!(
+                context.module_options().bits(),
+                raw::ModuleOptions::NO_IMPLICIT_SIGNAL_MODIFIED.bits()
+            );
+
+            context.set_module_options(raw::ModuleOptions::empty());
+            assert!(context.module_options().is_empty());
+        }
+
+        #[test]
+        fn isolates_flags_between_contexts() {
+            let first = Context::test();
+            first.set_module_options(raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD);
+
+            let second = Context::test();
+            assert!(second.module_options().is_empty());
+            second.set_module_options(raw::ModuleOptions::HANDLE_IO_ERRORS);
+
+            assert_eq!(
+                first.module_options().bits(),
+                raw::ModuleOptions::HANDLE_REPL_ASYNC_LOAD.bits()
+            );
+            assert_eq!(
+                second.module_options().bits(),
+                raw::ModuleOptions::HANDLE_IO_ERRORS.bits()
+            );
+        }
     }
 }

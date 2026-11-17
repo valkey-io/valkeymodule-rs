@@ -53,7 +53,7 @@ fn write(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     let mut args = args.into_iter().skip(1);
     let key_name = args.next_arg()?;
-    let _ = ctx.open_key_writable_with_flags(&key_name, KeyFlags::NOEFFECTS);
+    let _key = ctx.open_key_writable_with_flags(&key_name, KeyFlags::NOEFFECTS)?;
     Ok(ValkeyValue::SimpleStringStatic("OK"))
 }
 

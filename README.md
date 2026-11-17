@@ -26,6 +26,23 @@ See the [examples](examples) directory for some sample modules.
 This crate tries to provide high-level wrappers around the standard Valkey Modules API, while preserving the API's basic concepts.
 Therefore, following the [Valkey Modules API](https://valkey.io/topics/modules-api-ref/) documentation will be mostly relevant here as well.
 
+## Writable keys and forkless operations
+
+Writable opens now return `Result`: `Context::open_key_writable`, `Context::open_key_writable_with_flags`, `ValkeyKeyWritable::open`, and `ValkeyKeyWritable::open_with_redis_string`. Existing callers must handle the error, usually by adding `?`:
+
+```rust
+use valkey_module::{Context, ValkeyResult, ValkeyString};
+
+fn write_value(ctx: &Context, name: &ValkeyString) -> ValkeyResult {
+    let key = ctx.open_key_writable(name)?;
+    key.write("value")
+}
+```
+
+A rejected open returns an error before a writable wrapper is constructed. A missing key still opens successfully with an empty, non-null handle and can be created normally. Opens do not retry or block; callers can return the error or arrange a later retry.
+
+With `min-valkey-compatibility-version-9-2`, modules can opt in to forkless operations using `ModuleOptions::HANDLE_FORKLESS`. Opening a key for writing may then fail while background saving uses it. The server normally defers write commands for their declared keys; timers and access to undeclared keys must handle this failure. RDB save callbacks must be safe on background threads. Auxiliary save callbacks must run only in `AUX_BEFORE_RDB` and export limited data because they block the main thread. The SDK does not enforce these callback obligations, and direct `raw` calls retain the C API's requirements.
+
 ## Feature Flags
 
 ### System Allocator
@@ -159,7 +176,9 @@ assert!(matches!(reply, Ok(ValkeyValue::Integer(1))));
 
 The fixture synchronizes its test state so it can be moved between threads. Each lock receives an independent guard context with a fresh copy of the configured expectations, so expectations can be reused across repeated or concurrent locks. Concurrent test guards may coexist because the shim does not model Valkey's process-wide GIL or command scheduling; this behavior tests fixture isolation, not production locking guarantees. The shim supports only `ThreadSafeContext<DetachedFromClient>` and does not simulate a `ThreadSafeContext` associated with a `BlockedClient`.
 
-Calls to `set_module_options` are accepted as a no-op because their effects require a running server. `Context::create_string()` also works with a test context:
+Calls to `set_module_options` record the latest flags, which you can inspect with `context.module_options()`. Options are initially empty; each call replaces the recorded flags, and passing `ModuleOptions::empty()` clears them. Testing the options' effects requires a running server.
+
+`Context::create_string()` also works with a test context:
 
 ```rust
 let context = Context::test();
@@ -274,4 +293,13 @@ cargo build --examples --release --no-default-features --features min-redis-comp
 cargo test --test integration --release --no-default-features --features min-redis-compatibility-version-7-2 test_defrag -- --exact --test-threads=1
 ```
 
-Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine. The `cargo build-examples` and `cargo test-integration` aliases target a single configuration defined in [.cargo/config.toml](.cargo/config.toml); use `./test.sh` for the full matrix.
+Omit `test_defrag -- --exact` and use `-- --test-threads=1` to run the entire integration suite for that engine.
+
+The aliases in [.cargo/config.toml](.cargo/config.toml) use `--no-default-features` and enable `min-valkey-compatibility-version-9-2`:
+
+- `cargo build-examples` builds examples with Valkey 9.2 as the minimum compatibility target.
+- `cargo test-integration` selects the configured Valkey 9.2 server unless `INTEGRATION_TEST_SERVER` overrides it. Build the examples with matching features first.
+- `cargo test-docs` checks documentation examples with the same compatibility features.
+- `cargo test-shims` also enables `test-shims`, covering every currently defined module-option flag without a running server.
+
+For older servers, build and test with their matching compatibility features explicitly, as in the Valkey 7.2 commands above. Use `./test.sh` for the full version matrix; it selects features separately for each engine.

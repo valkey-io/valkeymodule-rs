@@ -60,7 +60,7 @@ fn alloc_set(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
 
     ctx.log_debug(format!("key: {key}, size: {size}").as_str());
 
-    let key = ctx.open_key_writable(&key);
+    let key = ctx.open_key_writable(&key)?;
 
     if let Some(value) = key.get_value::<MyType>(&MY_VALKEY_TYPE)? {
         value.data = size;

@@ -26,7 +26,7 @@ fn stream_read_from(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
         |e| e.id,
     );
 
-    let stream = ctx.open_key_writable(&stream_key);
+    let stream = ctx.open_key_writable(&stream_key)?;
     stream.trim_stream_by_id(id_to_keep, false)?;
     Ok(match element {
         Some(e) => ValkeyValue::BulkString(format!("{}-{}", e.id.ms, e.id.seq)),

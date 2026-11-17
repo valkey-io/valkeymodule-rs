@@ -10,7 +10,7 @@ fn expire_cmd(ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
     let mut args = args.into_iter().skip(1);
     let key_name = args.next_arg()?;
     let ttl_sec = args.next_i64()?;
-    let key = ctx.open_key_writable(&key_name);
+    let key = ctx.open_key_writable(&key_name)?;
     if ttl_sec >= 0 {
         key.set_expire(Duration::new(ttl_sec as u64, 0))
     } else {
