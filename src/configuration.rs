@@ -9,6 +9,318 @@ use std::os::raw::{c_char, c_int, c_longlong, c_void};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Mutex;
 
+mod group;
+pub use group::{
+    ConfigurationGroup, ConfigurationGroupChanged, ConfigurationGroupGuard,
+    ConfigurationGroupPatchField, ConfigurationGroupPatcher, ConfigurationGroupValidator,
+    MAX_CONFIGURATION_GROUP_JSON_BYTES,
+};
+
+/// Declares a typed group of module configuration fields exposed as one JSON value.
+///
+/// The macro generates a module with a concrete `Config` type and a static `CONFIG` handle. The
+/// handle is registered with [`crate::valkey_module!`] through `group: [feature]` and read under a
+/// Valkey lock with `feature::CONFIG.lock(ctx)`. `CONFIG SET` payloads are top-level JSON object
+/// patches: omitted fields retain their current values, while unknown fields and nested values are
+/// rejected.
+///
+/// Field defaults make adding a field backward compatible with older persisted objects. Use Serde
+/// `rename` and `alias` attributes when an external key needs a compatibility window.
+///
+/// ```ignore
+/// config_group! {
+///     pub feature {
+///         key1: i64 = 10, range = 0..=100,
+///         key2: bool = false,
+///     }
+///
+///     validate: validate_feature,
+///     on_changed: on_feature_changed,
+///     flags: ConfigurationFlags::DEFAULT,
+/// }
+///
+/// valkey_module! {
+///     // ...
+///     configurations: [
+///         group: [feature],
+///     ]
+/// }
+/// ```
+#[macro_export]
+macro_rules! config_group {
+    (@parse
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*]
+    ) => {
+        $crate::config_group!(@emit
+            $group_meta $vis $name $options
+            [$($parsed)*]
+        );
+    };
+
+    (@parse
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*]
+        $(#[$field_meta:meta])*
+        $field:ident : $field_type:ty = $default:expr,
+        range = $($range_and_remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse_range_start
+            $group_meta $vis $name $options
+            [$($parsed)*]
+            [$(#[$field_meta])*]
+            [$field : $field_type = $default]
+            []
+            $($range_and_remaining)*
+        );
+    };
+
+    (@parse_range_start
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*] $field_meta:tt $field:tt
+        [$($range_start:tt)*]
+        ..= $($remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse_range_end
+            $group_meta $vis $name $options
+            [$($parsed)*] $field_meta $field
+            [$($range_start)*] []
+            $($remaining)*
+        );
+    };
+
+    (@parse_range_start
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*] $field_meta:tt $field:tt
+        [$($range_start:tt)*]
+        $next:tt $($remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse_range_start
+            $group_meta $vis $name $options
+            [$($parsed)*] $field_meta $field
+            [$($range_start)* $next]
+            $($remaining)*
+        );
+    };
+
+    (@parse_range_start
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*] $field_meta:tt $field:tt
+        [$($range_start:tt)*]
+    ) => {
+        ::std::compile_error!("config_group! ranges must use inclusive `start..=end` syntax");
+    };
+
+    (@parse_range_end
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*]
+        [$(#[$field_meta:meta])*]
+        [$field:ident : $field_type:ty = $default:expr]
+        [$($range_start:tt)+] [$($range_end:tt)+]
+        , $($remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse
+            $group_meta $vis $name $options
+            [
+                $($parsed)*
+                [
+                    $(#[$field_meta])*
+                    $field : $field_type = $default,
+                    range = [$($range_start)+] ..= [$($range_end)+]
+                ]
+            ]
+            $($remaining)*
+        );
+    };
+
+    (@parse_range_end
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*] $field_meta:tt $field:tt
+        $range_start:tt [$($range_end:tt)*]
+        $next:tt $($remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse_range_end
+            $group_meta $vis $name $options
+            [$($parsed)*] $field_meta $field
+            $range_start [$($range_end)* $next]
+            $($remaining)*
+        );
+    };
+
+    (@parse_range_end
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*] $field_meta:tt $field:tt
+        $range_start:tt [$($range_end:tt)*]
+    ) => {
+        ::std::compile_error!("config_group! ranges must end with a comma");
+    };
+
+    (@parse
+        $group_meta:tt $vis:tt $name:tt $options:tt
+        [$($parsed:tt)*]
+        $(#[$field_meta:meta])*
+        $field:ident : $field_type:ty = $default:expr,
+        $($remaining:tt)*
+    ) => {
+        $crate::config_group!(@parse
+            $group_meta $vis $name $options
+            [
+                $($parsed)*
+                [
+                    $(#[$field_meta])*
+                    $field : $field_type = $default
+                ]
+            ]
+            $($remaining)*
+        );
+    };
+
+    (@emit
+        [$(#[$group_meta:meta])*]
+        [$vis:vis]
+        [$name:ident]
+        [
+            $(validate: $validate:ident,)?
+            $(on_changed: $on_changed:ident,)?
+            $(flags: $flags:expr,)?
+        ]
+        [
+            $(
+                [
+                    $(#[$field_meta:meta])*
+                    $field:ident : $field_type:ty = $default:expr
+                    $(, range = [$($range_start:tt)+] ..= [$($range_end:tt)+])?
+                ]
+            )*
+        ]
+    ) => {
+        $(#[$group_meta])*
+        $vis mod $name {
+            #[allow(unused_imports)]
+            use super::*;
+            #[allow(unused_imports)]
+            use $crate::__private::serde as __valkey_module_serde;
+
+            #[derive(
+                Clone,
+                $crate::__private::serde::Serialize,
+                $crate::__private::serde::Deserialize,
+            )]
+            #[serde(crate = "__valkey_module_serde", deny_unknown_fields)]
+            pub struct Config {
+                $(
+                    $(#[$field_meta])*
+                    pub $field: $field_type,
+                )*
+            }
+
+            #[derive($crate::__private::serde::Deserialize)]
+            #[serde(crate = "__valkey_module_serde", deny_unknown_fields)]
+            struct __Patch {
+                $(
+                    $(#[$field_meta])*
+                    #[serde(default)]
+                    $field: $crate::__private::ConfigurationGroupPatchField<$field_type>,
+                )*
+            }
+
+            impl ::std::default::Default for Config {
+                fn default() -> Self {
+                    Self {
+                        $($field: $default,)*
+                    }
+                }
+            }
+
+            fn __default() -> Config {
+                Config::default()
+            }
+
+            fn __apply_patch(
+                mut base: Config,
+                patch: $crate::__private::serde_json::Value,
+            ) -> ::std::result::Result<Config, $crate::ValkeyError> {
+                let patch: __Patch = $crate::__private::serde_json::from_value(patch)
+                    .map_err(|error| $crate::ValkeyError::String(error.to_string()))?;
+                $(
+                    if let $crate::__private::ConfigurationGroupPatchField::Value(value) =
+                        patch.$field
+                    {
+                        base.$field = value;
+                    }
+                )*
+                ::std::result::Result::Ok(base)
+            }
+
+            #[doc(hidden)]
+            pub fn __validate(
+                context: &$crate::configuration::ConfigurationContext,
+                name: &str,
+                proposed: &Config,
+            ) -> ::std::result::Result<(), $crate::ValkeyError> {
+                $(
+                    $(
+                        let range_start = $($range_start)+;
+                        let range_end = $($range_end)+;
+                        if !(range_start..=range_end).contains(&proposed.$field) {
+                            return ::std::result::Result::Err($crate::ValkeyError::String(
+                                ::std::format!(
+                                    "Invalid configuration '{}': field '{}' is outside range {}..={}",
+                                    name,
+                                    ::std::stringify!($field),
+                                    ::std::stringify!($($range_start)+),
+                                    ::std::stringify!($($range_end)+),
+                                ),
+                            ));
+                        }
+                    )?
+                )*
+                $(super::$validate(context, name, proposed)?;)?
+                ::std::result::Result::Ok(())
+            }
+
+            #[allow(dead_code)]
+            pub static CONFIG: $crate::ConfigurationGroup<Config> =
+                $crate::ConfigurationGroup::new_with_patcher(
+                    ::std::stringify!($name),
+                    __default,
+                    $crate::config_group!(@flags $($flags)?),
+                    ::std::option::Option::Some(__validate),
+                    $crate::config_group!(@on_changed $($on_changed)?),
+                    __apply_patch,
+                );
+        }
+    };
+
+    (
+        $(#[$group_meta:meta])*
+        $vis:vis $name:ident {
+            $($fields:tt)*
+        }
+        $(validate: $validate:ident,)?
+        $(on_changed: $on_changed:ident,)?
+        $(flags: $flags:expr,)?
+    ) => {
+        $crate::config_group!(@parse
+            [$(#[$group_meta])*]
+            [$vis]
+            [$name]
+            [
+                $(validate: $validate,)?
+                $(on_changed: $on_changed,)?
+                $(flags: $flags,)?
+            ]
+            []
+            $($fields)*
+        );
+    };
+
+    (@flags $flags:expr) => { $flags };
+    (@flags) => { $crate::configuration::ConfigurationFlags::DEFAULT };
+    (@on_changed $on_changed:ident) => { ::std::option::Option::Some(super::$on_changed) };
+    (@on_changed) => { ::std::option::Option::None };
+}
+
 bitflags! {
     /// Configuration options
     pub struct ConfigurationFlags : u32 {
@@ -589,4 +901,49 @@ pub fn module_config_set(
         )
     })?;
     Ok((&res).into())
+}
+
+#[cfg(test)]
+mod config_group_macro_tests {
+    use super::{ConfigurationContext, ConfigurationFlags};
+    use crate::ValkeyError;
+
+    fn reject_allowed_value(
+        _ctx: &ConfigurationContext,
+        _name: &str,
+        _proposed: &ranged::Config,
+    ) -> Result<(), ValkeyError> {
+        Err(ValkeyError::Str("custom validator ran"))
+    }
+
+    crate::config_group! {
+        ranged {
+            count: i64 = 10, range = 0..=100,
+        }
+
+        validate: reject_allowed_value,
+        flags: ConfigurationFlags::DEFAULT,
+    }
+
+    #[test]
+    fn generated_range_check_runs_before_custom_validator() {
+        let ctx = ConfigurationContext::new();
+        let out_of_range = ranged::Config { count: 101 };
+
+        let error = ranged::__validate(&ctx, "ranged", &out_of_range)
+            .expect_err("generated range should reject the value");
+
+        assert!(error.to_string().contains("outside range 0..=100"));
+    }
+
+    #[test]
+    fn generated_validator_calls_custom_validator_after_ranges_pass() {
+        let ctx = ConfigurationContext::new();
+        let allowed = ranged::Config { count: 50 };
+
+        let error = ranged::__validate(&ctx, "ranged", &allowed)
+            .expect_err("custom validator should run after generated checks");
+
+        assert!(error.to_string().contains("custom validator ran"));
+    }
 }
