@@ -293,6 +293,59 @@ pub fn get_i64_default_config_value(
     })
 }
 
+/// Like `get_i64_default_config_value`, but a load argument outside `min..=max` is an
+/// error: the engine does not range-check a config's default.
+pub fn get_i64_default_config_value_in_range(
+    args: &[ValkeyString],
+    name: &str,
+    default: i64,
+    min: i64,
+    max: i64,
+) -> Result<i64, ValkeyError> {
+    match find_config_value(args, name) {
+        None => Ok(default),
+        Some(_) => check_i64_range(
+            name,
+            get_i64_default_config_value(args, name, default)?,
+            min,
+            max,
+        ),
+    }
+}
+
+fn check_i64_range(name: &str, value: i64, min: i64, max: i64) -> Result<i64, ValkeyError> {
+    if (min..=max).contains(&value) {
+        Ok(value)
+    } else {
+        Err(ValkeyError::String(format!(
+            "Module argument '{name}' {value} must be between {min} and {max} inclusive"
+        )))
+    }
+}
+
+/// Check that the module load arguments are `name value` pairs naming registered configs.
+pub fn verify_config_args(args: &[ValkeyString], names: &[&str]) -> Result<(), ValkeyError> {
+    let args: Vec<&[u8]> = args.iter().map(ValkeyString::as_slice).collect();
+    verify_config_arg_names(&args, names)
+}
+
+fn verify_config_arg_names(args: &[&[u8]], names: &[&str]) -> Result<(), ValkeyError> {
+    if args.len() % 2 == 1 {
+        return Err(ValkeyError::Str(
+            "Module arguments must be configuration name value pairs",
+        ));
+    }
+    for name in args.iter().step_by(2) {
+        if !names.iter().any(|known| known.as_bytes() == *name) {
+            return Err(ValkeyError::String(format!(
+                "Unknown module argument '{}'",
+                String::from_utf8_lossy(name)
+            )));
+        }
+    }
+    Ok(())
+}
+
 extern "C" fn string_configuration_set<T: ConfigurationValue<ValkeyString> + 'static>(
     name: *const c_char,
     val: *mut raw::RedisModuleString,
@@ -589,4 +642,49 @@ pub fn module_config_set(
         )
     })?;
     Ok((&res).into())
+}
+
+#[cfg(test)]
+mod load_argument_tests {
+    use super::*;
+
+    fn message(result: Result<impl std::fmt::Debug, ValkeyError>) -> String {
+        result.expect_err("expected an error").to_string()
+    }
+
+    #[test]
+    fn a_value_inside_the_range_is_kept() {
+        assert_eq!(check_i64_range("threads", 1, 1, 32).unwrap(), 1);
+        assert_eq!(check_i64_range("threads", 32, 1, 32).unwrap(), 32);
+    }
+
+    #[test]
+    fn a_value_outside_the_range_is_refused() {
+        assert_eq!(
+            message(check_i64_range("threads", 0, 1, 32)),
+            "Module argument 'threads' 0 must be between 1 and 32 inclusive"
+        );
+        assert!(check_i64_range("threads", 33, 1, 32).is_err());
+    }
+
+    #[test]
+    fn arguments_naming_registered_configs_pass() {
+        let names = ["threads", "dir"];
+        assert!(verify_config_arg_names(&[], &names).is_ok());
+        assert!(verify_config_arg_names(&[b"dir", b"/data", b"threads", b"4"], &names).is_ok());
+        assert!(verify_config_arg_names(&[b"dir", b"threads"], &names).is_ok());
+    }
+
+    #[test]
+    fn an_unknown_name_or_a_missing_value_is_refused() {
+        let names = ["threads", "dir"];
+        assert_eq!(
+            message(verify_config_arg_names(&[b"thraeds", b"4"], &names)),
+            "Unknown module argument 'thraeds'"
+        );
+        assert_eq!(
+            message(verify_config_arg_names(&[b"threads"], &names)),
+            "Module arguments must be configuration name value pairs"
+        );
+    }
 }
