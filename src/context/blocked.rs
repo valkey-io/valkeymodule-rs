@@ -1,12 +1,14 @@
 use crate::redismodule::AUTH_HANDLED;
-use crate::{raw, Context, ValkeyError, ValkeyString};
+use crate::{raw, Context, ValkeyError, ValkeyResult, ValkeyString};
 use std::os::raw::{c_int, c_void};
+use std::sync::OnceLock;
 
 // Callback types for handling blocked client operations
-// Currently supports authentication reply callback for block_client_on_auth
 #[derive(Debug)]
 pub enum ReplyCallback<T> {
+    #[allow(dead_code)]
     Auth(fn(&Context, ValkeyString, ValkeyString, Option<&T>) -> Result<c_int, ValkeyError>),
+    Unblock(fn(&Context, Option<T>) -> ValkeyResult),
 }
 
 #[derive(Debug)]
@@ -23,8 +25,30 @@ pub struct BlockedClient<T: 'static = ()> {
     pub(crate) inner: *mut raw::RedisModuleBlockedClient,
     reply_callback: Option<ReplyCallback<T>>,
     free_callback: Option<FreePrivateDataCallback<T>>,
-    data: Option<Box<T>>,
+    data: OnceLock<T>,
     measuring_time: bool,
+}
+
+/// Main thread, on unblock: run the module's reply callback and send its result.
+/// Takes only the data; the box is freed later by `free_callback_wrapper`.
+unsafe extern "C" fn reply_callback_wrapper<T: 'static>(
+    ctx: *mut raw::RedisModuleCtx,
+    _argv: *mut *mut raw::RedisModuleString,
+    _argc: c_int,
+) -> c_int {
+    let context = Context::new(ctx);
+    let private_data = context.get_blocked_client_private_data();
+    if private_data.is_null() {
+        panic!("[reply_callback_wrapper] Module private data is null; this should not happen!");
+    }
+    let private_data = &mut *(private_data as *mut BlockedClientPrivateData<T>);
+    let cb = match private_data.reply_callback.as_ref() {
+        Some(ReplyCallback::Unblock(cb)) => cb,
+        _ => panic!("[reply_callback_wrapper] Reply callback is missing; this should not happen!"),
+    };
+    let data = private_data.data.take().map(|data| *data);
+    context.reply(cb(&context, data));
+    raw::REDISMODULE_OK as c_int
 }
 
 #[allow(dead_code)]
@@ -48,7 +72,7 @@ unsafe extern "C" fn auth_reply_wrapper<T: 'static>(
 
     let cb = match user_private_data.reply_callback.as_ref() {
         Some(ReplyCallback::Auth(cb)) => cb,
-        None => panic!("[auth_reply_wrapper] Reply callback is null; this should not happen!"),
+        _ => panic!("[auth_reply_wrapper] Reply callback is null; this should not happen!"),
     };
 
     let data_ref = user_private_data.data.as_deref();
@@ -94,50 +118,43 @@ impl<T> BlockedClient<T> {
             inner,
             reply_callback: None,
             free_callback: None,
-            data: None,
+            data: OnceLock::new(),
             measuring_time: false,
         }
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn with_auth_callback(
+    pub(crate) fn with_reply_callback(
         inner: *mut raw::RedisModuleBlockedClient,
-        auth_reply_callback: fn(
-            &Context,
-            ValkeyString,
-            ValkeyString,
-            Option<&T>,
-        ) -> Result<c_int, ValkeyError>,
+        reply_callback: ReplyCallback<T>,
         free_callback: Option<FreePrivateDataCallback<T>>,
-    ) -> Self
-    where
-        T: 'static,
-    {
+    ) -> Self {
         Self {
             inner,
-            reply_callback: Some(ReplyCallback::Auth(auth_reply_callback)),
+            reply_callback: Some(reply_callback),
             free_callback,
-            data: None,
+            data: OnceLock::new(),
             measuring_time: false,
         }
     }
 
-    /// Sets private data for the blocked client.
+    /// Sets private data for the blocked client. It is passed to the reply callback
+    /// and dropped on the main thread after the client unblocks.
     ///
     /// # Arguments
     /// * `data` - The private data to store
     ///
     /// # Returns
     /// * `Ok(())` - If the private data was successfully set
-    /// * `Err(ValkeyError)` - If setting the private data failed (e.g., no free callback)
-    pub fn set_blocked_private_data(&mut self, data: T) -> Result<(), ValkeyError> {
-        if self.free_callback.is_none() {
+    /// * `Err(ValkeyError)` - If the data was already set, or the client has no callbacks
+    pub fn set_blocked_private_data(&self, data: T) -> Result<(), ValkeyError> {
+        if self.reply_callback.is_none() && self.free_callback.is_none() {
             return Err(ValkeyError::Str(
-                "Cannot set private data without a free callback - this would leak memory",
+                "Cannot set private data on a client blocked without callbacks - this would leak memory",
             ));
         }
-        self.data = Some(Box::new(data));
-        Ok(())
+        self.data
+            .set(data)
+            .map_err(|_| ValkeyError::Str("Blocked client private data is already set"))
     }
 
     /// Starts counting time toward the command's `INFO commandstats`, latency
@@ -175,7 +192,7 @@ impl<T> BlockedClient<T> {
     pub fn abort(mut self) -> Result<(), ValkeyError> {
         unsafe {
             // Clear references to data and callbacks
-            self.data = None;
+            self.data.take();
             self.reply_callback = None;
             self.free_callback = None;
 
@@ -200,7 +217,7 @@ impl<T: 'static> Drop for BlockedClient<T> {
                 Box::into_raw(Box::new(BlockedClientPrivateData {
                     reply_callback: self.reply_callback.take(),
                     free_callback: self.free_callback.take(),
-                    data: self.data.take(),
+                    data: self.data.take().map(Box::new),
                 })) as *mut c_void
             } else {
                 std::ptr::null_mut()
@@ -226,6 +243,38 @@ impl Context {
         };
 
         BlockedClient::new(blocked_client)
+    }
+
+    /// Blocks a client and registers a reply callback that runs on the main thread
+    /// when the client unblocks. The callback takes the private data set with
+    /// [`BlockedClient::set_blocked_private_data`] and its result is sent as the reply;
+    /// return `ValkeyValue::NoReply` if the reply was already made through the
+    /// [`crate::ThreadSafeContext`]. `free_callback` gets the data only when the reply
+    /// callback did not run, such as after the client disconnected.
+    ///
+    /// Unlike a reply through a [`crate::ThreadSafeContext`], which is copied from a
+    /// fake client on unblock, a `ValkeyString` returned here is sent by reference.
+    #[must_use]
+    pub fn block_client_with_callbacks<T: 'static + Send>(
+        &self,
+        reply_callback: fn(&Context, Option<T>) -> ValkeyResult,
+        free_callback: Option<FreePrivateDataCallback<T>>,
+    ) -> BlockedClient<T> {
+        let blocked_client = unsafe {
+            raw::RedisModule_BlockClient.unwrap()(
+                self.ctx,
+                Some(reply_callback_wrapper::<T>),
+                None,
+                Some(free_callback_wrapper::<T>),
+                0,
+            )
+        };
+
+        BlockedClient::with_reply_callback(
+            blocked_client,
+            ReplyCallback::Unblock(reply_callback),
+            free_callback,
+        )
     }
 
     /// Blocks a client during authentication and registers callbacks
@@ -258,7 +307,11 @@ impl Context {
                 Some(free_callback_wrapper::<T>),
             );
 
-            BlockedClient::with_auth_callback(blocked_client, auth_reply_callback, free_callback)
+            BlockedClient::with_reply_callback(
+                blocked_client,
+                ReplyCallback::Auth(auth_reply_callback),
+                free_callback,
+            )
         }
     }
 

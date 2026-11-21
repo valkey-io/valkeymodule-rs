@@ -396,6 +396,18 @@ impl Context {
         }
     }
 
+    /// The db this context operates on: the client's selected db for a command
+    /// context, db 0 for a fresh thread-safe context.
+    #[must_use]
+    pub fn get_selected_db(&self) -> i32 {
+        unsafe { raw::RedisModule_GetSelectedDb.unwrap()(self.ctx) }
+    }
+
+    /// Changes the db this context operates on. Fails if `db` is out of range.
+    pub fn select_db(&self, db: i32) -> raw::Status {
+        unsafe { raw::RedisModule_SelectDb.unwrap()(self.ctx, db).into() }
+    }
+
     fn call_internal<
         'ctx,
         'a,

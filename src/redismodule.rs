@@ -195,6 +195,10 @@ impl ValkeyString {
         raw::string_append_buffer(self.ctx, self.inner, s)
     }
 
+    pub fn trim_allocation(&mut self) {
+        unsafe { raw::RedisModule_TrimStringAllocation.unwrap()(self.inner) }
+    }
+
     #[must_use]
     pub fn len(&self) -> usize {
         let mut len: usize = 0;
@@ -276,6 +280,71 @@ impl Drop for ValkeyString {
                 raw::RedisModule_FreeString.unwrap()(self.ctx, self.inner);
             }
         }
+    }
+}
+
+/// A module-owned string of a fixed length that is filled after creation, for
+/// example a reply assembled by worker threads. It has no context, so it can be
+/// created, written and dropped off the main thread. Call [`Self::into_valkey_string`]
+/// once filled to reply with it or store it.
+pub struct ValkeyStringBuf {
+    inner: *mut raw::RedisModuleString,
+    ptr: *mut u8,
+    len: usize,
+}
+
+// SAFETY: the string is private to this buffer until `into_valkey_string`, and the only
+// shared-access writer, `write_at`, is unsafe and requires disjoint ranges.
+unsafe impl Send for ValkeyStringBuf {}
+unsafe impl Sync for ValkeyStringBuf {}
+
+impl ValkeyStringBuf {
+    /// Allocates a zero-filled string of `len` bytes.
+    #[must_use]
+    pub fn with_len(len: usize) -> Self {
+        unsafe {
+            let inner = raw::RedisModule_CreateString.unwrap()(null_mut(), ptr::null(), len);
+            let mut got = 0usize;
+            let ptr = raw::RedisModule_StringPtrLen.unwrap()(inner, &mut got) as *mut u8;
+            assert_eq!(got, len, "ValkeyStringBuf length mismatch");
+            Self { inner, ptr, len }
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u8] {
+        unsafe { slice::from_raw_parts_mut(self.ptr, self.len) }
+    }
+
+    /// Copies `src` to byte offset `off`, for filling the buffer from several threads.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `off + src.len()` exceeds the buffer length.
+    ///
+    /// # Safety
+    ///
+    /// Concurrent callers must write disjoint ranges, and no call may overlap a
+    /// borrow from [`Self::as_mut_slice`].
+    pub unsafe fn write_at(&self, off: usize, src: &[u8]) {
+        assert!(
+            off + src.len() <= self.len,
+            "ValkeyStringBuf write out of bounds"
+        );
+        ptr::copy_nonoverlapping(src.as_ptr(), self.ptr.add(off), src.len());
+    }
+
+    /// Finishes the buffer as a context-free [`ValkeyString`].
+    #[must_use]
+    pub fn into_valkey_string(self) -> ValkeyString {
+        let inner = self.inner;
+        std::mem::forget(self);
+        ValkeyString::from_redis_module_string(null_mut(), inner)
+    }
+}
+
+impl Drop for ValkeyStringBuf {
+    fn drop(&mut self) {
+        unsafe { raw::RedisModule_FreeString.unwrap()(null_mut(), self.inner) }
     }
 }
 
