@@ -82,6 +82,33 @@ fn test_block_measure_time() -> Result<()> {
 }
 
 #[test]
+fn test_block_reply_callback() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("block")?;
+
+    let response: String = redis::cmd("block.reply_callback")
+        .query(&mut con)
+        .with_context(|| "failed to run block.reply_callback")?;
+    assert_eq!(response, "88");
+    Ok(())
+}
+
+#[test]
+fn test_block_lock_selected_db() -> Result<()> {
+    let mut con = start_server_w_module_get_connection("block")?;
+
+    redis::cmd("SELECT").arg(1).exec(&mut con)?;
+    redis::cmd("block.lock_set")
+        .arg(&["k", "v"])
+        .exec(&mut con)?;
+    let in_db1: Option<String> = redis::cmd("GET").arg("k").query(&mut con)?;
+    assert_eq!(in_db1.as_deref(), Some("v"));
+    redis::cmd("SELECT").arg(0).exec(&mut con)?;
+    let in_db0: Option<String> = redis::cmd("GET").arg("k").query(&mut con)?;
+    assert_eq!(in_db0, None);
+    Ok(())
+}
+
+#[test]
 fn test_info() -> Result<()> {
     let mut con = start_server_w_module_get_connection("info")?;
 

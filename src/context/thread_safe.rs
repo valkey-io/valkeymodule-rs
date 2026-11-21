@@ -4,7 +4,7 @@ use std::ops::{Deref, DerefMut};
 use std::ptr;
 
 use crate::context::blocked::BlockedClient;
-use crate::{raw, Context, ValkeyResult};
+use crate::{raw, Context, ValkeyError, ValkeyResult};
 
 pub struct ValkeyGILGuardScope<'ctx, 'mutex, T, G: ValkeyLockIndicator> {
     _context: &'ctx G,
@@ -119,9 +119,6 @@ pub struct DetachedFromClient;
 
 pub struct ThreadSafeContext<B: Send> {
     pub(crate) ctx: *mut raw::RedisModuleCtx,
-
-    /// This field is only used implicitly by `Drop`, so avoid a compiler warning
-    #[allow(dead_code)]
     blocked_client: B,
 }
 
@@ -156,21 +153,31 @@ impl<T: Send> ThreadSafeContext<BlockedClient<T>> {
     }
 
     /// The Valkey modules API does not require locking for `Reply` functions,
-    /// so we pass through its functionality directly.
+    /// so we pass through its functionality directly. The reply goes to a fake
+    /// client and is copied to the real one when it unblocks; see
+    /// [`Context::block_client_with_callbacks`] to reply without that copy.
     #[allow(clippy::must_use_candidate)]
     pub fn reply(&self, r: ValkeyResult) -> raw::Status {
         let ctx = Context::new(self.ctx);
         ctx.reply(r)
     }
+
+    /// Sets the private data handed to the callbacks registered with
+    /// [`Context::block_client_with_callbacks`]. Can be called from any thread.
+    pub fn set_blocked_private_data(&self, data: T) -> Result<(), ValkeyError> {
+        self.blocked_client.set_blocked_private_data(data)
+    }
 }
 
 impl<B: Send> ThreadSafeContext<B> {
     /// All other APIs require locking the context, so we wrap it in a way
-    /// similar to `std::sync::Mutex`.
+    /// similar to `std::sync::Mutex`. The guard operates on this context's db:
+    /// the blocked client's selected db, or db 0 for a detached context.
     pub fn lock(&self) -> ContextGuard {
         unsafe { raw::RedisModule_ThreadSafeContextLock.unwrap()(self.ctx) };
         let ctx = unsafe { raw::RedisModule_GetThreadSafeContext.unwrap()(ptr::null_mut()) };
         let ctx = Context::new(ctx);
+        ctx.select_db(Context::new(self.ctx).get_selected_db());
         ContextGuard { ctx }
     }
 

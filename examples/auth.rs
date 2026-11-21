@@ -363,7 +363,7 @@ fn blocking_auth_common(
     let password_str = password.to_string();
     let callback_name_str = callback_name.to_string();
 
-    let mut blocked_client = ctx.block_client_on_auth(auth_reply_fn, free_callback_fn);
+    let blocked_client = ctx.block_client_on_auth(auth_reply_fn, free_callback_fn);
 
     if callback_name_str == "blocking_auth_callback_two" {
         if username_str == "blockAbort" && password_str == "abort" {

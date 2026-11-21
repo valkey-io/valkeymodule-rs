@@ -19,6 +19,8 @@ pub(super) fn install() {
         raw::RedisModule_SetModuleOptions = Some(set_module_options);
         raw::RedisModule_GetServerVersion = Some(get_server_version);
         raw::RedisModule_AuthenticateClientWithACLUser = Some(authenticate_client_with_acl_user);
+        raw::RedisModule_GetSelectedDb = Some(get_selected_db);
+        raw::RedisModule_SelectDb = Some(select_db);
     }
 }
 
@@ -463,6 +465,17 @@ pub(super) extern "C" fn set_module_options(ctx: *mut raw::RedisModuleCtx, optio
 
 pub(super) extern "C" fn get_server_version() -> libc::c_int {
     SERVER_VERSION.with(Cell::get)
+}
+
+pub(super) extern "C" fn get_selected_db(_ctx: *mut raw::RedisModuleCtx) -> libc::c_int {
+    0
+}
+
+pub(super) extern "C" fn select_db(
+    _ctx: *mut raw::RedisModuleCtx,
+    _db: libc::c_int,
+) -> libc::c_int {
+    raw::REDISMODULE_OK as libc::c_int
 }
 
 pub(super) extern "C" fn authenticate_client_with_acl_user(
