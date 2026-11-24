@@ -17,11 +17,11 @@ const SHUTDOWN_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const EVENT_WAIT_TIMEOUT: Duration = Duration::from_secs(10);
 const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Owns a Valkey test process and the connection used to communicate with it.
+/// Owns a Valkey test process and the client used to communicate with it.
 pub(super) struct TestServer {
     pub(super) port: u16,
     _guard: ChildGuard,
-    connection: SyncGlideClient,
+    client: SyncGlideClient,
 }
 
 // Allows TestServer to be used where a GLIDE client is expected.
@@ -29,7 +29,7 @@ impl Deref for TestServer {
     type Target = SyncGlideClient;
 
     fn deref(&self) -> &Self::Target {
-        &self.connection
+        &self.client
     }
 }
 
@@ -40,7 +40,7 @@ impl TestServer {
     }
 
     pub(super) fn into_parts(self) -> (ChildGuard, SyncGlideClient) {
-        (self._guard, self.connection)
+        (self._guard, self.client)
     }
 }
 
@@ -55,12 +55,12 @@ pub(super) struct ChildGuard {
 // Gracefully stops the child process before its isolated data directory is removed.
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        if let Ok(connection) = SyncGlideClient::connect(
+        if let Ok(client) = SyncGlideClient::connect(
             test_client_configuration(self.port)
                 .connection_timeout(SHUTDOWN_CONNECTION_TIMEOUT)
                 .request_timeout(SHUTDOWN_CONNECTION_TIMEOUT),
         ) {
-            let _: ValkeyResult<()> = glide::cmd("SHUTDOWN").arg("NOSAVE").query(&connection);
+            let _: ValkeyResult<()> = glide::cmd("SHUTDOWN").arg("NOSAVE").query(&client);
         }
 
         let shutdown_deadline = Instant::now() + SHUTDOWN_TIMEOUT;
@@ -108,17 +108,16 @@ pub(super) enum AuthExpectedResult {
     Aborted,
 }
 
-pub(super) fn start_server_w_module_get_connection(module_name: &str) -> Result<TestServer> {
+pub(super) fn start_server_w_module_get_client(module_name: &str) -> Result<TestServer> {
     let port = get_available_port()?;
     let guard = start_server_with_module(module_name, port)
         .with_context(|| "failed to start valkey server")?;
-    let connection =
-        get_valkey_connection(port).with_context(|| "failed to connect to valkey server")?;
+    let client = get_valkey_client(port).with_context(|| "failed to connect to valkey server")?;
 
     Ok(TestServer {
         port,
         _guard: guard,
-        connection,
+        client,
     })
 }
 
@@ -164,7 +163,7 @@ fn test_client_configuration(port: u16) -> GlideClientConfiguration {
         .request_timeout(Duration::from_secs(10))
 }
 
-pub(super) fn get_valkey_connection(port: u16) -> Result<SyncGlideClient> {
+pub(super) fn get_valkey_client(port: u16) -> Result<SyncGlideClient> {
     let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     loop {
         match SyncGlideClient::connect(test_client_configuration(port)) {
