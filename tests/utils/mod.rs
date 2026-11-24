@@ -5,7 +5,6 @@ use glide::{
     GlideClientConfiguration, GlideError, NodeDiscoveryMode, ProtocolVersion, ValkeyResult,
 };
 use std::fs;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -24,17 +23,12 @@ pub(super) struct TestServer {
     client: SyncGlideClient,
 }
 
-// Allows TestServer to be used where a GLIDE client is expected.
-impl Deref for TestServer {
-    type Target = SyncGlideClient;
-
-    fn deref(&self) -> &Self::Target {
+// Exposes the client and lifecycle operations that integration tests need.
+impl TestServer {
+    pub(super) fn client(&self) -> &SyncGlideClient {
         &self.client
     }
-}
 
-// Exposes only the lifecycle operations that integration tests need.
-impl TestServer {
     pub(super) fn data_dir(&self) -> &std::path::Path {
         self._guard.data_dir()
     }

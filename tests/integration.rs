@@ -27,16 +27,17 @@ mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
-    let client = start_server_with_module("hello")?;
+    let server = start_server_with_module("hello")?;
 
     let res: Vec<i32> = glide::cmd("hello.mul")
         .arg(&[3, 4])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run hello.mul")?;
     assert_eq!(res, vec![3, 4, 12]);
 
-    let res: Result<Vec<i32>, GlideError> =
-        glide::cmd("hello.mul").arg(&["3", "xx"]).query(&*client);
+    let res: Result<Vec<i32>, GlideError> = glide::cmd("hello.mul")
+        .arg(&["3", "xx"])
+        .query(server.client());
     let error = res.expect_err("hello.mul should reject non-integer arguments");
     assert_eq!(error.message(), "Couldn't: parse as integer");
 
@@ -45,10 +46,10 @@ fn test_hello() -> Result<()> {
 
 #[test]
 fn test_block() -> Result<()> {
-    let client = start_server_with_module("block")?;
+    let server = start_server_with_module("block")?;
 
     let response: i64 = glide::cmd("block")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run block")?;
 
     assert_eq!(response, 42);
@@ -57,17 +58,17 @@ fn test_block() -> Result<()> {
 
 #[test]
 fn test_block_measure_time() -> Result<()> {
-    let client = start_server_with_module("block")?;
+    let server = start_server_with_module("block")?;
 
     let response: i64 = glide::cmd("block.measured")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run block.measured")?;
     assert_eq!(response, 42);
 
     // The thread's 200 ms sleep counts toward the command's time.
     let stats: String = glide::cmd("info")
         .arg("commandstats")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run info commandstats")?;
     let line = stats
         .lines()
@@ -84,21 +85,21 @@ fn test_block_measure_time() -> Result<()> {
 
 #[test]
 fn test_info() -> Result<()> {
-    let client = start_server_with_module("info")?;
+    let server = start_server_with_module("info")?;
 
     let redis_version: String = glide::cmd("infoex")
         .arg(&["server", "redis_version"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to query the redis_version info field")?;
     assert!(!redis_version.is_empty());
 
     let missing_field: Option<String> = glide::cmd("infoex")
         .arg(&["server", "not_a_real_field"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to query a missing info field")?;
     assert_eq!(missing_field, None);
 
-    let wrong_arity: ValkeyResult<String> = glide::cmd("infoex").query(&*client);
+    let wrong_arity: ValkeyResult<String> = glide::cmd("infoex").query(server.client());
     let error = wrong_arity.expect_err("infoex should require a section and field");
     assert!(error.to_string().contains("wrong number of arguments"));
 
@@ -107,31 +108,31 @@ fn test_info() -> Result<()> {
 
 #[test]
 fn test_lists() -> Result<()> {
-    let client = start_server_with_module("lists")?;
+    let server = start_server_with_module("lists")?;
 
     let _: i64 = glide::cmd("RPUSH")
         .arg(&["source", "first", "second"])
-        .query(&*client)?;
+        .query(server.client())?;
     let moved: String = glide::cmd("LPOPRPUSH")
         .arg(&["source", "destination"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(moved, "first");
     let destination: Vec<String> = glide::cmd("LRANGE")
         .arg(&["destination", "0", "-1"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(destination, vec!["first"]);
 
     let empty: Option<String> = glide::cmd("LPOPRPUSH")
         .arg(&["empty", "destination"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(empty, None);
 
     let _: String = glide::cmd("SET")
         .arg(&["string-source", "value"])
-        .query(&*client)?;
+        .query(server.client())?;
     let source_error: ValkeyResult<String> = glide::cmd("LPOPRPUSH")
         .arg(&["string-source", "destination"])
-        .query(&*client);
+        .query(server.client());
     assert!(source_error
         .expect_err("LPOPRPUSH should reject a non-list source")
         .to_string()
@@ -139,10 +140,10 @@ fn test_lists() -> Result<()> {
 
     let _: String = glide::cmd("SET")
         .arg(&["string-destination", "value"])
-        .query(&*client)?;
+        .query(server.client())?;
     let destination_error: ValkeyResult<String> = glide::cmd("LPOPRPUSH")
         .arg(&["source", "string-destination"])
-        .query(&*client);
+        .query(server.client());
     assert!(destination_error
         .expect_err("LPOPRPUSH should reject a non-list destination")
         .to_string()
@@ -153,22 +154,22 @@ fn test_lists() -> Result<()> {
 
 #[test]
 fn test_load_unload() -> Result<()> {
-    let client = start_server_with_module("hello")?;
+    let server = start_server_with_module("hello")?;
     let module_path = get_module_path("load_unload")?;
 
     let loaded: String = glide::cmd("MODULE")
         .arg(&["LOAD", &module_path, "first", "second"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(loaded, "OK");
 
     let unloaded: String = glide::cmd("MODULE")
         .arg(&["UNLOAD", "load_unload"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(unloaded, "OK");
 
     let reloaded: String = glide::cmd("MODULE")
         .arg(&["LOAD", &module_path, "replacement"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(reloaded, "OK");
 
     Ok(())
@@ -176,33 +177,33 @@ fn test_load_unload() -> Result<()> {
 
 #[test]
 fn test_timer() -> Result<()> {
-    let client = start_server_with_module("timer")?;
+    let server = start_server_with_module("timer")?;
 
     let active_timer_id: String = glide::cmd("timer.create")
         .arg(&["60000", "active"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to create a live timer")?;
     let info: String = glide::cmd("timer.info")
         .arg(&active_timer_id)
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to inspect a live timer")?;
     assert!(info.contains("data: \"active\""));
 
     let stopped: String = glide::cmd("timer.stop")
         .arg(&active_timer_id)
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to stop a live timer")?;
     assert_eq!(stopped, "Data: \"active\"");
 
     let expired_timer_id: String = glide::cmd("timer.create")
         .arg(&["1", "expired"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to create an expiring timer")?;
     thread::sleep(Duration::from_millis(50));
 
     let expired: ValkeyResult<String> = glide::cmd("timer.info")
         .arg(&expired_timer_id)
-        .query(&*client);
+        .query(server.client());
     let expired_error = expired.expect_err("timer.info should reject an expired timer");
     assert_eq!(
         expired_error.message(),
@@ -211,7 +212,7 @@ fn test_timer() -> Result<()> {
 
     let invalid: ValkeyResult<String> = glide::cmd("timer.info")
         .arg(u64::MAX.to_string())
-        .query(&*client);
+        .query(server.client());
     let invalid_error = invalid.expect_err("timer.info should reject an invalid timer ID");
     assert_eq!(
         invalid_error.message(),
@@ -223,16 +224,17 @@ fn test_timer() -> Result<()> {
 
 #[test]
 fn test_keys_pos() -> Result<()> {
-    let client = start_server_with_module("keys_pos")?;
+    let server = start_server_with_module("keys_pos")?;
 
     let res: Vec<String> = glide::cmd("keys_pos")
         .arg(&["a", "1", "b", "2"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, vec!["a", "b"]);
 
-    let res: Result<Vec<String>, GlideError> =
-        glide::cmd("keys_pos").arg(&["a", "1", "b"]).query(&*client);
+    let res: Result<Vec<String>, GlideError> = glide::cmd("keys_pos")
+        .arg(&["a", "1", "b"])
+        .query(server.client());
     let error = res.expect_err("keys_pos should reject an incomplete key-value pair");
     assert!(error.to_string().contains("wrong number of arguments"));
 
@@ -243,16 +245,16 @@ fn test_keys_pos() -> Result<()> {
 // Exercise plain and flagged SDK opens through writable_set, then use GET to verify creation and updates.
 // A missing key must remain writable; it is not the same as a failed (null) open.
 fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
-    let client = start_server_with_module("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     for mode in ["plain", "flags"] {
         let key = format!("writable-{mode}");
         for (value, expected_type) in [("created", "Empty"), ("updated", "String")] {
             let previous_type: String = glide::cmd("test_helper.writable_set")
                 .arg(&[key.as_str(), value, mode])
-                .query(&*client)?;
+                .query(server.client())?;
             assert_eq!(previous_type, expected_type, "{mode}");
-            let stored: String = glide::cmd("GET").arg(&key).query(&*client)?;
+            let stored: String = glide::cmd("GET").arg(&key).query(server.client())?;
             assert_eq!(stored, value, "{mode}");
         }
     }
@@ -262,27 +264,27 @@ fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
 
 #[test]
 fn test_path_hash_key_type() -> Result<()> {
-    let client = start_server_with_module("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     let _: i64 = glide::cmd("HSET")
         .arg(&["ordinary-hash", "field", "value"])
-        .query(&*client)?;
+        .query(server.client())?;
     for (key, expected) in [("ordinary-hash", "Hash"), ("missing-key", "Empty")] {
         let actual: String = glide::cmd("test_helper.key_type")
             .arg(key)
-            .query(&*client)?;
+            .query(server.client())?;
         assert_eq!(actual, expected, "SDK key type for {key}");
     }
 
     // INFO identifies the engine; a future Redis 9.2 must not pass this gate.
     // Reuse the module's numeric server-version helper for the version check.
-    let info: String = glide::cmd("INFO").arg("SERVER").query(&*client)?;
+    let info: String = glide::cmd("INFO").arg("SERVER").query(server.client())?;
     if !info.lines().any(|line| line.starts_with("valkey_version:")) {
         eprintln!("Skipping path-hash creation on a non-Valkey server");
         return Ok(());
     }
     let (major, minor, patch): (i64, i64, i64) = glide::cmd("test_helper.version")
-        .query(&*client)
+        .query(server.client())
         .context("failed to get the module's numeric server version")?;
     if (major, minor) < (9, 2) {
         eprintln!("Skipping path-hash creation on Valkey {major}.{minor}.{patch} (requires 9.2)");
@@ -293,13 +295,13 @@ fn test_path_hash_key_type() -> Result<()> {
     // Any command failure on a supporting server must fail this test.
     let result: String = glide::cmd("PHSET")
         .arg(&["path-hash", "/users/alice", "FIELDS", "1", "name", "Alice"])
-        .query(&*client)
+        .query(server.client())
         .context("failed to create a path hash on Valkey 9.2 or newer")?;
     assert_eq!(result, "OK");
 
     let actual: String = glide::cmd("test_helper.key_type")
         .arg("path-hash")
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(actual, "PathHash");
 
     Ok(())
@@ -307,10 +309,10 @@ fn test_path_hash_key_type() -> Result<()> {
 
 #[test]
 fn test_helper_version() -> Result<()> {
-    let client = start_server_with_module("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     let res: Vec<i64> = glide::cmd("test_helper.version")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run test_helper.version")?;
     assert!(res[0] > 0);
 
@@ -323,7 +325,7 @@ fn test_helper_version() -> Result<()> {
     // assert_eq!(res, res2);
 
     let res3: String = glide::cmd("test_helper.name")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run test_helper.name")?;
     assert_eq!(res3, "test_helper.name");
 
@@ -334,15 +336,15 @@ fn test_helper_version() -> Result<()> {
 fn test_command_name() -> Result<()> {
     use valkey_module::ValkeyValue;
 
-    let client = start_server_with_module("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     // Call the tested command
-    let res: Result<String, GlideError> = glide::cmd("test_helper.name").query(&*client);
+    let res: Result<String, GlideError> = glide::cmd("test_helper.name").query(server.client());
 
     // The expected result is according to valkey version
     let info: String = glide::cmd("info")
         .arg(&["server"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run test_helper.name")?;
 
     let ver = valkey_module::Context::version_from_info(ValkeyValue::SimpleString(info)).map_err(
@@ -378,11 +380,11 @@ fn test_helper_info() -> Result<()> {
     MODULES
         .into_iter()
         .try_for_each(|(module, has_dictionary)| {
-            let client = start_server_with_module(module)?;
+            let server = start_server_with_module(module)?;
 
             let res: String = glide::cmd("INFO")
                 .arg(module)
-                .query(&*client)
+                .query(server.client())
                 .with_context(|| format!("failed to run INFO {module}"))?;
 
             assert!(res.contains(&format!("{module}_field:value")));
@@ -399,11 +401,11 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     const MODULES: [&str; 1] = ["info_handler_multiple_sections"];
 
     MODULES.into_iter().try_for_each(|module| {
-        let client = start_server_with_module(module)?;
+        let server = start_server_with_module(module)?;
 
         let res: String = glide::cmd("INFO")
             .arg(format!("{module}_InfoSection2"))
-            .query(&*client)
+            .query(server.client())
             .with_context(|| format!("failed to run INFO {module}"))?;
 
         assert!(res.contains(&format!("{module}_field_2:value2")));
@@ -415,13 +417,13 @@ fn test_info_handler_multiple_sections() -> Result<()> {
 
 #[test]
 fn test_test_helper_err() -> Result<()> {
-    let client = start_server_with_module("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     // Make sure embedded nulls do not cause a crash and are returned as errors.
     for message in ["\x00\x00", "no crash\x00"] {
         let error = glide::cmd("test_helper.err")
             .arg(message)
-            .query::<()>(&*client)
+            .query::<()>(server.client())
             .expect_err("test_helper.err should return an error");
 
         assert!(
@@ -435,14 +437,16 @@ fn test_test_helper_err() -> Result<()> {
 
 #[test]
 fn test_string() -> Result<()> {
-    let client = start_server_with_module("string")?;
+    let server = start_server_with_module("string")?;
 
     glide::cmd("string.set")
         .arg(&["key", "value"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
-    let res: String = glide::cmd("string.get").arg(&["key"]).query(&*client)?;
+    let res: String = glide::cmd("string.get")
+        .arg(&["key"])
+        .query(server.client())?;
 
     assert_eq!(&res, "value");
 
@@ -451,19 +455,19 @@ fn test_string() -> Result<()> {
 
 #[test]
 fn test_scan() -> Result<()> {
-    let client = start_server_with_module("scan_keys")?;
+    let server = start_server_with_module("scan_keys")?;
 
     glide::cmd("set")
         .arg(&["x", "1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
     glide::cmd("set")
         .arg(&["y", "1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
-    let mut res: Vec<String> = glide::cmd("scan_keys").query(&*client)?;
+    let mut res: Vec<String> = glide::cmd("scan_keys").query(server.client())?;
     res.sort();
 
     assert_eq!(&res, &["x", "y"]);
@@ -473,33 +477,33 @@ fn test_scan() -> Result<()> {
 
 #[test]
 fn test_stream_reader() -> Result<()> {
-    let client = start_server_with_module("stream")?;
+    let server = start_server_with_module("stream")?;
 
     let _: String = glide::cmd("XADD")
         .arg(&["s", "1-1", "foo", "bar"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
     let _: String = glide::cmd("XADD")
         .arg(&["s", "1-2", "foo", "bar"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
     let res: String = glide::cmd("STREAM_POP")
         .arg(&["s"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, "1-1");
 
     let res: String = glide::cmd("STREAM_POP")
         .arg(&["s"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, "1-2");
 
     let res: usize = glide::cmd("XLEN")
         .arg(&["s"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
     assert_eq!(res, 0);
@@ -510,10 +514,10 @@ fn test_stream_reader() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call() -> Result<()> {
-    let client = start_server_with_module("call")?;
+    let server = start_server_with_module("call")?;
 
     let res: String = glide::cmd("call.test")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run string.set")?;
 
     assert_eq!(&res, "pass");
@@ -523,9 +527,9 @@ fn test_call() -> Result<()> {
 
 #[test]
 fn test_ctx_flags() -> Result<()> {
-    let client = start_server_with_module("ctx_flags")?;
+    let server = start_server_with_module("ctx_flags")?;
 
-    let res: String = glide::cmd("my_role").query(&*client)?;
+    let res: String = glide::cmd("my_role").query(server.client())?;
 
     assert_eq!(&res, "master");
 
@@ -535,9 +539,9 @@ fn test_ctx_flags() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_get_current_user() -> Result<()> {
-    let client = start_server_with_module("acl")?;
+    let server = start_server_with_module("acl")?;
 
-    let res: String = glide::cmd("get_current_user").query(&*client)?;
+    let res: String = glide::cmd("get_current_user").query(server.client())?;
 
     assert_eq!(&res, "default");
 
@@ -547,29 +551,29 @@ fn test_get_current_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_verify_acl_on_user() -> Result<()> {
-    let client = start_server_with_module("acl")?;
+    let server = start_server_with_module("acl")?;
 
     let res: String = glide::cmd("verify_key_access_for_user")
         .arg(&["default", "x"])
-        .query(&*client)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
     let res: String = glide::cmd("ACL")
         .arg(&["SETUSER", "alice", "on", ">pass", "~cached:*", "+get"])
-        .query(&*client)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
     let res: String = glide::cmd("verify_key_access_for_user")
         .arg(&["alice", "cached:1"])
-        .query(&*client)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
     let res: ValkeyResult<String> = glide::cmd("verify_key_access_for_user")
         .arg(&["alice", "not_allow"])
-        .query(&*client);
+        .query(server.client());
 
     let error = res.expect_err("alice should not access keys outside the cached namespace");
     assert_eq!(
@@ -583,19 +587,21 @@ fn test_verify_acl_on_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_key_space_notifications() -> Result<()> {
-    let client = start_server_with_module("events")?;
+    let server = start_server_with_module("events")?;
 
-    let res: usize = glide::cmd("events.num_key_miss").query(&*client)?;
+    let res: usize = glide::cmd("events.num_key_miss").query(server.client())?;
     assert_eq!(res, 0);
 
-    let _ = glide::cmd("GET").arg(&["x"]).exec(&*client)?;
+    let _ = glide::cmd("GET").arg(&["x"]).exec(server.client())?;
 
-    let res: usize = glide::cmd("events.num_key_miss").query(&*client)?;
+    let res: usize = glide::cmd("events.num_key_miss").query(server.client())?;
     assert_eq!(res, 1);
 
-    let _: String = glide::cmd("SET").arg(&["x", "1"]).query(&*client)?;
+    let _: String = glide::cmd("SET").arg(&["x", "1"]).query(server.client())?;
 
-    let res: String = glide::cmd("GET").arg(&["num_sets"]).query(&*client)?;
+    let res: String = glide::cmd("GET")
+        .arg(&["num_sets"])
+        .query(server.client())?;
     assert_eq!(res, "1");
 
     Ok(())
@@ -603,27 +609,27 @@ fn test_key_space_notifications() -> Result<()> {
 
 #[test]
 fn test_context_mutex() -> Result<()> {
-    let client = start_server_with_module("threads")?;
+    let server = start_server_with_module("threads")?;
 
     let res: String = glide::cmd("set_static_data")
         .arg(&["foo"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(&res, "OK");
 
-    let res: String = glide::cmd("get_static_data").query(&*client)?;
+    let res: String = glide::cmd("get_static_data").query(server.client())?;
     assert_eq!(&res, "foo");
 
-    let res: String = glide::cmd("get_static_data_on_thread").query(&*client)?;
+    let res: String = glide::cmd("get_static_data_on_thread").query(server.client())?;
     assert_eq!(&res, "foo");
 
     let res: String = glide::cmd("info_field_on_thread")
         .arg(&["server", "redis_version"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert!(!res.is_empty());
 
     let res: Option<String> = glide::cmd("info_field_on_thread")
         .arg(&["server", "no_such_field"])
-        .query(&*client)?;
+        .query(server.client())?;
     assert_eq!(res, None);
 
     Ok(())
@@ -632,75 +638,84 @@ fn test_context_mutex() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event() -> Result<()> {
-    let client = start_server_with_module("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
-    let before_sleep_count: i64 = glide::cmd("num_event_loop_before_sleep").query(&*client)?;
-    let after_sleep_count: i64 = glide::cmd("num_event_loop_after_sleep").query(&*client)?;
+    let before_sleep_count: i64 =
+        glide::cmd("num_event_loop_before_sleep").query(server.client())?;
+    let after_sleep_count: i64 = glide::cmd("num_event_loop_after_sleep").query(server.client())?;
 
-    wait_for_event_count_greater_than(&client, "num_event_loop_before_sleep", before_sleep_count)?;
-    wait_for_event_count_greater_than(&client, "num_event_loop_after_sleep", after_sleep_count)?;
+    wait_for_event_count_greater_than(
+        server.client(),
+        "num_event_loop_before_sleep",
+        before_sleep_count,
+    )?;
+    wait_for_event_count_greater_than(
+        server.client(),
+        "num_event_loop_after_sleep",
+        after_sleep_count,
+    )?;
 
     glide::cmd("flushall")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run flushall")?;
 
-    let res: i64 = glide::cmd("num_flushed").query(&*client)?;
+    let res: i64 = glide::cmd("num_flushed").query(server.client())?;
 
     assert_eq!(res, 1);
 
     glide::cmd("flushall")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run flushall")?;
 
-    let res: i64 = glide::cmd("num_flushed").query(&*client)?;
+    let res: i64 = glide::cmd("num_flushed").query(server.client())?;
 
     assert_eq!(res, 2);
 
     glide::cmd("config")
         .arg(&["set", "maxmemory", "1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run config set maxmemory")?;
 
-    let res: i64 = glide::cmd("num_max_memory_changes").query(&*client)?;
+    let res: i64 = glide::cmd("num_max_memory_changes").query(server.client())?;
 
     assert_eq!(res, 1);
 
     glide::cmd("config")
         .arg(&["set", "maxmemory", "0"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run config set maxmemory")?;
 
-    let res: i64 = glide::cmd("num_max_memory_changes").query(&*client)?;
+    let res: i64 = glide::cmd("num_max_memory_changes").query(server.client())?;
 
     assert_eq!(res, 2);
 
-    let res: i64 = glide::cmd("num_crons").query(&*client)?;
+    let res: i64 = glide::cmd("num_crons").query(server.client())?;
 
     assert!(res > 0);
 
     glide::cmd("set")
         .arg(&["key", "value"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to do set")?;
 
     //overwrite the key for KeyChangeSubevent::Overwritten to fire
     glide::cmd("set")
         .arg(&["key", "new_value"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to do set")?;
 
     //delete key for KeyChangeSubevent::Deleted to fire
     glide::cmd("del")
         .arg(&["key"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to do del")?;
 
-    let res: i64 = glide::cmd("num_key_events").query(&*client)?;
+    let res: i64 = glide::cmd("num_key_events").query(server.client())?;
 
     //one for overwrite and one for delete
     assert_eq!(res, 2);
 
-    let persistence_log_path = client.data_dir().join("persistence_log.txt");
+    let persistence_log_path = server.data_dir().join("persistence_log.txt");
     if persistence_log_path.exists() {
         std::fs::remove_file(&persistence_log_path)
             .with_context(|| "failed to remove persistence log file")?;
@@ -708,7 +723,7 @@ fn test_server_event() -> Result<()> {
 
     // Trigger RDB save (BGSAVE command triggers persistence events)
     glide::cmd("bgsave")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run bgsave")?;
 
     wait_for_file_contents(&persistence_log_path, &["RdbStart", "Ended"])?;
@@ -719,8 +734,8 @@ fn test_server_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event_shutdown() -> Result<()> {
-    let client = start_server_with_module("server_events")?;
-    let shutdown_log_path = client.data_dir().join("shutdown_log.txt");
+    let server = start_server_with_module("server_events")?;
+    let shutdown_log_path = server.data_dir().join("shutdown_log.txt");
 
     if shutdown_log_path.exists() {
         std::fs::remove_file(&shutdown_log_path)
@@ -730,7 +745,7 @@ fn test_server_event_shutdown() -> Result<()> {
     // Issue the SHUTDOWN command and ignore any errors
     let _ = glide::cmd("SHUTDOWN")
         .arg("NOSAVE")
-        .query::<String>(&*client);
+        .query::<String>(server.client());
 
     let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     let contents = loop {
@@ -756,23 +771,23 @@ fn test_server_event_shutdown() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_client_change_event() -> Result<()> {
-    let client = start_server_with_module("server_events")?;
+    let server = start_server_with_module("server_events")?;
     let client2: SyncGlideClient =
-        get_valkey_client(client.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        get_valkey_client(server.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    wait_for_client_connection_count(&client, 2)?;
+    wait_for_client_connection_count(server.client(), 2)?;
 
     drop(client2);
 
-    wait_for_client_connection_count(&client, 1)?;
+    wait_for_client_connection_count(server.client(), 1)?;
 
     Ok(())
 }
 
 #[test]
 fn test_configuration() -> Result<()> {
-    let client = start_server_with_module("configuration")?;
-    let port = client.port;
+    let server = start_server_with_module("configuration")?;
+    let port = server.port;
 
     let config_get = |config: &str| -> Result<String> {
         let client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -853,7 +868,7 @@ fn test_configuration() -> Result<()> {
         .contains("Rejected from custom enum validation"));
 
     let res: i64 = glide::cmd("configuration.num_changes")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run configuration.num_changes")?;
     assert_eq!(res, 26); // the first configuration initialisation is counted as well, so we will get 22 changes.
 
@@ -874,7 +889,7 @@ fn test_configuration() -> Result<()> {
     config_set("configuration.reject_enum", "Val1")?;
     assert_eq!(config_get("configuration.reject_enum")?, "Val1");
     let res: i64 = glide::cmd("configuration.num_changes")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run configuration.num_changes")?;
     assert_eq!(res, 28);
 
@@ -883,16 +898,16 @@ fn test_configuration() -> Result<()> {
 
 #[test]
 fn test_response() -> Result<()> {
-    let client = start_server_with_module("response")?;
+    let server = start_server_with_module("response")?;
 
     glide::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run hset")?;
 
     let mut res: Vec<String> = glide::cmd("map.mget")
         .arg(&["k", "a", "c", "e"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run map.mget")?;
 
     res.sort();
@@ -900,7 +915,7 @@ fn test_response() -> Result<()> {
 
     let mut res: Vec<String> = glide::cmd("map.unique")
         .arg(&["k", "a", "c", "e"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run map.unique")?;
 
     res.sort();
@@ -911,32 +926,32 @@ fn test_response() -> Result<()> {
 
 #[test]
 fn test_command_proc_macro() -> Result<()> {
-    let client = start_server_with_module("proc_macro_commands")?;
+    let server = start_server_with_module("proc_macro_commands")?;
 
     let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "classic_keys", "x", "foo", "y", "bar"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
     let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "keyword_keys", "foo", "x", "1", "y", "2"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
     let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "3", "x", "y", "z", "foo", "bar"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y", "z"]);
 
     let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "0", "foo", "bar"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert!(res.is_empty());
@@ -946,10 +961,10 @@ fn test_command_proc_macro() -> Result<()> {
 
 #[test]
 fn test_valkey_value_derive() -> Result<()> {
-    let client = start_server_with_module("proc_macro_commands")?;
+    let server = start_server_with_module("proc_macro_commands")?;
 
     let res: Value = glide::cmd("valkey_value_derive")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run valkey_value_derive")?;
 
     let Value::Array(values) = res else {
@@ -959,7 +974,7 @@ fn test_valkey_value_derive() -> Result<()> {
 
     let res: String = glide::cmd("valkey_value_derive")
         .arg(&["test"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res, "OK");
@@ -970,16 +985,16 @@ fn test_valkey_value_derive() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call_blocking() -> Result<()> {
-    let client = start_server_with_module("call")?;
+    let server = start_server_with_module("call")?;
 
     let res: Option<String> = glide::cmd("call.blocking")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run call.blocking")?;
 
     assert_eq!(res, None);
 
     let res: Option<String> = glide::cmd("call.blocking_from_detached_ctx")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run call.blocking_from_detached_ctx")?;
 
     assert_eq!(res, None);
@@ -990,35 +1005,35 @@ fn test_call_blocking() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_open_key_with_flags() -> Result<()> {
-    let client = start_server_with_module("open_key_with_flags")?;
+    let server = start_server_with_module("open_key_with_flags")?;
 
     // Avoid active expriation
     glide::cmd("DEBUG")
         .arg(&["SET-ACTIVE-EXPIRE", "0"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run DEBUG SET-ACTIVE-EXPIRE")?;
 
     for cmd in ["open_key_with_flags.write", "open_key_with_flags.read"].into_iter() {
         glide::cmd("set")
             .arg(&["x", "1"])
-            .exec(&*client)
+            .exec(server.client())
             .with_context(|| "failed to run set")?;
 
         // Set experition time to 1 second.
         glide::cmd("pexpire")
             .arg(&["x", "1"])
-            .exec(&*client)
+            .exec(server.client())
             .with_context(|| "failed to run pexpire")?;
 
         // Sleep for 2 seconds, ensure expiration time has passed.
         thread::sleep(Duration::from_millis(500));
 
         // Open key as read only or ReadWrite with NOEFFECTS flag.
-        let res = glide::cmd(cmd).arg(&["x"]).query(&*client);
+        let res = glide::cmd(cmd).arg(&["x"]).query(server.client());
         assert_eq!(res, Ok(()));
 
         // Get the number of expired keys.
-        let stats: String = glide::cmd("info").arg(&["stats"]).query(&*client)?;
+        let stats: String = glide::cmd("info").arg(&["stats"]).query(server.client())?;
 
         // Find the number of expired keys, x,  according to the substring "expired_keys:{x}"
         let expired_keys = stats
@@ -1033,8 +1048,10 @@ fn test_open_key_with_flags() -> Result<()> {
         assert_eq!(expired_keys, 0);
 
         // Delete key and reset stats
-        glide::cmd("del").arg(&["x"]).exec(&*client)?;
-        glide::cmd("config").arg(&["RESETSTAT"]).exec(&*client)?;
+        glide::cmd("del").arg(&["x"]).exec(server.client())?;
+        glide::cmd("config")
+            .arg(&["RESETSTAT"])
+            .exec(server.client())?;
     }
 
     Ok(())
@@ -1042,33 +1059,33 @@ fn test_open_key_with_flags() -> Result<()> {
 
 #[test]
 fn test_expire() -> Result<()> {
-    let client = start_server_with_module("expire")?;
+    let server = start_server_with_module("expire")?;
 
     // Create a key without TTL
     glide::cmd("set")
         .arg(&["key", "value"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run set")?;
 
-    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(&*client)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert_eq!(ttl, -1);
 
     // Set TTL on the key
     glide::cmd("expire.cmd")
         .arg(&["key", "100"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run expire.cmd")?;
 
-    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(&*client)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert!(ttl > 0);
 
     // Remove TTL on the key
     glide::cmd("expire.cmd")
         .arg(&["key", "-1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run expire.cmd")?;
 
-    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(&*client)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert_eq!(ttl, -1);
 
     Ok(())
@@ -1076,45 +1093,45 @@ fn test_expire() -> Result<()> {
 
 #[test]
 fn test_alloc() -> Result<()> {
-    let client = start_server_with_module("data_type")?;
+    let server = start_server_with_module("data_type")?;
 
     // Test set to verify allocation
     let res: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "10"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
     assert_eq!(res, 10);
 
     // Get value and verify content
     let res: String = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert_eq!(res, "A".repeat(10));
 
     // Test set reallocation
     let res: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "5"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
     assert_eq!(res, 5);
 
     // Test get with reallocated key
     let res: String = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert_eq!(res, "B".repeat(5));
 
     let _: i64 = glide::cmd("DEL")
         .arg(&["test_key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test get with deleted key
     let res: Option<String> = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert!(res.is_none());
 
@@ -1123,17 +1140,17 @@ fn test_alloc() -> Result<()> {
 
 #[test]
 fn test_debug() -> Result<()> {
-    let client = start_server_with_module("data_type")?;
+    let server = start_server_with_module("data_type")?;
 
     let _: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "10"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
 
     // Test DEBUG DIGEST command to verify digest callback
     let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1143,7 +1160,7 @@ fn test_debug() -> Result<()> {
     // Test DEBUG DIGEST-VALUE command to verify digest callback
     let res: Value = glide::cmd("DEBUG")
         .arg(&["digest-value", "test_key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST-VALUE")?;
     assert!(
         !matches!(res, Value::Nil),
@@ -1152,34 +1169,34 @@ fn test_debug() -> Result<()> {
 
     let _: i64 = glide::cmd("DEL")
         .arg("test_key")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG digest command to verify digest callback on unset key
     let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res, "0".repeat(40));
 
     // Start testing add_long_long
 
     // DB1
-    let client1 = start_server_with_module("data_type2")?;
+    let server1 = start_server_with_module("data_type2")?;
 
     // DB2
-    let client2 = start_server_with_module("data_type2")?;
+    let server2 = start_server_with_module("data_type2")?;
 
     // Set on DB1
     let _: i64 = glide::cmd("alloc2.set")
         .arg(&["k1", "3"])
-        .query(&*client1)
+        .query(server1.client())
         .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB1 to verify digest callback
     let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1189,7 +1206,7 @@ fn test_debug() -> Result<()> {
     // Get on DB1
     let get_res_db1: String = glide::cmd("alloc2.get")
         .arg("k1")
-        .query(&*client1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !get_res_db1.is_empty(),
@@ -1199,13 +1216,13 @@ fn test_debug() -> Result<()> {
     // Set on DB2
     let _: i64 = glide::cmd("alloc2.set")
         .arg(&["k1", "3"])
-        .query(&*client2)
+        .query(server2.client())
         .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback
     let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1215,7 +1232,7 @@ fn test_debug() -> Result<()> {
     // Get on DB2
     let get_res_db2: String = glide::cmd("alloc2.get")
         .arg("k1")
-        .query(&*client2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !get_res_db2.is_empty(),
@@ -1228,26 +1245,26 @@ fn test_debug() -> Result<()> {
     // Delete key on DB1
     let _: i64 = glide::cmd("DEL")
         .arg("k1")
-        .query(&*client1)
+        .query(server1.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG DIGEST on DB1 to verify digest callback on unset key
     let res_db1: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res_db1, "0".repeat(40));
 
     // Delete key on DB2
     let _: i64 = glide::cmd("DEL")
         .arg("k1")
-        .query(&*client2)
+        .query(server2.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback on unset key
     let res_db2: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&*client2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res_db2, "0".repeat(40));
 
@@ -1260,11 +1277,11 @@ fn test_debug() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_acl_categories() -> Result<()> {
-    let client = start_server_with_module("acl")?;
+    let server = start_server_with_module("acl")?;
     // Get all commands that have the ACL read
     let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "read"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to get list of commands associated with read")?;
 
     // Check if the list of returned commands contains existing_categories which is a new command we added the read ACL to
@@ -1274,7 +1291,7 @@ fn test_acl_categories() -> Result<()> {
     // Get all commands that have the custom ACL custom_acl_one
     let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_one"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to get list of commands associated with custom_acl_one")?;
     // Check if the two commands we added this custom acl to are returned
     let search_str = String::from("custom_category");
@@ -1285,7 +1302,7 @@ fn test_acl_categories() -> Result<()> {
     // Get all commands that have the custom ACL custom_acl_two
     let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_two"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed to get list of commadns associated with custom_acl_two")?;
     // Check if the two commands we added this custom acl to are returned
     let search_str = String::from("custom_categories");
@@ -1296,12 +1313,12 @@ fn test_acl_categories() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_defrag() -> Result<()> {
-    let client = start_server_with_module("data_type")?;
+    let server = start_server_with_module("data_type")?;
     // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
     // with not the default allocator we then exit this test early and don't test defrag
     let memory_info: String = glide::cmd("info")
         .arg("memory")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "Failed to run info memory")?;
     if memory_info.contains("mem_allocator:libc") {
         return Ok(());
@@ -1309,27 +1326,27 @@ fn test_defrag() -> Result<()> {
     // Set configs so active defrag will be able to run even with little defragmentation
     glide::cmd("config")
         .arg(&["set", "activedefrag", "yes"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run config set activedefrag")?;
     glide::cmd("config")
         .arg(&["set", "active-defrag-threshold-lower", "0"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run config set active-defrag-threshold-lower")?;
     glide::cmd("config")
         .arg(&["set", "active-defrag-ignore-bytes", "1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run config set active-defrag-ignore-bytes")?;
     // Create some keys for active defrag to work on
     for i in 1..10000 {
         let key = format!("test_key_{}", i);
         let _: i64 = glide::cmd("alloc.set")
             .arg(&[&key, "500"])
-            .query(&*client)
+            .query(server.client())
             .with_context(|| "failed to run alloc.set")?;
     }
     let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     loop {
-        let info: String = glide::cmd("info").arg("stats").query(&*client)?;
+        let info: String = glide::cmd("info").arg("stats").query(server.client())?;
         if ["active_defrag_hits", "active_defrag_misses"]
             .iter()
             .any(|key| {
@@ -1350,7 +1367,7 @@ fn test_defrag() -> Result<()> {
         let key = format!("test_key_{}", i);
         let get_return: String = glide::cmd("alloc.get")
             .arg(key)
-            .query(&*client)
+            .query(server.client())
             .with_context(|| "failed to run alloc.set")?;
         assert!(get_return == "A".repeat(500));
     }
@@ -1359,43 +1376,45 @@ fn test_defrag() -> Result<()> {
 
 #[test]
 fn test_client() -> Result<()> {
-    let client = start_server_with_module("client")?;
+    let server = start_server_with_module("client")?;
     // Test client.id command
     glide::cmd("client.id")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed execute client.id")?;
     // Test client.set_name
     glide::cmd("client.set_name")
         .arg("test_client")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed execute client.set_name")?;
     // test client.get_name
     let resp: String = glide::cmd("client.get_name")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute client.get_name")?;
     assert_eq!(resp, "test_client");
     // test client.username
     let resp: String = glide::cmd("client.username")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute client.username")?;
     assert_eq!(resp, "default");
     // test client.cert
     let error = glide::cmd("client.cert")
-        .query::<String>(&*client)
+        .query::<String>(server.client())
         .expect_err("client.cert should fail when the client has no TLS certificate");
     assert!(error.to_string().contains("Client/Cert: is null"));
     // test client.info
     let resp: String = glide::cmd("client.info")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute client.info")?;
     assert_eq!(resp, "1");
     // Test client.ip command
     let resp: String = glide::cmd("client.ip")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute client.ip")?;
     assert_eq!(resp, "127.0.0.1");
     // Test client.deauth
-    let result = glide::cmd("client.deauth").arg(0).query::<String>(&*client);
+    let result = glide::cmd("client.deauth")
+        .arg(0)
+        .query::<String>(server.client());
     match result {
         Ok(resp) => {
             assert_eq!(resp, "OK");
@@ -1407,7 +1426,7 @@ fn test_client() -> Result<()> {
     }
     let resp: String = glide::cmd("client.config_get")
         .arg("maxmemory-policy")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute client.config_get")?;
     assert_eq!(resp, "noeviction");
     Ok(())
@@ -1416,35 +1435,35 @@ fn test_client() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_filter() -> Result<()> {
-    let client = start_server_with_module("filter1")?;
+    let server = start_server_with_module("filter1")?;
     // load filter2 module
     glide::cmd("MODULE")
         .arg(&["LOAD", get_module_path("filter2").unwrap().as_str()])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to filter2 module")?;
 
     // test filter1 module filter for info command
     let resp: String = glide::cmd("info")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute info")?;
     assert_eq!(resp, "info2\n");
     // test the set filter function and verify key/value were replaced
-    let _: () = client.set("foo", "bar")?;
-    let resp2: String = client.get("new_key")?;
+    let _: () = server.client().set("foo", "bar")?;
+    let resp2: String = server.client().get("new_key")?;
     assert_eq!(resp2, "new_value");
 
     // unload the module
     glide::cmd("MODULE")
         .arg(&["UNLOAD", "filter1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to unload filter1 module")?;
     // verify the filters are unloaded and commands work as expected
     let resp3: String = glide::cmd("info")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute info")?;
     assert_ne!(resp3, "info2");
-    let _: () = client.set("foo", "bar")?;
-    let resp4: String = client.get("foo")?;
+    let _: () = server.client().set("foo", "bar")?;
+    let resp4: String = server.client().get("foo")?;
     assert_eq!(resp4, "bar");
 
     Ok(())
@@ -1457,7 +1476,7 @@ fn test_filter() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_non_blocking_auth_callbacks() -> Result<()> {
-    let client = start_server_with_module("auth")?;
+    let server = start_server_with_module("auth")?;
 
     // Module users - these are handled by the module
     let module_users = [("user1", "module_pass1"), ("user2", "module_pass2")];
@@ -1470,14 +1489,14 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 
     // Setup ACL users - both module users (no engine pass) and engine users (with pass)
     setup_acl_users(
-        &client,
+        server.client(),
         &module_users
             .iter()
             .map(|(u, _)| (*u, None))
             .collect::<Vec<_>>(),
     )?;
     setup_acl_users(
-        &client,
+        server.client(),
         &engine_users
             .iter()
             .map(|(u, p)| (*u, Some(*p)))
@@ -1487,17 +1506,32 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
     // Test 1: Module authentication
     for (user, module_pass) in module_users.iter() {
         // Correct module password should succeed
-        check_auth(&client, user, module_pass, AuthExpectedResult::Success)?;
+        check_auth(
+            server.client(),
+            user,
+            module_pass,
+            AuthExpectedResult::Success,
+        )?;
         // Wrong password for module user should be denied by module
-        check_auth(&client, user, "wrong", AuthExpectedResult::Denied)?;
+        check_auth(server.client(), user, "wrong", AuthExpectedResult::Denied)?;
     }
 
     // Test 2: Engine authentication (different users falling through)
     for (user, engine_pass) in engine_users.iter() {
         // Engine users should succeed with correct password
-        check_auth(&client, user, engine_pass, AuthExpectedResult::Success)?;
+        check_auth(
+            server.client(),
+            user,
+            engine_pass,
+            AuthExpectedResult::Success,
+        )?;
         // Engine users should fail with wrong password
-        check_auth(&client, user, "wrong", AuthExpectedResult::EngineDenied)?;
+        check_auth(
+            server.client(),
+            user,
+            "wrong",
+            AuthExpectedResult::EngineDenied,
+        )?;
     }
 
     Ok(())
@@ -1606,8 +1640,8 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
-    let setup_client = start_server_with_module("auth")?;
-    let port = setup_client.port;
+    let setup_server = start_server_with_module("auth")?;
+    let port = setup_server.port;
 
     // Set up users for both auth callbacks with (username, module_pass)
     let users_auth1 = [
@@ -1625,14 +1659,14 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 
     // Create all users in ACL with no passwords
     setup_acl_users(
-        &setup_client,
+        setup_server.client(),
         &users_auth1
             .iter()
             .map(|(u, _)| (*u, None))
             .collect::<Vec<_>>(),
     )?;
     setup_acl_users(
-        &setup_client,
+        setup_server.client(),
         &users_auth2
             .iter()
             .map(|(u, _)| (*u, None))
@@ -1795,11 +1829,11 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
 
 #[test]
 fn test_preload() -> Result<()> {
-    let client = start_server_with_module("preload")?;
+    let server = start_server_with_module("preload")?;
     // unload the module
     glide::cmd("MODULE")
         .arg(&["UNLOAD", "preload"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to unload module")?;
 
     Ok(())
@@ -1807,49 +1841,49 @@ fn test_preload() -> Result<()> {
 
 #[test]
 fn test_subcmd() -> Result<()> {
-    let client = start_server_with_module("subcmd")?;
+    let server = start_server_with_module("subcmd")?;
 
     // test cmd1
     let resp: Vec<String> = glide::cmd("cmd1")
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1")?;
     // array([simple-string("cmd1 - top level command"), simple-string("cmd1 s1 - first level subcommand"), simple-string("cmd1 s1 s1 - second level command"), simple-string("cmd1 s1 s1 s1 - third level command"), simple-string("cmd1 help - display this message")]))
     assert_eq!(resp.len(), 5);
     // test cmd1 help
     let resp: Vec<String> = glide::cmd("cmd1")
         .arg(&["help"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 help")?;
     assert_eq!(resp.len(), 5);
     // test cmd1 info key
     let resp: Vec<String> = glide::cmd("cmd1")
         .arg(&["info", "key"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 info")?;
     assert!(resp == vec!["key", "value"]);
     // test cmd1 info array
     let resp: Vec<Vec<String>> = glide::cmd("cmd1")
         .arg(&["info", "array"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 info")?;
     assert!(resp.len() == 2);
     assert!(resp[1] == vec!["a", "b", "c"]);
     // test cmd1 s1
     let resp: String = glide::cmd("cmd1")
         .arg(&["s1"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1")?;
     assert_eq!(resp, "sub1");
     // test cmd1 s1 s1
     let resp: String = glide::cmd("cmd1")
         .arg(&["s1", "s1"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1 s1")?;
     assert_eq!(resp, "sub11");
     // test cmd1 s1 s1 s1
     let resp: String = glide::cmd("cmd1")
         .arg(&["s1", "s1", "s1"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1 s1 s1")?;
     assert_eq!(resp, "sub111");
 
@@ -1858,30 +1892,30 @@ fn test_subcmd() -> Result<()> {
 
 #[test]
 fn test_data_type3() -> Result<()> {
-    let client = start_server_with_module("data_type3")?;
+    let server = start_server_with_module("data_type3")?;
 
     // check empty key
     glide::cmd("my-get")
         .arg(&["my-data-type1"])
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed execute my-get")?;
     // write data to different key elements
     glide::cmd("my-set-string")
         .arg(&["my-data-type1", "string1"])
-        .exec(&*client)?;
+        .exec(server.client())?;
     glide::cmd("my-set-number")
         .arg(&["my-data-type1", "1"])
-        .exec(&*client)?;
+        .exec(server.client())?;
     glide::cmd("my-vec-push")
         .arg(&["my-data-type1", "a"])
-        .exec(&*client)?;
+        .exec(server.client())?;
     glide::cmd("my-map-insert")
         .arg(&["my-data-type1", "k1", "v1"])
-        .exec(&*client)?;
+        .exec(server.client())?;
     // TODO - how to test output when it returns vector of string, number, vector and map
     let _resp: () = glide::cmd("my-get")
         .arg(&["my-data-type1"])
-        .query(&*client)
+        .query(server.client())
         .with_context(|| "failed execute my-get")?;
     //assert_eq!(resp, vec!["my_number", "1", "my_string", "string1"]);
 
@@ -1890,7 +1924,7 @@ fn test_data_type3() -> Result<()> {
 
 #[test]
 fn test_crontab() -> Result<()> {
-    let _client = start_server_with_module("crontab")?;
+    let _server = start_server_with_module("crontab")?;
     // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
     Ok(())
 }
@@ -1898,25 +1932,25 @@ fn test_crontab() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_master_link_change_event() -> Result<()> {
-    let primary_client = start_server_with_module("server_events")?;
-    let primary_port = primary_client.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
 
-    let replica_client = start_server_with_module("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
 
     // set replicaof to primary_port
     println!("Setting up replication");
     let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&*replica_client)?;
+        .query(replica_server.client())?;
 
-    wait_for_master_link_state(&replica_client, true, 1)?;
+    wait_for_master_link_state(replica_server.client(), true, 1)?;
 
     // shut down server on primary port
     println!("Shutting down primary server");
     match glide::cmd("SHUTDOWN")
         .arg("NOSAVE")
-        .query::<String>(&*primary_client)
+        .query::<String>(primary_server.client())
     {
         Ok(_) => {
             println!("Primary server shut down successfully")
@@ -1928,9 +1962,9 @@ fn test_master_link_change_event() -> Result<()> {
             println!("Failed to shut down primary server")
         }
     }
-    drop(primary_client);
+    drop(primary_server);
 
-    wait_for_master_link_state(&replica_client, false, 2)?;
+    wait_for_master_link_state(replica_server.client(), false, 2)?;
 
     Ok(())
 }
@@ -1938,13 +1972,13 @@ fn test_master_link_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_fork_child_event() -> Result<()> {
-    let client = start_server_with_module("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
     glide::cmd("bgsave")
-        .exec(&*client)
+        .exec(server.client())
         .with_context(|| "failed to run bgsave")?;
 
-    wait_for_event_count(&client, "num_fork_child_events", 2)?;
+    wait_for_event_count(server.client(), "num_fork_child_events", 2)?;
 
     Ok(())
 }
@@ -1952,24 +1986,24 @@ fn test_fork_child_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_replica_change_event() -> Result<()> {
-    let primary_client = start_server_with_module("server_events")?;
-    let primary_port = primary_client.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
 
-    let replica_client = start_server_with_module("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
 
     // setup replication
     let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&*replica_client)?;
-    wait_for_replica_change_events(&primary_client, 1)?;
+        .query(replica_server.client())?;
+    wait_for_replica_change_events(primary_server.client(), 1)?;
 
     // disable replication
     let _: () = glide::cmd("replicaof")
         .arg("no")
         .arg("one")
-        .query(&*replica_client)?;
-    wait_for_replica_change_events(&primary_client, 2)?;
+        .query(replica_server.client())?;
+    wait_for_replica_change_events(primary_server.client(), 2)?;
 
     Ok(())
 }
@@ -1977,29 +2011,29 @@ fn test_replica_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_repl_async_load_event() -> Result<()> {
-    let primary_client = start_server_with_module("server_events")?;
-    let primary_port = primary_client.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
     // repl-diskless-load swapdb
     let _: () = glide::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
-        .exec(&*primary_client)
+        .exec(primary_server.client())
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
-    let replica_client = start_server_with_module("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
     // repl-diskless-load swapdb
     let _: () = glide::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
-        .exec(&*replica_client)
+        .exec(replica_server.client())
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
     // setup replication
     let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&*replica_client)?;
+        .query(replica_server.client())?;
     // The primary delays the diskless BGSAVE before the replica receives the
     // RDB. Wait for the started and completed callbacks instead of racing it.
-    wait_for_repl_async_load_events(&replica_client, 2)?;
+    wait_for_repl_async_load_events(replica_server.client(), 2)?;
 
     Ok(())
 }
@@ -2007,18 +2041,22 @@ fn test_repl_async_load_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_swapdb_event() -> Result<()> {
-    let client = start_server_with_module("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
     // run swapdb between db 0 and db 1
-    let _: () = glide::cmd("swapdb").arg(&["0", "1"]).query(&*client)?;
+    let _: () = glide::cmd("swapdb")
+        .arg(&["0", "1"])
+        .query(server.client())?;
     // check swapdb event count
-    let event_count1: i64 = glide::cmd("num_swapdb_events").query(&*client)?;
+    let event_count1: i64 = glide::cmd("num_swapdb_events").query(server.client())?;
     assert_eq!(event_count1, 1);
 
     // run swapdb between db 1 and db 2
-    let _: () = glide::cmd("swapdb").arg(&["1", "2"]).query(&*client)?;
+    let _: () = glide::cmd("swapdb")
+        .arg(&["1", "2"])
+        .query(server.client())?;
     // check swapdb event count
-    let event_count2: i64 = glide::cmd("num_swapdb_events").query(&*client)?;
+    let event_count2: i64 = glide::cmd("num_swapdb_events").query(server.client())?;
     assert_eq!(event_count2, 2);
 
     Ok(())
