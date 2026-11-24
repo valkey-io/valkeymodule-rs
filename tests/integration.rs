@@ -14,7 +14,7 @@ use utils::{
     AuthExpectedResult,
 };
 use utils::{
-    get_valkey_client, start_server_w_module_get_client, wait_for_client_connection_count,
+    get_valkey_client, start_server_with_module, wait_for_client_connection_count,
     wait_for_event_count, wait_for_event_count_greater_than, wait_for_file_contents,
     wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
 };
@@ -27,7 +27,7 @@ mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
-    let client = start_server_w_module_get_client("hello")?;
+    let client = start_server_with_module("hello")?;
 
     let res: Vec<i32> = glide::cmd("hello.mul")
         .arg(&[3, 4])
@@ -45,7 +45,7 @@ fn test_hello() -> Result<()> {
 
 #[test]
 fn test_block() -> Result<()> {
-    let client = start_server_w_module_get_client("block")?;
+    let client = start_server_with_module("block")?;
 
     let response: i64 = glide::cmd("block")
         .query(&*client)
@@ -57,7 +57,7 @@ fn test_block() -> Result<()> {
 
 #[test]
 fn test_block_measure_time() -> Result<()> {
-    let client = start_server_w_module_get_client("block")?;
+    let client = start_server_with_module("block")?;
 
     let response: i64 = glide::cmd("block.measured")
         .query(&*client)
@@ -84,7 +84,7 @@ fn test_block_measure_time() -> Result<()> {
 
 #[test]
 fn test_info() -> Result<()> {
-    let client = start_server_w_module_get_client("info")?;
+    let client = start_server_with_module("info")?;
 
     let redis_version: String = glide::cmd("infoex")
         .arg(&["server", "redis_version"])
@@ -107,7 +107,7 @@ fn test_info() -> Result<()> {
 
 #[test]
 fn test_lists() -> Result<()> {
-    let client = start_server_w_module_get_client("lists")?;
+    let client = start_server_with_module("lists")?;
 
     let _: i64 = glide::cmd("RPUSH")
         .arg(&["source", "first", "second"])
@@ -153,7 +153,7 @@ fn test_lists() -> Result<()> {
 
 #[test]
 fn test_load_unload() -> Result<()> {
-    let client = start_server_w_module_get_client("hello")?;
+    let client = start_server_with_module("hello")?;
     let module_path = get_module_path("load_unload")?;
 
     let loaded: String = glide::cmd("MODULE")
@@ -176,7 +176,7 @@ fn test_load_unload() -> Result<()> {
 
 #[test]
 fn test_timer() -> Result<()> {
-    let client = start_server_w_module_get_client("timer")?;
+    let client = start_server_with_module("timer")?;
 
     let active_timer_id: String = glide::cmd("timer.create")
         .arg(&["60000", "active"])
@@ -223,7 +223,7 @@ fn test_timer() -> Result<()> {
 
 #[test]
 fn test_keys_pos() -> Result<()> {
-    let client = start_server_w_module_get_client("keys_pos")?;
+    let client = start_server_with_module("keys_pos")?;
 
     let res: Vec<String> = glide::cmd("keys_pos")
         .arg(&["a", "1", "b", "2"])
@@ -243,7 +243,7 @@ fn test_keys_pos() -> Result<()> {
 // Exercise plain and flagged SDK opens through writable_set, then use GET to verify creation and updates.
 // A missing key must remain writable; it is not the same as a failed (null) open.
 fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
-    let client = start_server_w_module_get_client("test_helper")?;
+    let client = start_server_with_module("test_helper")?;
 
     for mode in ["plain", "flags"] {
         let key = format!("writable-{mode}");
@@ -262,7 +262,7 @@ fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
 
 #[test]
 fn test_path_hash_key_type() -> Result<()> {
-    let client = start_server_w_module_get_client("test_helper")?;
+    let client = start_server_with_module("test_helper")?;
 
     let _: i64 = glide::cmd("HSET")
         .arg(&["ordinary-hash", "field", "value"])
@@ -307,7 +307,7 @@ fn test_path_hash_key_type() -> Result<()> {
 
 #[test]
 fn test_helper_version() -> Result<()> {
-    let client = start_server_w_module_get_client("test_helper")?;
+    let client = start_server_with_module("test_helper")?;
 
     let res: Vec<i64> = glide::cmd("test_helper.version")
         .query(&*client)
@@ -334,7 +334,7 @@ fn test_helper_version() -> Result<()> {
 fn test_command_name() -> Result<()> {
     use valkey_module::ValkeyValue;
 
-    let client = start_server_w_module_get_client("test_helper")?;
+    let client = start_server_with_module("test_helper")?;
 
     // Call the tested command
     let res: Result<String, GlideError> = glide::cmd("test_helper.name").query(&*client);
@@ -378,7 +378,7 @@ fn test_helper_info() -> Result<()> {
     MODULES
         .into_iter()
         .try_for_each(|(module, has_dictionary)| {
-            let client = start_server_w_module_get_client(module)?;
+            let client = start_server_with_module(module)?;
 
             let res: String = glide::cmd("INFO")
                 .arg(module)
@@ -399,7 +399,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     const MODULES: [&str; 1] = ["info_handler_multiple_sections"];
 
     MODULES.into_iter().try_for_each(|module| {
-        let client = start_server_w_module_get_client(module)?;
+        let client = start_server_with_module(module)?;
 
         let res: String = glide::cmd("INFO")
             .arg(format!("{module}_InfoSection2"))
@@ -415,7 +415,7 @@ fn test_info_handler_multiple_sections() -> Result<()> {
 
 #[test]
 fn test_test_helper_err() -> Result<()> {
-    let client = start_server_w_module_get_client("test_helper")?;
+    let client = start_server_with_module("test_helper")?;
 
     // Make sure embedded nulls do not cause a crash and are returned as errors.
     for message in ["\x00\x00", "no crash\x00"] {
@@ -435,7 +435,7 @@ fn test_test_helper_err() -> Result<()> {
 
 #[test]
 fn test_string() -> Result<()> {
-    let client = start_server_w_module_get_client("string")?;
+    let client = start_server_with_module("string")?;
 
     glide::cmd("string.set")
         .arg(&["key", "value"])
@@ -451,7 +451,7 @@ fn test_string() -> Result<()> {
 
 #[test]
 fn test_scan() -> Result<()> {
-    let client = start_server_w_module_get_client("scan_keys")?;
+    let client = start_server_with_module("scan_keys")?;
 
     glide::cmd("set")
         .arg(&["x", "1"])
@@ -473,7 +473,7 @@ fn test_scan() -> Result<()> {
 
 #[test]
 fn test_stream_reader() -> Result<()> {
-    let client = start_server_w_module_get_client("stream")?;
+    let client = start_server_with_module("stream")?;
 
     let _: String = glide::cmd("XADD")
         .arg(&["s", "1-1", "foo", "bar"])
@@ -510,7 +510,7 @@ fn test_stream_reader() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call() -> Result<()> {
-    let client = start_server_w_module_get_client("call")?;
+    let client = start_server_with_module("call")?;
 
     let res: String = glide::cmd("call.test")
         .query(&*client)
@@ -523,7 +523,7 @@ fn test_call() -> Result<()> {
 
 #[test]
 fn test_ctx_flags() -> Result<()> {
-    let client = start_server_w_module_get_client("ctx_flags")?;
+    let client = start_server_with_module("ctx_flags")?;
 
     let res: String = glide::cmd("my_role").query(&*client)?;
 
@@ -535,7 +535,7 @@ fn test_ctx_flags() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_get_current_user() -> Result<()> {
-    let client = start_server_w_module_get_client("acl")?;
+    let client = start_server_with_module("acl")?;
 
     let res: String = glide::cmd("get_current_user").query(&*client)?;
 
@@ -547,7 +547,7 @@ fn test_get_current_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_verify_acl_on_user() -> Result<()> {
-    let client = start_server_w_module_get_client("acl")?;
+    let client = start_server_with_module("acl")?;
 
     let res: String = glide::cmd("verify_key_access_for_user")
         .arg(&["default", "x"])
@@ -583,7 +583,7 @@ fn test_verify_acl_on_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_key_space_notifications() -> Result<()> {
-    let client = start_server_w_module_get_client("events")?;
+    let client = start_server_with_module("events")?;
 
     let res: usize = glide::cmd("events.num_key_miss").query(&*client)?;
     assert_eq!(res, 0);
@@ -603,7 +603,7 @@ fn test_key_space_notifications() -> Result<()> {
 
 #[test]
 fn test_context_mutex() -> Result<()> {
-    let client = start_server_w_module_get_client("threads")?;
+    let client = start_server_with_module("threads")?;
 
     let res: String = glide::cmd("set_static_data")
         .arg(&["foo"])
@@ -632,7 +632,7 @@ fn test_context_mutex() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event() -> Result<()> {
-    let client = start_server_w_module_get_client("server_events")?;
+    let client = start_server_with_module("server_events")?;
 
     let before_sleep_count: i64 = glide::cmd("num_event_loop_before_sleep").query(&*client)?;
     let after_sleep_count: i64 = glide::cmd("num_event_loop_after_sleep").query(&*client)?;
@@ -719,7 +719,7 @@ fn test_server_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event_shutdown() -> Result<()> {
-    let client = start_server_w_module_get_client("server_events")?;
+    let client = start_server_with_module("server_events")?;
     let shutdown_log_path = client.data_dir().join("shutdown_log.txt");
 
     if shutdown_log_path.exists() {
@@ -756,7 +756,7 @@ fn test_server_event_shutdown() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_client_change_event() -> Result<()> {
-    let client = start_server_w_module_get_client("server_events")?;
+    let client = start_server_with_module("server_events")?;
     let client2: SyncGlideClient =
         get_valkey_client(client.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
@@ -771,7 +771,7 @@ fn test_client_change_event() -> Result<()> {
 
 #[test]
 fn test_configuration() -> Result<()> {
-    let client = start_server_w_module_get_client("configuration")?;
+    let client = start_server_with_module("configuration")?;
     let port = client.port;
 
     let config_get = |config: &str| -> Result<String> {
@@ -883,7 +883,7 @@ fn test_configuration() -> Result<()> {
 
 #[test]
 fn test_response() -> Result<()> {
-    let client = start_server_w_module_get_client("response")?;
+    let client = start_server_with_module("response")?;
 
     glide::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
@@ -911,7 +911,7 @@ fn test_response() -> Result<()> {
 
 #[test]
 fn test_command_proc_macro() -> Result<()> {
-    let client = start_server_w_module_get_client("proc_macro_commands")?;
+    let client = start_server_with_module("proc_macro_commands")?;
 
     let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "classic_keys", "x", "foo", "y", "bar"])
@@ -946,7 +946,7 @@ fn test_command_proc_macro() -> Result<()> {
 
 #[test]
 fn test_valkey_value_derive() -> Result<()> {
-    let client = start_server_w_module_get_client("proc_macro_commands")?;
+    let client = start_server_with_module("proc_macro_commands")?;
 
     let res: Value = glide::cmd("valkey_value_derive")
         .query(&*client)
@@ -970,7 +970,7 @@ fn test_valkey_value_derive() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call_blocking() -> Result<()> {
-    let client = start_server_w_module_get_client("call")?;
+    let client = start_server_with_module("call")?;
 
     let res: Option<String> = glide::cmd("call.blocking")
         .query(&*client)
@@ -990,7 +990,7 @@ fn test_call_blocking() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_open_key_with_flags() -> Result<()> {
-    let client = start_server_w_module_get_client("open_key_with_flags")?;
+    let client = start_server_with_module("open_key_with_flags")?;
 
     // Avoid active expriation
     glide::cmd("DEBUG")
@@ -1042,7 +1042,7 @@ fn test_open_key_with_flags() -> Result<()> {
 
 #[test]
 fn test_expire() -> Result<()> {
-    let client = start_server_w_module_get_client("expire")?;
+    let client = start_server_with_module("expire")?;
 
     // Create a key without TTL
     glide::cmd("set")
@@ -1076,7 +1076,7 @@ fn test_expire() -> Result<()> {
 
 #[test]
 fn test_alloc() -> Result<()> {
-    let client = start_server_w_module_get_client("data_type")?;
+    let client = start_server_with_module("data_type")?;
 
     // Test set to verify allocation
     let res: i64 = glide::cmd("alloc.set")
@@ -1123,7 +1123,7 @@ fn test_alloc() -> Result<()> {
 
 #[test]
 fn test_debug() -> Result<()> {
-    let client = start_server_w_module_get_client("data_type")?;
+    let client = start_server_with_module("data_type")?;
 
     let _: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "10"])
@@ -1165,10 +1165,10 @@ fn test_debug() -> Result<()> {
     // Start testing add_long_long
 
     // DB1
-    let client1 = start_server_w_module_get_client("data_type2")?;
+    let client1 = start_server_with_module("data_type2")?;
 
     // DB2
-    let client2 = start_server_w_module_get_client("data_type2")?;
+    let client2 = start_server_with_module("data_type2")?;
 
     // Set on DB1
     let _: i64 = glide::cmd("alloc2.set")
@@ -1260,7 +1260,7 @@ fn test_debug() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_acl_categories() -> Result<()> {
-    let client = start_server_w_module_get_client("acl")?;
+    let client = start_server_with_module("acl")?;
     // Get all commands that have the ACL read
     let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "read"])
@@ -1296,7 +1296,7 @@ fn test_acl_categories() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_defrag() -> Result<()> {
-    let client = start_server_w_module_get_client("data_type")?;
+    let client = start_server_with_module("data_type")?;
     // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
     // with not the default allocator we then exit this test early and don't test defrag
     let memory_info: String = glide::cmd("info")
@@ -1359,7 +1359,7 @@ fn test_defrag() -> Result<()> {
 
 #[test]
 fn test_client() -> Result<()> {
-    let client = start_server_w_module_get_client("client")?;
+    let client = start_server_with_module("client")?;
     // Test client.id command
     glide::cmd("client.id")
         .exec(&*client)
@@ -1416,7 +1416,7 @@ fn test_client() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_filter() -> Result<()> {
-    let client = start_server_w_module_get_client("filter1")?;
+    let client = start_server_with_module("filter1")?;
     // load filter2 module
     glide::cmd("MODULE")
         .arg(&["LOAD", get_module_path("filter2").unwrap().as_str()])
@@ -1457,7 +1457,7 @@ fn test_filter() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_non_blocking_auth_callbacks() -> Result<()> {
-    let client = start_server_w_module_get_client("auth")?;
+    let client = start_server_with_module("auth")?;
 
     // Module users - these are handled by the module
     let module_users = [("user1", "module_pass1"), ("user2", "module_pass2")];
@@ -1512,7 +1512,7 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_blocking_auth_callbacks() -> Result<()> {
-    let server = start_server_w_module_get_client("auth")?;
+    let server = start_server_with_module("auth")?;
     let port = server.port;
     let (_guard, client) = server.into_parts();
     let client2 = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -1606,7 +1606,7 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
-    let setup_client = start_server_w_module_get_client("auth")?;
+    let setup_client = start_server_with_module("auth")?;
     let port = setup_client.port;
 
     // Set up users for both auth callbacks with (username, module_pass)
@@ -1733,7 +1733,7 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_disconnect_client_during_blocking_auth() -> Result<()> {
-    let server = start_server_w_module_get_client("auth")?;
+    let server = start_server_with_module("auth")?;
     let port = server.port;
     let (_guard, client) = server.into_parts();
     let monitor_client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
@@ -1795,7 +1795,7 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
 
 #[test]
 fn test_preload() -> Result<()> {
-    let client = start_server_w_module_get_client("preload")?;
+    let client = start_server_with_module("preload")?;
     // unload the module
     glide::cmd("MODULE")
         .arg(&["UNLOAD", "preload"])
@@ -1807,7 +1807,7 @@ fn test_preload() -> Result<()> {
 
 #[test]
 fn test_subcmd() -> Result<()> {
-    let client = start_server_w_module_get_client("subcmd")?;
+    let client = start_server_with_module("subcmd")?;
 
     // test cmd1
     let resp: Vec<String> = glide::cmd("cmd1")
@@ -1858,7 +1858,7 @@ fn test_subcmd() -> Result<()> {
 
 #[test]
 fn test_data_type3() -> Result<()> {
-    let client = start_server_w_module_get_client("data_type3")?;
+    let client = start_server_with_module("data_type3")?;
 
     // check empty key
     glide::cmd("my-get")
@@ -1890,7 +1890,7 @@ fn test_data_type3() -> Result<()> {
 
 #[test]
 fn test_crontab() -> Result<()> {
-    let _client = start_server_w_module_get_client("crontab")?;
+    let _client = start_server_with_module("crontab")?;
     // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
     Ok(())
 }
@@ -1898,10 +1898,10 @@ fn test_crontab() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_master_link_change_event() -> Result<()> {
-    let primary_client = start_server_w_module_get_client("server_events")?;
+    let primary_client = start_server_with_module("server_events")?;
     let primary_port = primary_client.port;
 
-    let replica_client = start_server_w_module_get_client("server_events")?;
+    let replica_client = start_server_with_module("server_events")?;
 
     // set replicaof to primary_port
     println!("Setting up replication");
@@ -1938,7 +1938,7 @@ fn test_master_link_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_fork_child_event() -> Result<()> {
-    let client = start_server_w_module_get_client("server_events")?;
+    let client = start_server_with_module("server_events")?;
 
     glide::cmd("bgsave")
         .exec(&*client)
@@ -1952,10 +1952,10 @@ fn test_fork_child_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_replica_change_event() -> Result<()> {
-    let primary_client = start_server_w_module_get_client("server_events")?;
+    let primary_client = start_server_with_module("server_events")?;
     let primary_port = primary_client.port;
 
-    let replica_client = start_server_w_module_get_client("server_events")?;
+    let replica_client = start_server_with_module("server_events")?;
 
     // setup replication
     let _: () = glide::cmd("replicaof")
@@ -1977,7 +1977,7 @@ fn test_replica_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_repl_async_load_event() -> Result<()> {
-    let primary_client = start_server_w_module_get_client("server_events")?;
+    let primary_client = start_server_with_module("server_events")?;
     let primary_port = primary_client.port;
     // repl-diskless-load swapdb
     let _: () = glide::cmd("config")
@@ -1985,7 +1985,7 @@ fn test_repl_async_load_event() -> Result<()> {
         .exec(&*primary_client)
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
-    let replica_client = start_server_w_module_get_client("server_events")?;
+    let replica_client = start_server_with_module("server_events")?;
     // repl-diskless-load swapdb
     let _: () = glide::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
@@ -2007,7 +2007,7 @@ fn test_repl_async_load_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_swapdb_event() -> Result<()> {
-    let client = start_server_w_module_get_client("server_events")?;
+    let client = start_server_with_module("server_events")?;
 
     // run swapdb between db 0 and db 1
     let _: () = glide::cmd("swapdb").arg(&["0", "1"]).query(&*client)?;

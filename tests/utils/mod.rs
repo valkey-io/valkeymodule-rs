@@ -108,10 +108,54 @@ pub(super) enum AuthExpectedResult {
     Aborted,
 }
 
-pub(super) fn start_server_w_module_get_client(module_name: &str) -> Result<TestServer> {
+pub(super) fn start_server_with_module(module_name: &str) -> Result<TestServer> {
     let port = get_available_port()?;
-    let guard = start_server_with_module(module_name, port)
-        .with_context(|| "failed to start valkey server")?;
+    let (server_name, server_path) = selected_test_server()?;
+    let module_path = get_module_path(module_name)?;
+    let data_dir = create_data_dir()?;
+    let port_arg = port.to_string();
+    let data_dir_arg = data_dir
+        .path()
+        .to_str()
+        .context("Valkey data directory is not valid UTF-8")?;
+
+    let args = &[
+        "--port",
+        port_arg.as_str(),
+        "--dir",
+        data_dir_arg,
+        "--dbfilename",
+        "dump.rdb",
+        "--loadmodule",
+        module_path.as_str(),
+        "--enable-debug-command",
+        "yes",
+        "--enable-module-command",
+        "yes",
+    ];
+
+    let child = Command::new(&server_path)
+        .args(args)
+        .current_dir(data_dir.path())
+        .spawn()
+        .with_context(|| {
+            format!(
+                "failed to start {} at {}; run ./setup-integration-servers.sh first",
+                server_name,
+                server_path.display()
+            )
+        });
+    let child = match child {
+        Ok(child) => child,
+        Err(error) => return Err(error.into()),
+    };
+
+    let guard = ChildGuard {
+        name: "server",
+        port,
+        data_dir,
+        child,
+    };
     let client = get_valkey_client(port).with_context(|| "failed to connect to valkey server")?;
 
     Ok(TestServer {
@@ -152,15 +196,6 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
         .with_context(|| format!("Resolving module: {}", module_path.display()))?;
     let module_path = format!("{}", module_path.display());
     Ok(module_path)
-}
-
-// Use one fixed endpoint, including for replicas, and preserve RESP2 reply shapes.
-fn test_client_configuration(port: u16) -> GlideClientConfiguration {
-    GlideClientConfiguration::with_address("127.0.0.1", port)
-        .node_discovery_mode(NodeDiscoveryMode::Static)
-        .protocol(ProtocolVersion::RESP2)
-        .connection_timeout(Duration::from_millis(250))
-        .request_timeout(Duration::from_secs(10))
 }
 
 pub(super) fn get_valkey_client(port: u16) -> Result<SyncGlideClient> {
@@ -384,53 +419,13 @@ pub(super) fn wait_for_file_contents(path: &std::path::Path, expected: &[&str]) 
     }
 }
 
-fn start_server_with_module(module_name: &str, port: u16) -> Result<ChildGuard> {
-    let (server_name, server_path) = selected_test_server()?;
-    let module_path = get_module_path(module_name)?;
-    let data_dir = create_data_dir()?;
-    let port_arg = port.to_string();
-    let data_dir_arg = data_dir
-        .path()
-        .to_str()
-        .context("Valkey data directory is not valid UTF-8")?;
-
-    let args = &[
-        "--port",
-        port_arg.as_str(),
-        "--dir",
-        data_dir_arg,
-        "--dbfilename",
-        "dump.rdb",
-        "--loadmodule",
-        module_path.as_str(),
-        "--enable-debug-command",
-        "yes",
-        "--enable-module-command",
-        "yes",
-    ];
-
-    let child = Command::new(&server_path)
-        .args(args)
-        .current_dir(data_dir.path())
-        .spawn()
-        .with_context(|| {
-            format!(
-                "failed to start {} at {}; run ./setup-integration-servers.sh first",
-                server_name,
-                server_path.display()
-            )
-        });
-    let child = match child {
-        Ok(child) => child,
-        Err(error) => return Err(error.into()),
-    };
-
-    Ok(ChildGuard {
-        name: "server",
-        port,
-        data_dir,
-        child,
-    })
+// Use one fixed endpoint, including for replicas, and preserve RESP2 reply shapes.
+fn test_client_configuration(port: u16) -> GlideClientConfiguration {
+    GlideClientConfiguration::with_address("127.0.0.1", port)
+        .node_discovery_mode(NodeDiscoveryMode::Static)
+        .protocol(ProtocolVersion::RESP2)
+        .connection_timeout(Duration::from_millis(250))
+        .request_timeout(Duration::from_secs(10))
 }
 
 fn selected_test_server() -> Result<(&'static str, PathBuf)> {
