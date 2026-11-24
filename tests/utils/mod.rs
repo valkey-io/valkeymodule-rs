@@ -1,9 +1,11 @@
 use anyhow::{Context, Result};
 
-use redis::Connection;
-use redis::RedisResult;
+use glide::sync::SyncGlideClient;
+use glide::{
+    GlideClientConfiguration, GlideError, NodeDiscoveryMode, ProtocolVersion, ValkeyResult,
+};
 use std::fs;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
@@ -19,22 +21,15 @@ const EVENT_POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub(super) struct TestServer {
     pub(super) port: u16,
     _guard: ChildGuard,
-    connection: Connection,
+    connection: SyncGlideClient,
 }
 
-// Allows TestServer to be used where an immutable Redis connection is expected.
+// Allows TestServer to be used where a GLIDE client is expected.
 impl Deref for TestServer {
-    type Target = Connection;
+    type Target = SyncGlideClient;
 
     fn deref(&self) -> &Self::Target {
         &self.connection
-    }
-}
-
-// Allows TestServer to be used where a mutable Redis connection is expected.
-impl DerefMut for TestServer {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
     }
 }
 
@@ -44,7 +39,7 @@ impl TestServer {
         self._guard.data_dir()
     }
 
-    pub(super) fn into_parts(self) -> (ChildGuard, Connection) {
+    pub(super) fn into_parts(self) -> (ChildGuard, SyncGlideClient) {
         (self._guard, self.connection)
     }
 }
@@ -60,14 +55,12 @@ pub(super) struct ChildGuard {
 // Gracefully stops the child process before its isolated data directory is removed.
 impl Drop for ChildGuard {
     fn drop(&mut self) {
-        let client = redis::Client::open(format!("redis://127.0.0.1:{}/", self.port));
-        if let Ok(client) = client {
-            if let Ok(mut connection) =
-                client.get_connection_with_timeout(SHUTDOWN_CONNECTION_TIMEOUT)
-            {
-                let _: RedisResult<()> =
-                    redis::cmd("SHUTDOWN").arg("NOSAVE").query(&mut connection);
-            }
+        if let Ok(connection) = SyncGlideClient::connect(
+            test_client_configuration(self.port)
+                .connection_timeout(SHUTDOWN_CONNECTION_TIMEOUT)
+                .request_timeout(SHUTDOWN_CONNECTION_TIMEOUT),
+        ) {
+            let _: ValkeyResult<()> = glide::cmd("SHUTDOWN").arg("NOSAVE").query(&connection);
         }
 
         let shutdown_deadline = Instant::now() + SHUTDOWN_TIMEOUT;
@@ -162,33 +155,38 @@ pub(super) fn get_module_path(module_name: &str) -> Result<String> {
     Ok(module_path)
 }
 
-// Get connection
-pub(super) fn get_valkey_connection(port: u16) -> Result<Connection> {
-    let client = redis::Client::open(format!("redis://127.0.0.1:{port}/"))?;
+// Use one fixed endpoint, including for replicas, and preserve RESP2 reply shapes.
+fn test_client_configuration(port: u16) -> GlideClientConfiguration {
+    GlideClientConfiguration::with_address("127.0.0.1", port)
+        .node_discovery_mode(NodeDiscoveryMode::Static)
+        .protocol(ProtocolVersion::RESP2)
+        .connection_timeout(Duration::from_millis(250))
+        .request_timeout(Duration::from_secs(10))
+}
+
+pub(super) fn get_valkey_connection(port: u16) -> Result<SyncGlideClient> {
+    let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     loop {
-        let res = client.get_connection();
-        match res {
-            Ok(con) => return Ok(con),
-            Err(e) => {
-                if e.is_connection_refusal() {
-                    // Valkey not ready yet, sleep and retry
-                    std::thread::sleep(Duration::from_millis(50));
-                } else {
-                    return Err(e.into());
-                }
+        match SyncGlideClient::connect(test_client_configuration(port)) {
+            Ok(client) => return Ok(client),
+            Err(GlideError::Connection(_) | GlideError::Timeout(_))
+                if Instant::now() < deadline =>
+            {
+                std::thread::sleep(EVENT_POLL_INTERVAL);
             }
+            Err(error) => return Err(error.into()),
         }
     }
 }
 
 // Helper function to validate the authentication
 pub(super) fn check_auth(
-    con: &mut redis::Connection,
+    con: &SyncGlideClient,
     username: &str,
     password: &str,
     expected_result: AuthExpectedResult,
 ) -> Result<()> {
-    let response: RedisResult<String> = redis::cmd("AUTH").arg(&[username, password]).query(con);
+    let response: ValkeyResult<String> = glide::cmd("AUTH").arg(&[username, password]).query(con);
 
     match expected_result {
         AuthExpectedResult::Success => {
@@ -230,17 +228,14 @@ pub(super) fn check_auth(
     Ok(())
 }
 
-pub(super) fn setup_acl_users(
-    con: &mut redis::Connection,
-    users: &[(&str, Option<&str>)],
-) -> Result<()> {
+pub(super) fn setup_acl_users(con: &SyncGlideClient, users: &[(&str, Option<&str>)]) -> Result<()> {
     for (user, maybe_pass) in users {
         let res: String = if let Some(pass) = maybe_pass {
-            redis::cmd("ACL")
+            glide::cmd("ACL")
                 .arg(&["SETUSER", user, "on", &format!(">{}", pass), "~*", "+@all"])
                 .query(con)?
         } else {
-            redis::cmd("ACL")
+            glide::cmd("ACL")
                 .arg(&["SETUSER", user, "on", "nopass", "~*", "+@all"])
                 .query(con)?
         };
@@ -249,8 +244,8 @@ pub(super) fn setup_acl_users(
     Ok(())
 }
 
-pub(super) fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> {
-    let info: String = redis::cmd("INFO").arg("clients").query(con)?;
+pub(super) fn check_blocked_clients(con: &SyncGlideClient) -> Result<i32> {
+    let info: String = glide::cmd("INFO").arg("clients").query(con)?;
 
     let blocked_clients = info
         .lines()
@@ -262,22 +257,19 @@ pub(super) fn check_blocked_clients(con: &mut redis::Connection) -> Result<i32> 
     Ok(blocked_clients)
 }
 
-pub(super) fn wait_for_blocked_clients(con: &mut redis::Connection) -> Result<()> {
+pub(super) fn wait_for_blocked_clients(con: &SyncGlideClient) -> Result<()> {
     wait_for_blocked_client_count(con, |count| count > 0, "at least one blocked client")
 }
 
-pub(super) fn wait_for_no_blocked_clients(con: &mut redis::Connection) -> Result<()> {
+pub(super) fn wait_for_no_blocked_clients(con: &SyncGlideClient) -> Result<()> {
     wait_for_blocked_client_count(con, |count| count == 0, "no blocked clients")
 }
 
-pub(super) fn wait_for_client_connection_count(
-    con: &mut redis::Connection,
-    expected: i64,
-) -> Result<()> {
+pub(super) fn wait_for_client_connection_count(con: &SyncGlideClient, expected: i64) -> Result<()> {
     let start = Instant::now();
 
     loop {
-        let actual: i64 = redis::cmd("num_connects").query(con)?;
+        let actual: i64 = glide::cmd("num_connects").query(con)?;
         if actual == expected {
             return Ok(());
         }
@@ -291,30 +283,24 @@ pub(super) fn wait_for_client_connection_count(
     }
 }
 
-pub(super) fn wait_for_replica_change_events(
-    con: &mut redis::Connection,
-    expected: i64,
-) -> Result<()> {
+pub(super) fn wait_for_replica_change_events(con: &SyncGlideClient, expected: i64) -> Result<()> {
     wait_for_event_count(con, "num_replica_change_events", expected)
 }
 
-pub(super) fn wait_for_repl_async_load_events(
-    con: &mut redis::Connection,
-    expected: i64,
-) -> Result<()> {
+pub(super) fn wait_for_repl_async_load_events(con: &SyncGlideClient, expected: i64) -> Result<()> {
     wait_for_event_count(con, "num_repl_async_load_events", expected)
 }
 
 pub(super) fn wait_for_master_link_state(
-    con: &mut redis::Connection,
+    con: &SyncGlideClient,
     expected_up: bool,
     minimum_events: i64,
 ) -> Result<()> {
     let start = Instant::now();
 
     loop {
-        let event_count: i64 = redis::cmd("num_master_link_change_events").query(con)?;
-        let is_up: bool = redis::cmd("is_master_link_up").query(con)?;
+        let event_count: i64 = glide::cmd("num_master_link_change_events").query(con)?;
+        let is_up: bool = glide::cmd("is_master_link_up").query(con)?;
         if is_up == expected_up && event_count >= minimum_events {
             return Ok(());
         }
@@ -330,14 +316,14 @@ pub(super) fn wait_for_master_link_state(
 }
 
 pub(super) fn wait_for_event_count(
-    con: &mut redis::Connection,
+    con: &SyncGlideClient,
     command: &str,
     expected: i64,
 ) -> Result<()> {
     let start = Instant::now();
 
     loop {
-        let actual: i64 = redis::cmd(command).query(con)?;
+        let actual: i64 = glide::cmd(command).query(con)?;
         if actual == expected {
             return Ok(());
         }
@@ -355,14 +341,14 @@ pub(super) fn wait_for_event_count(
 }
 
 pub(super) fn wait_for_event_count_greater_than(
-    con: &mut redis::Connection,
+    con: &SyncGlideClient,
     command: &str,
     previous: i64,
 ) -> Result<()> {
     let start = Instant::now();
 
     loop {
-        let actual: i64 = redis::cmd(command).query(con)?;
+        let actual: i64 = glide::cmd(command).query(con)?;
         if actual > previous {
             return Ok(());
         }
@@ -483,7 +469,7 @@ fn get_available_port() -> Result<u16> {
 }
 
 fn wait_for_blocked_client_count(
-    con: &mut redis::Connection,
+    con: &SyncGlideClient,
     predicate: impl Fn(i32) -> bool,
     expected: &str,
 ) -> Result<()> {
