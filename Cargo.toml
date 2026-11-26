@@ -181,7 +181,7 @@ paste = "1.0.15"
 
 [dev-dependencies]
 anyhow = "1"
-redis = "0.28"
+valkey-glide = "0.10"
 lazy_static = "1"
 tempfile = "3"
 valkey-module-macros = { path = "valkeymodule-rs-macros", version = "0.2.0" }

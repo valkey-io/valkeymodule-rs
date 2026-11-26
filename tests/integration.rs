@@ -4,16 +4,17 @@ use std::time::{Duration, Instant};
 use crate::utils::get_module_path;
 use anyhow::Context;
 use anyhow::Result;
-use redis::Commands;
-use redis::Value;
-use redis::{RedisError, RedisResult};
+use glide::sync::SyncGlideClient;
+use glide::Commands;
+use glide::ValkeyValue as Value;
+use glide::{GlideError, ValkeyResult};
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 use utils::{
     check_auth, setup_acl_users, wait_for_blocked_clients, wait_for_no_blocked_clients,
     AuthExpectedResult,
 };
 use utils::{
-    get_valkey_connection, start_server_w_module_get_connection, wait_for_client_connection_count,
+    get_valkey_client, start_server_with_module, wait_for_client_connection_count,
     wait_for_event_count, wait_for_event_count_greater_than, wait_for_file_contents,
     wait_for_master_link_state, wait_for_repl_async_load_events, wait_for_replica_change_events,
 };
@@ -26,28 +27,29 @@ mod utils;
 
 #[test]
 fn test_hello() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("hello")?;
+    let server = start_server_with_module("hello")?;
 
-    let res: Vec<i32> = redis::cmd("hello.mul")
+    let res: Vec<i32> = glide::cmd("hello.mul")
         .arg(&[3, 4])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run hello.mul")?;
     assert_eq!(res, vec![3, 4, 12]);
 
-    let res: Result<Vec<i32>, RedisError> =
-        redis::cmd("hello.mul").arg(&["3", "xx"]).query(&mut con);
+    let res: Result<Vec<i32>, GlideError> = glide::cmd("hello.mul")
+        .arg(&["3", "xx"])
+        .query(server.client());
     let error = res.expect_err("hello.mul should reject non-integer arguments");
-    assert_eq!(error.to_string(), "Couldn't: parse as integer");
+    assert_eq!(error.message(), "Couldn't: parse as integer");
 
     Ok(())
 }
 
 #[test]
 fn test_block() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("block")?;
+    let server = start_server_with_module("block")?;
 
-    let response: i64 = redis::cmd("block")
-        .query(&mut con)
+    let response: i64 = glide::cmd("block")
+        .query(server.client())
         .with_context(|| "failed to run block")?;
 
     assert_eq!(response, 42);
@@ -56,17 +58,17 @@ fn test_block() -> Result<()> {
 
 #[test]
 fn test_block_measure_time() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("block")?;
+    let server = start_server_with_module("block")?;
 
-    let response: i64 = redis::cmd("block.measured")
-        .query(&mut con)
+    let response: i64 = glide::cmd("block.measured")
+        .query(server.client())
         .with_context(|| "failed to run block.measured")?;
     assert_eq!(response, 42);
 
     // The thread's 200 ms sleep counts toward the command's time.
-    let stats: String = redis::cmd("info")
+    let stats: String = glide::cmd("info")
         .arg("commandstats")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run info commandstats")?;
     let line = stats
         .lines()
@@ -83,21 +85,21 @@ fn test_block_measure_time() -> Result<()> {
 
 #[test]
 fn test_info() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("info")?;
+    let server = start_server_with_module("info")?;
 
-    let redis_version: String = redis::cmd("infoex")
+    let redis_version: String = glide::cmd("infoex")
         .arg(&["server", "redis_version"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to query the redis_version info field")?;
     assert!(!redis_version.is_empty());
 
-    let missing_field: Option<String> = redis::cmd("infoex")
+    let missing_field: Option<String> = glide::cmd("infoex")
         .arg(&["server", "not_a_real_field"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to query a missing info field")?;
     assert_eq!(missing_field, None);
 
-    let wrong_arity: RedisResult<String> = redis::cmd("infoex").query(&mut con);
+    let wrong_arity: ValkeyResult<String> = glide::cmd("infoex").query(server.client());
     let error = wrong_arity.expect_err("infoex should require a section and field");
     assert!(error.to_string().contains("wrong number of arguments"));
 
@@ -106,42 +108,42 @@ fn test_info() -> Result<()> {
 
 #[test]
 fn test_lists() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("lists")?;
+    let server = start_server_with_module("lists")?;
 
-    let _: i64 = redis::cmd("RPUSH")
+    let _: i64 = glide::cmd("RPUSH")
         .arg(&["source", "first", "second"])
-        .query(&mut con)?;
-    let moved: String = redis::cmd("LPOPRPUSH")
+        .query(server.client())?;
+    let moved: String = glide::cmd("LPOPRPUSH")
         .arg(&["source", "destination"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(moved, "first");
-    let destination: Vec<String> = redis::cmd("LRANGE")
+    let destination: Vec<String> = glide::cmd("LRANGE")
         .arg(&["destination", "0", "-1"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(destination, vec!["first"]);
 
-    let empty: Option<String> = redis::cmd("LPOPRPUSH")
+    let empty: Option<String> = glide::cmd("LPOPRPUSH")
         .arg(&["empty", "destination"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(empty, None);
 
-    let _: String = redis::cmd("SET")
+    let _: String = glide::cmd("SET")
         .arg(&["string-source", "value"])
-        .query(&mut con)?;
-    let source_error: RedisResult<String> = redis::cmd("LPOPRPUSH")
+        .query(server.client())?;
+    let source_error: ValkeyResult<String> = glide::cmd("LPOPRPUSH")
         .arg(&["string-source", "destination"])
-        .query(&mut con);
+        .query(server.client());
     assert!(source_error
         .expect_err("LPOPRPUSH should reject a non-list source")
         .to_string()
         .contains("WRONGTYPE"));
 
-    let _: String = redis::cmd("SET")
+    let _: String = glide::cmd("SET")
         .arg(&["string-destination", "value"])
-        .query(&mut con)?;
-    let destination_error: RedisResult<String> = redis::cmd("LPOPRPUSH")
+        .query(server.client())?;
+    let destination_error: ValkeyResult<String> = glide::cmd("LPOPRPUSH")
         .arg(&["source", "string-destination"])
-        .query(&mut con);
+        .query(server.client());
     assert!(destination_error
         .expect_err("LPOPRPUSH should reject a non-list destination")
         .to_string()
@@ -152,22 +154,22 @@ fn test_lists() -> Result<()> {
 
 #[test]
 fn test_load_unload() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("hello")?;
+    let server = start_server_with_module("hello")?;
     let module_path = get_module_path("load_unload")?;
 
-    let loaded: String = redis::cmd("MODULE")
+    let loaded: String = glide::cmd("MODULE")
         .arg(&["LOAD", &module_path, "first", "second"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(loaded, "OK");
 
-    let unloaded: String = redis::cmd("MODULE")
+    let unloaded: String = glide::cmd("MODULE")
         .arg(&["UNLOAD", "load_unload"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(unloaded, "OK");
 
-    let reloaded: String = redis::cmd("MODULE")
+    let reloaded: String = glide::cmd("MODULE")
         .arg(&["LOAD", &module_path, "replacement"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(reloaded, "OK");
 
     Ok(())
@@ -175,49 +177,45 @@ fn test_load_unload() -> Result<()> {
 
 #[test]
 fn test_timer() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("timer")?;
+    let server = start_server_with_module("timer")?;
 
-    let active_timer_id: String = redis::cmd("timer.create")
+    let active_timer_id: String = glide::cmd("timer.create")
         .arg(&["60000", "active"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to create a live timer")?;
-    let info: String = redis::cmd("timer.info")
+    let info: String = glide::cmd("timer.info")
         .arg(&active_timer_id)
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to inspect a live timer")?;
     assert!(info.contains("data: \"active\""));
 
-    let stopped: String = redis::cmd("timer.stop")
+    let stopped: String = glide::cmd("timer.stop")
         .arg(&active_timer_id)
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to stop a live timer")?;
     assert_eq!(stopped, "Data: \"active\"");
 
-    let expired_timer_id: String = redis::cmd("timer.create")
+    let expired_timer_id: String = glide::cmd("timer.create")
         .arg(&["1", "expired"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to create an expiring timer")?;
     thread::sleep(Duration::from_millis(50));
 
-    let expired: RedisResult<String> = redis::cmd("timer.info")
+    let expired: ValkeyResult<String> = glide::cmd("timer.info")
         .arg(&expired_timer_id)
-        .query(&mut con);
-    let expired_error = expired
-        .expect_err("timer.info should reject an expired timer")
-        .to_string();
+        .query(server.client());
+    let expired_error = expired.expect_err("timer.info should reject an expired timer");
     assert_eq!(
-        expired_error,
+        expired_error.message(),
         "RedisModule_GetTimerInfo: failed, timer may not exist"
     );
 
-    let invalid: RedisResult<String> = redis::cmd("timer.info")
+    let invalid: ValkeyResult<String> = glide::cmd("timer.info")
         .arg(u64::MAX.to_string())
-        .query(&mut con);
-    let invalid_error = invalid
-        .expect_err("timer.info should reject an invalid timer ID")
-        .to_string();
+        .query(server.client());
+    let invalid_error = invalid.expect_err("timer.info should reject an invalid timer ID");
     assert_eq!(
-        invalid_error,
+        invalid_error.message(),
         "RedisModule_GetTimerInfo: failed, timer may not exist"
     );
 
@@ -226,16 +224,17 @@ fn test_timer() -> Result<()> {
 
 #[test]
 fn test_keys_pos() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("keys_pos")?;
+    let server = start_server_with_module("keys_pos")?;
 
-    let res: Vec<String> = redis::cmd("keys_pos")
+    let res: Vec<String> = glide::cmd("keys_pos")
         .arg(&["a", "1", "b", "2"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, vec!["a", "b"]);
 
-    let res: Result<Vec<String>, RedisError> =
-        redis::cmd("keys_pos").arg(&["a", "1", "b"]).query(&mut con);
+    let res: Result<Vec<String>, GlideError> = glide::cmd("keys_pos")
+        .arg(&["a", "1", "b"])
+        .query(server.client());
     let error = res.expect_err("keys_pos should reject an incomplete key-value pair");
     assert!(error.to_string().contains("wrong number of arguments"));
 
@@ -246,16 +245,16 @@ fn test_keys_pos() -> Result<()> {
 // Exercise plain and flagged SDK opens through writable_set, then use GET to verify creation and updates.
 // A missing key must remain writable; it is not the same as a failed (null) open.
 fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     for mode in ["plain", "flags"] {
         let key = format!("writable-{mode}");
         for (value, expected_type) in [("created", "Empty"), ("updated", "String")] {
-            let previous_type: String = redis::cmd("test_helper.writable_set")
+            let previous_type: String = glide::cmd("test_helper.writable_set")
                 .arg(&[key.as_str(), value, mode])
-                .query(&mut con)?;
+                .query(server.client())?;
             assert_eq!(previous_type, expected_type, "{mode}");
-            let stored: String = redis::cmd("GET").arg(&key).query(&mut con)?;
+            let stored: String = glide::cmd("GET").arg(&key).query(server.client())?;
             assert_eq!(stored, value, "{mode}");
         }
     }
@@ -265,27 +264,27 @@ fn test_writable_key_opens_create_and_update_missing_keys() -> Result<()> {
 
 #[test]
 fn test_path_hash_key_type() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
-    let _: i64 = redis::cmd("HSET")
+    let _: i64 = glide::cmd("HSET")
         .arg(&["ordinary-hash", "field", "value"])
-        .query(&mut con)?;
+        .query(server.client())?;
     for (key, expected) in [("ordinary-hash", "Hash"), ("missing-key", "Empty")] {
-        let actual: String = redis::cmd("test_helper.key_type")
+        let actual: String = glide::cmd("test_helper.key_type")
             .arg(key)
-            .query(&mut con)?;
+            .query(server.client())?;
         assert_eq!(actual, expected, "SDK key type for {key}");
     }
 
     // INFO identifies the engine; a future Redis 9.2 must not pass this gate.
     // Reuse the module's numeric server-version helper for the version check.
-    let info: redis::InfoDict = redis::cmd("INFO").arg("SERVER").query(&mut con)?;
-    if !info.contains_key(&"valkey_version") {
+    let info: String = glide::cmd("INFO").arg("SERVER").query(server.client())?;
+    if !info.lines().any(|line| line.starts_with("valkey_version:")) {
         eprintln!("Skipping path-hash creation on a non-Valkey server");
         return Ok(());
     }
-    let (major, minor, patch): (i64, i64, i64) = redis::cmd("test_helper.version")
-        .query(&mut con)
+    let (major, minor, patch): (i64, i64, i64) = glide::cmd("test_helper.version")
+        .query(server.client())
         .context("failed to get the module's numeric server version")?;
     if (major, minor) < (9, 2) {
         eprintln!("Skipping path-hash creation on Valkey {major}.{minor}.{patch} (requires 9.2)");
@@ -294,15 +293,15 @@ fn test_path_hash_key_type() -> Result<()> {
 
     // PHSET key path FIELDS numfields field value was introduced in Valkey 9.2.
     // Any command failure on a supporting server must fail this test.
-    let result: String = redis::cmd("PHSET")
+    let result: String = glide::cmd("PHSET")
         .arg(&["path-hash", "/users/alice", "FIELDS", "1", "name", "Alice"])
-        .query(&mut con)
+        .query(server.client())
         .context("failed to create a path hash on Valkey 9.2 or newer")?;
     assert_eq!(result, "OK");
 
-    let actual: String = redis::cmd("test_helper.key_type")
+    let actual: String = glide::cmd("test_helper.key_type")
         .arg("path-hash")
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(actual, "PathHash");
 
     Ok(())
@@ -310,23 +309,23 @@ fn test_path_hash_key_type() -> Result<()> {
 
 #[test]
 fn test_helper_version() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
-    let res: Vec<i64> = redis::cmd("test_helper.version")
-        .query(&mut con)
+    let res: Vec<i64> = glide::cmd("test_helper.version")
+        .query(server.client())
         .with_context(|| "failed to run test_helper.version")?;
     assert!(res[0] > 0);
 
     // Test also an internal implementation that might not always be reached
     // TODO: this check is currently disabled because Valkey 8.0.0 returns
     //       redis_version:7.2.4 and the test expects it to be 8.0.0
-    // let res2: Vec<i64> = redis::cmd("test_helper._version_rm_call")
-    //     .query(&mut con)
+    // let res2: Vec<i64> = glide::cmd("test_helper._version_rm_call")
+    //     .query(&*client)
     //     .with_context(|| "failed to run test_helper._version_rm_call")?;
     // assert_eq!(res, res2);
 
-    let res3: String = redis::cmd("test_helper.name")
-        .query(&mut con)
+    let res3: String = glide::cmd("test_helper.name")
+        .query(server.client())
         .with_context(|| "failed to run test_helper.name")?;
     assert_eq!(res3, "test_helper.name");
 
@@ -337,15 +336,15 @@ fn test_helper_version() -> Result<()> {
 fn test_command_name() -> Result<()> {
     use valkey_module::ValkeyValue;
 
-    let mut con = start_server_w_module_get_connection("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     // Call the tested command
-    let res: Result<String, RedisError> = redis::cmd("test_helper.name").query(&mut con);
+    let res: Result<String, GlideError> = glide::cmd("test_helper.name").query(server.client());
 
     // The expected result is according to valkey version
-    let info: String = redis::cmd("info")
+    let info: String = glide::cmd("info")
         .arg(&["server"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run test_helper.name")?;
 
     let ver = valkey_module::Context::version_from_info(ValkeyValue::SimpleString(info)).map_err(
@@ -381,11 +380,11 @@ fn test_helper_info() -> Result<()> {
     MODULES
         .into_iter()
         .try_for_each(|(module, has_dictionary)| {
-            let mut con = start_server_w_module_get_connection(module)?;
+            let server = start_server_with_module(module)?;
 
-            let res: String = redis::cmd("INFO")
+            let res: String = glide::cmd("INFO")
                 .arg(module)
-                .query(&mut con)
+                .query(server.client())
                 .with_context(|| format!("failed to run INFO {module}"))?;
 
             assert!(res.contains(&format!("{module}_field:value")));
@@ -402,11 +401,11 @@ fn test_info_handler_multiple_sections() -> Result<()> {
     const MODULES: [&str; 1] = ["info_handler_multiple_sections"];
 
     MODULES.into_iter().try_for_each(|module| {
-        let mut con = start_server_w_module_get_connection(module)?;
+        let server = start_server_with_module(module)?;
 
-        let res: String = redis::cmd("INFO")
+        let res: String = glide::cmd("INFO")
             .arg(format!("{module}_InfoSection2"))
-            .query(&mut con)
+            .query(server.client())
             .with_context(|| format!("failed to run INFO {module}"))?;
 
         assert!(res.contains(&format!("{module}_field_2:value2")));
@@ -418,16 +417,19 @@ fn test_info_handler_multiple_sections() -> Result<()> {
 
 #[test]
 fn test_test_helper_err() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("test_helper")?;
+    let server = start_server_with_module("test_helper")?;
 
     // Make sure embedded nulls do not cause a crash and are returned as errors.
     for message in ["\x00\x00", "no crash\x00"] {
-        let error = redis::cmd("test_helper.err")
+        let error = glide::cmd("test_helper.err")
             .arg(message)
-            .query::<()>(&mut con)
+            .query::<()>(server.client())
             .expect_err("test_helper.err should return an error");
 
-        assert_eq!(error.kind(), redis::ErrorKind::ExtensionError);
+        assert!(
+            matches!(error, GlideError::Request(_)),
+            "unexpected error: {error}"
+        );
     }
 
     Ok(())
@@ -435,14 +437,16 @@ fn test_test_helper_err() -> Result<()> {
 
 #[test]
 fn test_string() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("string")?;
+    let server = start_server_with_module("string")?;
 
-    redis::cmd("string.set")
+    glide::cmd("string.set")
         .arg(&["key", "value"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
-    let res: String = redis::cmd("string.get").arg(&["key"]).query(&mut con)?;
+    let res: String = glide::cmd("string.get")
+        .arg(&["key"])
+        .query(server.client())?;
 
     assert_eq!(&res, "value");
 
@@ -451,19 +455,19 @@ fn test_string() -> Result<()> {
 
 #[test]
 fn test_scan() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("scan_keys")?;
+    let server = start_server_with_module("scan_keys")?;
 
-    redis::cmd("set")
+    glide::cmd("set")
         .arg(&["x", "1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
-    redis::cmd("set")
+    glide::cmd("set")
         .arg(&["y", "1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run string.set")?;
 
-    let mut res: Vec<String> = redis::cmd("scan_keys").query(&mut con)?;
+    let mut res: Vec<String> = glide::cmd("scan_keys").query(server.client())?;
     res.sort();
 
     assert_eq!(&res, &["x", "y"]);
@@ -473,33 +477,33 @@ fn test_scan() -> Result<()> {
 
 #[test]
 fn test_stream_reader() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("stream")?;
+    let server = start_server_with_module("stream")?;
 
-    let _: String = redis::cmd("XADD")
+    let _: String = glide::cmd("XADD")
         .arg(&["s", "1-1", "foo", "bar"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
-    let _: String = redis::cmd("XADD")
+    let _: String = glide::cmd("XADD")
         .arg(&["s", "1-2", "foo", "bar"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
-    let res: String = redis::cmd("STREAM_POP")
+    let res: String = glide::cmd("STREAM_POP")
         .arg(&["s"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, "1-1");
 
-    let res: String = redis::cmd("STREAM_POP")
+    let res: String = glide::cmd("STREAM_POP")
         .arg(&["s"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run keys_pos")?;
     assert_eq!(res, "1-2");
 
-    let res: usize = redis::cmd("XLEN")
+    let res: usize = glide::cmd("XLEN")
         .arg(&["s"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to add data to the stream")?;
 
     assert_eq!(res, 0);
@@ -510,10 +514,10 @@ fn test_stream_reader() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("call")?;
+    let server = start_server_with_module("call")?;
 
-    let res: String = redis::cmd("call.test")
-        .query(&mut con)
+    let res: String = glide::cmd("call.test")
+        .query(server.client())
         .with_context(|| "failed to run string.set")?;
 
     assert_eq!(&res, "pass");
@@ -523,9 +527,9 @@ fn test_call() -> Result<()> {
 
 #[test]
 fn test_ctx_flags() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("ctx_flags")?;
+    let server = start_server_with_module("ctx_flags")?;
 
-    let res: String = redis::cmd("my_role").query(&mut con)?;
+    let res: String = glide::cmd("my_role").query(server.client())?;
 
     assert_eq!(&res, "master");
 
@@ -535,9 +539,9 @@ fn test_ctx_flags() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_get_current_user() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("acl")?;
+    let server = start_server_with_module("acl")?;
 
-    let res: String = redis::cmd("get_current_user").query(&mut con)?;
+    let res: String = glide::cmd("get_current_user").query(server.client())?;
 
     assert_eq!(&res, "default");
 
@@ -547,33 +551,33 @@ fn test_get_current_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_verify_acl_on_user() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("acl")?;
+    let server = start_server_with_module("acl")?;
 
-    let res: String = redis::cmd("verify_key_access_for_user")
+    let res: String = glide::cmd("verify_key_access_for_user")
         .arg(&["default", "x"])
-        .query(&mut con)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
-    let res: String = redis::cmd("ACL")
+    let res: String = glide::cmd("ACL")
         .arg(&["SETUSER", "alice", "on", ">pass", "~cached:*", "+get"])
-        .query(&mut con)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
-    let res: String = redis::cmd("verify_key_access_for_user")
+    let res: String = glide::cmd("verify_key_access_for_user")
         .arg(&["alice", "cached:1"])
-        .query(&mut con)?;
+        .query(server.client())?;
 
     assert_eq!(&res, "OK");
 
-    let res: RedisResult<String> = redis::cmd("verify_key_access_for_user")
+    let res: ValkeyResult<String> = glide::cmd("verify_key_access_for_user")
         .arg(&["alice", "not_allow"])
-        .query(&mut con);
+        .query(server.client());
 
     let error = res.expect_err("alice should not access keys outside the cached namespace");
     assert_eq!(
-        error.to_string(),
+        error.message(),
         "Err: User does not have permissions on key"
     );
 
@@ -583,19 +587,21 @@ fn test_verify_acl_on_user() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_key_space_notifications() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("events")?;
+    let server = start_server_with_module("events")?;
 
-    let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
+    let res: usize = glide::cmd("events.num_key_miss").query(server.client())?;
     assert_eq!(res, 0);
 
-    let _ = redis::cmd("GET").arg(&["x"]).exec(&mut con)?;
+    let _ = glide::cmd("GET").arg(&["x"]).exec(server.client())?;
 
-    let res: usize = redis::cmd("events.num_key_miss").query(&mut con)?;
+    let res: usize = glide::cmd("events.num_key_miss").query(server.client())?;
     assert_eq!(res, 1);
 
-    let _: String = redis::cmd("SET").arg(&["x", "1"]).query(&mut con)?;
+    let _: String = glide::cmd("SET").arg(&["x", "1"]).query(server.client())?;
 
-    let res: String = redis::cmd("GET").arg(&["num_sets"]).query(&mut con)?;
+    let res: String = glide::cmd("GET")
+        .arg(&["num_sets"])
+        .query(server.client())?;
     assert_eq!(res, "1");
 
     Ok(())
@@ -603,27 +609,27 @@ fn test_key_space_notifications() -> Result<()> {
 
 #[test]
 fn test_context_mutex() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("threads")?;
+    let server = start_server_with_module("threads")?;
 
-    let res: String = redis::cmd("set_static_data")
+    let res: String = glide::cmd("set_static_data")
         .arg(&["foo"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(&res, "OK");
 
-    let res: String = redis::cmd("get_static_data").query(&mut con)?;
+    let res: String = glide::cmd("get_static_data").query(server.client())?;
     assert_eq!(&res, "foo");
 
-    let res: String = redis::cmd("get_static_data_on_thread").query(&mut con)?;
+    let res: String = glide::cmd("get_static_data_on_thread").query(server.client())?;
     assert_eq!(&res, "foo");
 
-    let res: String = redis::cmd("info_field_on_thread")
+    let res: String = glide::cmd("info_field_on_thread")
         .arg(&["server", "redis_version"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert!(!res.is_empty());
 
-    let res: Option<String> = redis::cmd("info_field_on_thread")
+    let res: Option<String> = glide::cmd("info_field_on_thread")
         .arg(&["server", "no_such_field"])
-        .query(&mut con)?;
+        .query(server.client())?;
     assert_eq!(res, None);
 
     Ok(())
@@ -632,83 +638,92 @@ fn test_context_mutex() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
-    let before_sleep_count: i64 = redis::cmd("num_event_loop_before_sleep").query(&mut con)?;
-    let after_sleep_count: i64 = redis::cmd("num_event_loop_after_sleep").query(&mut con)?;
+    let before_sleep_count: i64 =
+        glide::cmd("num_event_loop_before_sleep").query(server.client())?;
+    let after_sleep_count: i64 = glide::cmd("num_event_loop_after_sleep").query(server.client())?;
 
-    wait_for_event_count_greater_than(&mut con, "num_event_loop_before_sleep", before_sleep_count)?;
-    wait_for_event_count_greater_than(&mut con, "num_event_loop_after_sleep", after_sleep_count)?;
+    wait_for_event_count_greater_than(
+        server.client(),
+        "num_event_loop_before_sleep",
+        before_sleep_count,
+    )?;
+    wait_for_event_count_greater_than(
+        server.client(),
+        "num_event_loop_after_sleep",
+        after_sleep_count,
+    )?;
 
-    redis::cmd("flushall")
-        .exec(&mut con)
+    glide::cmd("flushall")
+        .exec(server.client())
         .with_context(|| "failed to run flushall")?;
 
-    let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
+    let res: i64 = glide::cmd("num_flushed").query(server.client())?;
 
     assert_eq!(res, 1);
 
-    redis::cmd("flushall")
-        .exec(&mut con)
+    glide::cmd("flushall")
+        .exec(server.client())
         .with_context(|| "failed to run flushall")?;
 
-    let res: i64 = redis::cmd("num_flushed").query(&mut con)?;
+    let res: i64 = glide::cmd("num_flushed").query(server.client())?;
 
     assert_eq!(res, 2);
 
-    redis::cmd("config")
+    glide::cmd("config")
         .arg(&["set", "maxmemory", "1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run config set maxmemory")?;
 
-    let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
+    let res: i64 = glide::cmd("num_max_memory_changes").query(server.client())?;
 
     assert_eq!(res, 1);
 
-    redis::cmd("config")
+    glide::cmd("config")
         .arg(&["set", "maxmemory", "0"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run config set maxmemory")?;
 
-    let res: i64 = redis::cmd("num_max_memory_changes").query(&mut con)?;
+    let res: i64 = glide::cmd("num_max_memory_changes").query(server.client())?;
 
     assert_eq!(res, 2);
 
-    let res: i64 = redis::cmd("num_crons").query(&mut con)?;
+    let res: i64 = glide::cmd("num_crons").query(server.client())?;
 
     assert!(res > 0);
 
-    redis::cmd("set")
+    glide::cmd("set")
         .arg(&["key", "value"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to do set")?;
 
     //overwrite the key for KeyChangeSubevent::Overwritten to fire
-    redis::cmd("set")
+    glide::cmd("set")
         .arg(&["key", "new_value"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to do set")?;
 
     //delete key for KeyChangeSubevent::Deleted to fire
-    redis::cmd("del")
+    glide::cmd("del")
         .arg(&["key"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to do del")?;
 
-    let res: i64 = redis::cmd("num_key_events").query(&mut con)?;
+    let res: i64 = glide::cmd("num_key_events").query(server.client())?;
 
     //one for overwrite and one for delete
     assert_eq!(res, 2);
 
-    let persistence_log_path = con.data_dir().join("persistence_log.txt");
+    let persistence_log_path = server.data_dir().join("persistence_log.txt");
     if persistence_log_path.exists() {
         std::fs::remove_file(&persistence_log_path)
             .with_context(|| "failed to remove persistence log file")?;
     }
 
     // Trigger RDB save (BGSAVE command triggers persistence events)
-    redis::cmd("bgsave")
-        .exec(&mut con)
+    glide::cmd("bgsave")
+        .exec(server.client())
         .with_context(|| "failed to run bgsave")?;
 
     wait_for_file_contents(&persistence_log_path, &["RdbStart", "Ended"])?;
@@ -719,8 +734,8 @@ fn test_server_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_server_event_shutdown() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("server_events")?;
-    let shutdown_log_path = con.data_dir().join("shutdown_log.txt");
+    let server = start_server_with_module("server_events")?;
+    let shutdown_log_path = server.data_dir().join("shutdown_log.txt");
 
     if shutdown_log_path.exists() {
         std::fs::remove_file(&shutdown_log_path)
@@ -728,9 +743,9 @@ fn test_server_event_shutdown() -> Result<()> {
     }
 
     // Issue the SHUTDOWN command and ignore any errors
-    let _ = redis::cmd("SHUTDOWN")
+    let _ = glide::cmd("SHUTDOWN")
         .arg("NOSAVE")
-        .query::<String>(&mut con);
+        .query::<String>(server.client());
 
     let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     let contents = loop {
@@ -756,38 +771,39 @@ fn test_server_event_shutdown() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_client_change_event() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("server_events")?;
-    let con2: redis::Connection =
-        get_valkey_connection(con.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let server = start_server_with_module("server_events")?;
+    let client2: SyncGlideClient =
+        get_valkey_client(server.port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
-    wait_for_client_connection_count(&mut con, 2)?;
+    wait_for_client_connection_count(server.client(), 2)?;
 
-    drop(con2);
+    drop(client2);
 
-    wait_for_client_connection_count(&mut con, 1)?;
+    wait_for_client_connection_count(server.client(), 1)?;
 
     Ok(())
 }
 
 #[test]
 fn test_configuration() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("configuration")?;
-    let port = con.port;
+    let server = start_server_with_module("configuration")?;
+    let port = server.port;
 
     let config_get = |config: &str| -> Result<String> {
-        let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-        let res: Vec<String> = redis::cmd("config")
+        let client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        let mut res: std::collections::HashMap<String, String> = glide::cmd("config")
             .arg(&["get", config])
-            .query(&mut con)
+            .query(&client)
             .with_context(|| "failed to run config get")?;
-        Ok(res[1].clone())
+        res.remove(config)
+            .with_context(|| format!("CONFIG GET did not return {config}"))
     };
 
     let config_set = |config: &str, val: &str| -> Result<()> {
-        let mut con = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-        let res: String = redis::cmd("config")
+        let client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+        let res: String = glide::cmd("config")
             .arg(&["set", config, val])
-            .query(&mut con)
+            .query(&client)
             .map_err(|e| anyhow::anyhow!("Failed to run config set: {}", e))?;
         assert_eq!(res, "OK");
         Ok(())
@@ -851,8 +867,8 @@ fn test_configuration() -> Result<()> {
         .to_string()
         .contains("Rejected from custom enum validation"));
 
-    let res: i64 = redis::cmd("configuration.num_changes")
-        .query(&mut con)
+    let res: i64 = glide::cmd("configuration.num_changes")
+        .query(server.client())
         .with_context(|| "failed to run configuration.num_changes")?;
     assert_eq!(res, 26); // the first configuration initialisation is counted as well, so we will get 22 changes.
 
@@ -872,8 +888,8 @@ fn test_configuration() -> Result<()> {
     assert_eq!(config_get("configuration.reject_enum")?, "Val1");
     config_set("configuration.reject_enum", "Val1")?;
     assert_eq!(config_get("configuration.reject_enum")?, "Val1");
-    let res: i64 = redis::cmd("configuration.num_changes")
-        .query(&mut con)
+    let res: i64 = glide::cmd("configuration.num_changes")
+        .query(server.client())
         .with_context(|| "failed to run configuration.num_changes")?;
     assert_eq!(res, 28);
 
@@ -882,24 +898,24 @@ fn test_configuration() -> Result<()> {
 
 #[test]
 fn test_response() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("response")?;
+    let server = start_server_with_module("response")?;
 
-    redis::cmd("hset")
+    glide::cmd("hset")
         .arg(&["k", "a", "b", "c", "d", "e", "b", "f", "g"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run hset")?;
 
-    let mut res: Vec<String> = redis::cmd("map.mget")
+    let mut res: Vec<String> = glide::cmd("map.mget")
         .arg(&["k", "a", "c", "e"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run map.mget")?;
 
     res.sort();
     assert_eq!(&res, &["a", "b", "b", "c", "d", "e"]);
 
-    let mut res: Vec<String> = redis::cmd("map.unique")
+    let mut res: Vec<String> = glide::cmd("map.unique")
         .arg(&["k", "a", "c", "e"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run map.unique")?;
 
     res.sort();
@@ -910,32 +926,32 @@ fn test_response() -> Result<()> {
 
 #[test]
 fn test_command_proc_macro() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("proc_macro_commands")?;
+    let server = start_server_with_module("proc_macro_commands")?;
 
-    let res: Vec<String> = redis::cmd("COMMAND")
+    let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "classic_keys", "x", "foo", "y", "bar"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
-    let res: Vec<String> = redis::cmd("COMMAND")
+    let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "keyword_keys", "foo", "x", "1", "y", "2"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y"]);
 
-    let res: Vec<String> = redis::cmd("COMMAND")
+    let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "3", "x", "y", "z", "foo", "bar"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert_eq!(&res, &["x", "y", "z"]);
 
-    let res: Vec<String> = redis::cmd("COMMAND")
+    let res: Vec<String> = glide::cmd("COMMAND")
         .arg(&["GETKEYS", "num_keys", "0", "foo", "bar"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run command getkeys")?;
 
     assert!(res.is_empty());
@@ -945,17 +961,20 @@ fn test_command_proc_macro() -> Result<()> {
 
 #[test]
 fn test_valkey_value_derive() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("proc_macro_commands")?;
+    let server = start_server_with_module("proc_macro_commands")?;
 
-    let res: Value = redis::cmd("valkey_value_derive")
-        .query(&mut con)
+    let res: Value = glide::cmd("valkey_value_derive")
+        .query(server.client())
         .with_context(|| "failed to run valkey_value_derive")?;
 
-    assert_eq!(res.as_sequence().unwrap().len(), 22);
+    let Value::Array(values) = res else {
+        anyhow::bail!("valkey_value_derive should return an array, got {res:?}");
+    };
+    assert_eq!(values.len(), 22);
 
-    let res: String = redis::cmd("valkey_value_derive")
+    let res: String = glide::cmd("valkey_value_derive")
         .arg(&["test"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run valkey_value_derive")?;
 
     assert_eq!(res, "OK");
@@ -966,16 +985,16 @@ fn test_valkey_value_derive() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_call_blocking() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("call")?;
+    let server = start_server_with_module("call")?;
 
-    let res: Option<String> = redis::cmd("call.blocking")
-        .query(&mut con)
+    let res: Option<String> = glide::cmd("call.blocking")
+        .query(server.client())
         .with_context(|| "failed to run call.blocking")?;
 
     assert_eq!(res, None);
 
-    let res: Option<String> = redis::cmd("call.blocking_from_detached_ctx")
-        .query(&mut con)
+    let res: Option<String> = glide::cmd("call.blocking_from_detached_ctx")
+        .query(server.client())
         .with_context(|| "failed to run call.blocking_from_detached_ctx")?;
 
     assert_eq!(res, None);
@@ -986,35 +1005,35 @@ fn test_call_blocking() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_open_key_with_flags() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("open_key_with_flags")?;
+    let server = start_server_with_module("open_key_with_flags")?;
 
     // Avoid active expriation
-    redis::cmd("DEBUG")
+    glide::cmd("DEBUG")
         .arg(&["SET-ACTIVE-EXPIRE", "0"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run DEBUG SET-ACTIVE-EXPIRE")?;
 
     for cmd in ["open_key_with_flags.write", "open_key_with_flags.read"].into_iter() {
-        redis::cmd("set")
+        glide::cmd("set")
             .arg(&["x", "1"])
-            .exec(&mut con)
+            .exec(server.client())
             .with_context(|| "failed to run set")?;
 
         // Set experition time to 1 second.
-        redis::cmd("pexpire")
+        glide::cmd("pexpire")
             .arg(&["x", "1"])
-            .exec(&mut con)
+            .exec(server.client())
             .with_context(|| "failed to run pexpire")?;
 
         // Sleep for 2 seconds, ensure expiration time has passed.
         thread::sleep(Duration::from_millis(500));
 
         // Open key as read only or ReadWrite with NOEFFECTS flag.
-        let res = redis::cmd(cmd).arg(&["x"]).query(&mut con);
+        let res = glide::cmd(cmd).arg(&["x"]).query(server.client());
         assert_eq!(res, Ok(()));
 
         // Get the number of expired keys.
-        let stats: String = redis::cmd("info").arg(&["stats"]).query(&mut con)?;
+        let stats: String = glide::cmd("info").arg(&["stats"]).query(server.client())?;
 
         // Find the number of expired keys, x,  according to the substring "expired_keys:{x}"
         let expired_keys = stats
@@ -1029,8 +1048,10 @@ fn test_open_key_with_flags() -> Result<()> {
         assert_eq!(expired_keys, 0);
 
         // Delete key and reset stats
-        redis::cmd("del").arg(&["x"]).exec(&mut con)?;
-        redis::cmd("config").arg(&["RESETSTAT"]).exec(&mut con)?;
+        glide::cmd("del").arg(&["x"]).exec(server.client())?;
+        glide::cmd("config")
+            .arg(&["RESETSTAT"])
+            .exec(server.client())?;
     }
 
     Ok(())
@@ -1038,33 +1059,33 @@ fn test_open_key_with_flags() -> Result<()> {
 
 #[test]
 fn test_expire() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("expire")?;
+    let server = start_server_with_module("expire")?;
 
     // Create a key without TTL
-    redis::cmd("set")
+    glide::cmd("set")
         .arg(&["key", "value"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run set")?;
 
-    let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert_eq!(ttl, -1);
 
     // Set TTL on the key
-    redis::cmd("expire.cmd")
+    glide::cmd("expire.cmd")
         .arg(&["key", "100"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run expire.cmd")?;
 
-    let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert!(ttl > 0);
 
     // Remove TTL on the key
-    redis::cmd("expire.cmd")
+    glide::cmd("expire.cmd")
         .arg(&["key", "-1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run expire.cmd")?;
 
-    let ttl: i64 = redis::cmd("ttl").arg(&["key"]).query(&mut con)?;
+    let ttl: i64 = glide::cmd("ttl").arg(&["key"]).query(server.client())?;
     assert_eq!(ttl, -1);
 
     Ok(())
@@ -1072,45 +1093,45 @@ fn test_expire() -> Result<()> {
 
 #[test]
 fn test_alloc() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("data_type")?;
+    let server = start_server_with_module("data_type")?;
 
     // Test set to verify allocation
-    let res: i64 = redis::cmd("alloc.set")
+    let res: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "10"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
     assert_eq!(res, 10);
 
     // Get value and verify content
-    let res: String = redis::cmd("alloc.get")
+    let res: String = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert_eq!(res, "A".repeat(10));
 
     // Test set reallocation
-    let res: i64 = redis::cmd("alloc.set")
+    let res: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "5"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
     assert_eq!(res, 5);
 
     // Test get with reallocated key
-    let res: String = redis::cmd("alloc.get")
+    let res: String = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert_eq!(res, "B".repeat(5));
 
-    let _: i64 = redis::cmd("DEL")
+    let _: i64 = glide::cmd("DEL")
         .arg(&["test_key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test get with deleted key
-    let res: Option<String> = redis::cmd("alloc.get")
+    let res: Option<String> = glide::cmd("alloc.get")
         .arg(&["test_key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.get")?;
     assert!(res.is_none());
 
@@ -1119,17 +1140,17 @@ fn test_alloc() -> Result<()> {
 
 #[test]
 fn test_debug() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("data_type")?;
+    let server = start_server_with_module("data_type")?;
 
-    let _: i64 = redis::cmd("alloc.set")
+    let _: i64 = glide::cmd("alloc.set")
         .arg(&["test_key", "10"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run alloc.set")?;
 
     // Test DEBUG DIGEST command to verify digest callback
-    let res: String = redis::cmd("DEBUG")
+    let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1137,45 +1158,45 @@ fn test_debug() -> Result<()> {
     );
 
     // Test DEBUG DIGEST-VALUE command to verify digest callback
-    let res: redis::Value = redis::cmd("DEBUG")
+    let res: Value = glide::cmd("DEBUG")
         .arg(&["digest-value", "test_key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST-VALUE")?;
     assert!(
-        !matches!(res, redis::Value::Nil),
+        !matches!(res, Value::Nil),
         "DEBUG DIGEST-VALUE should not return nil"
     );
 
-    let _: i64 = redis::cmd("DEL")
+    let _: i64 = glide::cmd("DEL")
         .arg("test_key")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG digest command to verify digest callback on unset key
-    let res: String = redis::cmd("DEBUG")
+    let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res, "0".repeat(40));
 
     // Start testing add_long_long
 
     // DB1
-    let mut con1 = start_server_w_module_get_connection("data_type2")?;
+    let server1 = start_server_with_module("data_type2")?;
 
     // DB2
-    let mut con2 = start_server_w_module_get_connection("data_type2")?;
+    let server2 = start_server_with_module("data_type2")?;
 
     // Set on DB1
-    let _: i64 = redis::cmd("alloc2.set")
+    let _: i64 = glide::cmd("alloc2.set")
         .arg(&["k1", "3"])
-        .query(&mut con1)
+        .query(server1.client())
         .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB1 to verify digest callback
-    let res: String = redis::cmd("DEBUG")
+    let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1183,9 +1204,9 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB1
-    let get_res_db1: String = redis::cmd("alloc2.get")
+    let get_res_db1: String = glide::cmd("alloc2.get")
         .arg("k1")
-        .query(&mut con1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !get_res_db1.is_empty(),
@@ -1193,15 +1214,15 @@ fn test_debug() -> Result<()> {
     );
 
     // Set on DB2
-    let _: i64 = redis::cmd("alloc2.set")
+    let _: i64 = glide::cmd("alloc2.set")
         .arg(&["k1", "3"])
-        .query(&mut con2)
+        .query(server2.client())
         .with_context(|| "failed to run alloc2.set")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback
-    let res: String = redis::cmd("DEBUG")
+    let res: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !res.is_empty(),
@@ -1209,9 +1230,9 @@ fn test_debug() -> Result<()> {
     );
 
     // Get on DB2
-    let get_res_db2: String = redis::cmd("alloc2.get")
+    let get_res_db2: String = glide::cmd("alloc2.get")
         .arg("k1")
-        .query(&mut con2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert!(
         !get_res_db2.is_empty(),
@@ -1222,28 +1243,28 @@ fn test_debug() -> Result<()> {
     assert_eq!(get_res_db1, get_res_db2);
 
     // Delete key on DB1
-    let _: i64 = redis::cmd("DEL")
+    let _: i64 = glide::cmd("DEL")
         .arg("k1")
-        .query(&mut con1)
+        .query(server1.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG DIGEST on DB1 to verify digest callback on unset key
-    let res_db1: String = redis::cmd("DEBUG")
+    let res_db1: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con1)
+        .query(server1.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res_db1, "0".repeat(40));
 
     // Delete key on DB2
-    let _: i64 = redis::cmd("DEL")
+    let _: i64 = glide::cmd("DEL")
         .arg("k1")
-        .query(&mut con2)
+        .query(server2.client())
         .with_context(|| "failed to run DEL")?;
 
     // Test DEBUG DIGEST command on DB2 to verify digest callback on unset key
-    let res_db2: String = redis::cmd("DEBUG")
+    let res_db2: String = glide::cmd("DEBUG")
         .arg("digest")
-        .query(&mut con2)
+        .query(server2.client())
         .with_context(|| "failed to run DEBUG DIGEST")?;
     assert_eq!(res_db2, "0".repeat(40));
 
@@ -1256,11 +1277,11 @@ fn test_debug() -> Result<()> {
 #[test]
 #[cfg(feature = "min-valkey-compatibility-version-8-0")]
 fn test_acl_categories() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("acl")?;
+    let server = start_server_with_module("acl")?;
     // Get all commands that have the ACL read
-    let response_data: Vec<String> = redis::cmd("COMMAND")
+    let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "read"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to get list of commands associated with read")?;
 
     // Check if the list of returned commands contains existing_categories which is a new command we added the read ACL to
@@ -1268,9 +1289,9 @@ fn test_acl_categories() -> Result<()> {
     assert!(response_data.contains(&search_str));
 
     // Get all commands that have the custom ACL custom_acl_one
-    let response_data: Vec<String> = redis::cmd("COMMAND")
+    let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_one"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to get list of commands associated with custom_acl_one")?;
     // Check if the two commands we added this custom acl to are returned
     let search_str = String::from("custom_category");
@@ -1279,9 +1300,9 @@ fn test_acl_categories() -> Result<()> {
     assert!(response_data.contains(&search_str));
 
     // Get all commands that have the custom ACL custom_acl_two
-    let response_data: Vec<String> = redis::cmd("COMMAND")
+    let response_data: Vec<String> = glide::cmd("COMMAND")
         .arg(&["LIST", "FILTERBY", "ACLCAT", "custom_acl_two"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed to get list of commadns associated with custom_acl_two")?;
     // Check if the two commands we added this custom acl to are returned
     let search_str = String::from("custom_categories");
@@ -1292,43 +1313,49 @@ fn test_acl_categories() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_defrag() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("data_type")?;
+    let server = start_server_with_module("data_type")?;
     // Defrag is only compatible with the defualt allocator and is not compatible with ASAN builds. If we see that the server is compiled
     // with not the default allocator we then exit this test early and don't test defrag
-    let memory_info: String = redis::cmd("info")
+    let memory_info: String = glide::cmd("info")
         .arg("memory")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "Failed to run info memory")?;
     if memory_info.contains("mem_allocator:libc") {
         return Ok(());
     }
     // Set configs so active defrag will be able to run even with little defragmentation
-    redis::cmd("config")
+    glide::cmd("config")
         .arg(&["set", "activedefrag", "yes"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run config set activedefrag")?;
-    redis::cmd("config")
+    glide::cmd("config")
         .arg(&["set", "active-defrag-threshold-lower", "0"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run config set active-defrag-threshold-lower")?;
-    redis::cmd("config")
+    glide::cmd("config")
         .arg(&["set", "active-defrag-ignore-bytes", "1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to run config set active-defrag-ignore-bytes")?;
     // Create some keys for active defrag to work on
     for i in 1..10000 {
         let key = format!("test_key_{}", i);
-        let _: i64 = redis::cmd("alloc.set")
+        let _: i64 = glide::cmd("alloc.set")
             .arg(&[&key, "500"])
-            .query(&mut con)
+            .query(server.client())
             .with_context(|| "failed to run alloc.set")?;
     }
     let deadline = Instant::now() + EVENT_WAIT_TIMEOUT;
     loop {
-        let info: redis::InfoDict = redis::cmd("info").arg("stats").query(&mut con)?;
+        let info: String = glide::cmd("info").arg("stats").query(server.client())?;
         if ["active_defrag_hits", "active_defrag_misses"]
             .iter()
-            .any(|key| info.get::<u64>(key).unwrap_or(0) > 0)
+            .any(|key| {
+                info.lines()
+                    .filter_map(|line| line.split_once(':'))
+                    .any(|(field, value)| {
+                        field == *key && value.trim().parse::<u64>().unwrap_or(0) > 0
+                    })
+            })
         {
             break;
         }
@@ -1338,9 +1365,9 @@ fn test_defrag() -> Result<()> {
     // Check that the getting the values that have been defragged doesn't crash and that the return value is what we expect
     for i in 1..1000 {
         let key = format!("test_key_{}", i);
-        let get_return: String = redis::cmd("alloc.get")
+        let get_return: String = glide::cmd("alloc.get")
             .arg(key)
-            .query(&mut con)
+            .query(server.client())
             .with_context(|| "failed to run alloc.set")?;
         assert!(get_return == "A".repeat(500));
     }
@@ -1349,43 +1376,45 @@ fn test_defrag() -> Result<()> {
 
 #[test]
 fn test_client() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("client")?;
+    let server = start_server_with_module("client")?;
     // Test client.id command
-    redis::cmd("client.id")
-        .exec(&mut con)
+    glide::cmd("client.id")
+        .exec(server.client())
         .with_context(|| "failed execute client.id")?;
     // Test client.set_name
-    redis::cmd("client.set_name")
+    glide::cmd("client.set_name")
         .arg("test_client")
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed execute client.set_name")?;
     // test client.get_name
-    let resp: String = redis::cmd("client.get_name")
-        .query(&mut con)
+    let resp: String = glide::cmd("client.get_name")
+        .query(server.client())
         .with_context(|| "failed execute client.get_name")?;
     assert_eq!(resp, "test_client");
     // test client.username
-    let resp: String = redis::cmd("client.username")
-        .query(&mut con)
+    let resp: String = glide::cmd("client.username")
+        .query(server.client())
         .with_context(|| "failed execute client.username")?;
     assert_eq!(resp, "default");
     // test client.cert
-    let error = redis::cmd("client.cert")
-        .query::<String>(&mut con)
+    let error = glide::cmd("client.cert")
+        .query::<String>(server.client())
         .expect_err("client.cert should fail when the client has no TLS certificate");
     assert!(error.to_string().contains("Client/Cert: is null"));
     // test client.info
-    let resp: String = redis::cmd("client.info")
-        .query(&mut con)
+    let resp: String = glide::cmd("client.info")
+        .query(server.client())
         .with_context(|| "failed execute client.info")?;
     assert_eq!(resp, "1");
     // Test client.ip command
-    let resp: String = redis::cmd("client.ip")
-        .query(&mut con)
+    let resp: String = glide::cmd("client.ip")
+        .query(server.client())
         .with_context(|| "failed execute client.ip")?;
     assert_eq!(resp, "127.0.0.1");
     // Test client.deauth
-    let result = redis::cmd("client.deauth").arg(0).query::<String>(&mut con);
+    let result = glide::cmd("client.deauth")
+        .arg(0)
+        .query::<String>(server.client());
     match result {
         Ok(resp) => {
             assert_eq!(resp, "OK");
@@ -1395,9 +1424,9 @@ fn test_client() -> Result<()> {
             assert!(error_msg.contains("Failed: to deauthenticate and close client"));
         }
     }
-    let resp: String = redis::cmd("client.config_get")
+    let resp: String = glide::cmd("client.config_get")
         .arg("maxmemory-policy")
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute client.config_get")?;
     assert_eq!(resp, "noeviction");
     Ok(())
@@ -1406,35 +1435,35 @@ fn test_client() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_filter() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("filter1")?;
+    let server = start_server_with_module("filter1")?;
     // load filter2 module
-    redis::cmd("MODULE")
+    glide::cmd("MODULE")
         .arg(&["LOAD", get_module_path("filter2").unwrap().as_str()])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to filter2 module")?;
 
     // test filter1 module filter for info command
-    let resp: String = redis::cmd("info")
-        .query(&mut con)
+    let resp: String = glide::cmd("info")
+        .query(server.client())
         .with_context(|| "failed execute info")?;
     assert_eq!(resp, "info2\n");
     // test the set filter function and verify key/value were replaced
-    let _: () = con.set("foo", "bar")?;
-    let resp2: String = con.get("new_key")?;
+    let _: () = server.client().set("foo", "bar")?;
+    let resp2: String = server.client().get("new_key")?;
     assert_eq!(resp2, "new_value");
 
     // unload the module
-    redis::cmd("MODULE")
+    glide::cmd("MODULE")
         .arg(&["UNLOAD", "filter1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to unload filter1 module")?;
     // verify the filters are unloaded and commands work as expected
-    let resp3: String = redis::cmd("info")
-        .query(&mut con)
+    let resp3: String = glide::cmd("info")
+        .query(server.client())
         .with_context(|| "failed execute info")?;
     assert_ne!(resp3, "info2");
-    let _: () = con.set("foo", "bar")?;
-    let resp4: String = con.get("foo")?;
+    let _: () = server.client().set("foo", "bar")?;
+    let resp4: String = server.client().get("foo")?;
     assert_eq!(resp4, "bar");
 
     Ok(())
@@ -1447,7 +1476,7 @@ fn test_filter() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_non_blocking_auth_callbacks() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("auth")?;
+    let server = start_server_with_module("auth")?;
 
     // Module users - these are handled by the module
     let module_users = [("user1", "module_pass1"), ("user2", "module_pass2")];
@@ -1460,14 +1489,14 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 
     // Setup ACL users - both module users (no engine pass) and engine users (with pass)
     setup_acl_users(
-        &mut con,
+        server.client(),
         &module_users
             .iter()
             .map(|(u, _)| (*u, None))
             .collect::<Vec<_>>(),
     )?;
     setup_acl_users(
-        &mut con,
+        server.client(),
         &engine_users
             .iter()
             .map(|(u, p)| (*u, Some(*p)))
@@ -1477,17 +1506,32 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
     // Test 1: Module authentication
     for (user, module_pass) in module_users.iter() {
         // Correct module password should succeed
-        check_auth(&mut con, user, module_pass, AuthExpectedResult::Success)?;
+        check_auth(
+            server.client(),
+            user,
+            module_pass,
+            AuthExpectedResult::Success,
+        )?;
         // Wrong password for module user should be denied by module
-        check_auth(&mut con, user, "wrong", AuthExpectedResult::Denied)?;
+        check_auth(server.client(), user, "wrong", AuthExpectedResult::Denied)?;
     }
 
     // Test 2: Engine authentication (different users falling through)
     for (user, engine_pass) in engine_users.iter() {
         // Engine users should succeed with correct password
-        check_auth(&mut con, user, engine_pass, AuthExpectedResult::Success)?;
+        check_auth(
+            server.client(),
+            user,
+            engine_pass,
+            AuthExpectedResult::Success,
+        )?;
         // Engine users should fail with wrong password
-        check_auth(&mut con, user, "wrong", AuthExpectedResult::EngineDenied)?;
+        check_auth(
+            server.client(),
+            user,
+            "wrong",
+            AuthExpectedResult::EngineDenied,
+        )?;
     }
 
     Ok(())
@@ -1502,11 +1546,11 @@ fn test_non_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_blocking_auth_callbacks() -> Result<()> {
-    let server = start_server_w_module_get_connection("auth")?;
+    let server = start_server_with_module("auth")?;
     let port = server.port;
-    let (_guard, mut con) = server.into_parts();
-    let mut con2 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
-    let mut con3 = get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let (_guard, client) = server.into_parts();
+    let client2 = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let client3 = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     // Set up users for blocking auth
     let users = [
@@ -1524,12 +1568,12 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 
     // Setup ACL users (no passwords needed)
     setup_acl_users(
-        &mut con,
+        &client,
         &users.iter().map(|(u, _)| (*u, None)).collect::<Vec<_>>(),
     )?;
     // Setup engine users (with passwords)
     setup_acl_users(
-        &mut con,
+        &client,
         &engine_users
             .iter()
             .map(|(u, p)| (*u, Some(*p)))
@@ -1539,39 +1583,34 @@ fn test_blocking_auth_callbacks() -> Result<()> {
     // Start auth on first connection with blockUserDelay user as it would create
     // 2-second delay for the testing purpose
     let auth_handle = std::thread::spawn(move || {
-        let _: RedisResult<String> = redis::cmd("AUTH")
+        let _: ValkeyResult<String> = glide::cmd("AUTH")
             .arg(&["blockUserDelay", "blockPassDelay"])
-            .query(&mut con);
+            .query(&client);
     });
 
-    wait_for_blocked_clients(&mut con2)?;
+    wait_for_blocked_clients(&client2)?;
 
     // Wait for auth to complete
     auth_handle.join().unwrap();
 
     // Test successful blocking authentications with third connection
     for (user, module_pass) in users.iter() {
-        check_auth(&mut con3, user, module_pass, AuthExpectedResult::Success)?;
+        check_auth(&client3, user, module_pass, AuthExpectedResult::Success)?;
     }
 
     // Test failed blocking authentications
     for (user, _) in users.iter() {
-        check_auth(&mut con3, user, "wrong", AuthExpectedResult::Denied)?;
+        check_auth(&client3, user, "wrong", AuthExpectedResult::Denied)?;
     }
 
     // Test engine authentication (fallback)
     for (user, pass) in engine_users.iter() {
-        check_auth(&mut con3, user, pass, AuthExpectedResult::Success)?;
-        check_auth(&mut con3, user, "wrong", AuthExpectedResult::EngineDenied)?;
+        check_auth(&client3, user, pass, AuthExpectedResult::Success)?;
+        check_auth(&client3, user, "wrong", AuthExpectedResult::EngineDenied)?;
     }
 
     // Test abort authentication case
-    check_auth(
-        &mut con3,
-        "blockAbort",
-        "abort",
-        AuthExpectedResult::Aborted,
-    )?;
+    check_auth(&client3, "blockAbort", "abort", AuthExpectedResult::Aborted)?;
 
     Ok(())
 }
@@ -1601,8 +1640,8 @@ fn test_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
-    let mut setup_con = start_server_w_module_get_connection("auth")?;
-    let port = setup_con.port;
+    let setup_server = start_server_with_module("auth")?;
+    let port = setup_server.port;
 
     // Set up users for both auth callbacks with (username, module_pass)
     let users_auth1 = [
@@ -1620,14 +1659,14 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 
     // Create all users in ACL with no passwords
     setup_acl_users(
-        &mut setup_con,
+        setup_server.client(),
         &users_auth1
             .iter()
             .map(|(u, _)| (*u, None))
             .collect::<Vec<_>>(),
     )?;
     setup_acl_users(
-        &mut setup_con,
+        setup_server.client(),
         &users_auth2
             .iter()
             .map(|(u, _)| (*u, None))
@@ -1638,16 +1677,15 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
     let auth2_handles: Vec<_> = users_auth2
         .iter()
         .map(|(user, _)| {
-            let mut con = get_valkey_connection(port)
+            let client = get_valkey_client(port)
                 .with_context(|| FAILED_TO_CONNECT_TO_SERVER)
                 .unwrap();
             let user = user.to_string();
             let wrong_pass = "wrong".to_string();
 
             std::thread::spawn(move || {
-                let res: RedisResult<String> = redis::cmd("AUTH")
-                    .arg(&[&user, &wrong_pass])
-                    .query(&mut con);
+                let res: ValkeyResult<String> =
+                    glide::cmd("AUTH").arg(&[&user, &wrong_pass]).query(&client);
                 (user, res)
             })
         })
@@ -1657,27 +1695,26 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
     let auth1_handles: Vec<_> = users_auth1
         .iter()
         .map(|(user, _)| {
-            let mut con = get_valkey_connection(port)
+            let client = get_valkey_client(port)
                 .with_context(|| FAILED_TO_CONNECT_TO_SERVER)
                 .unwrap();
             let user = user.to_string();
             let wrong_pass = "wrong".to_string();
 
             thread::spawn(move || {
-                let res: RedisResult<String> = redis::cmd("AUTH")
-                    .arg(&[&user, &wrong_pass])
-                    .query(&mut con);
+                let res: ValkeyResult<String> =
+                    glide::cmd("AUTH").arg(&[&user, &wrong_pass]).query(&client);
                 (user, res)
             })
         })
         .collect();
 
-    let auth2_results: Vec<(String, RedisResult<String>)> = auth2_handles
+    let auth2_results: Vec<(String, ValkeyResult<String>)> = auth2_handles
         .into_iter()
         .map(|handle| handle.join().unwrap())
         .collect();
 
-    let auth1_results: Vec<(String, RedisResult<String>)> = auth1_handles
+    let auth1_results: Vec<(String, ValkeyResult<String>)> = auth1_handles
         .into_iter()
         .map(|handle| handle.join().unwrap())
         .collect();
@@ -1730,16 +1767,15 @@ fn test_multiple_inflight_blocking_auth_callbacks() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_disconnect_client_during_blocking_auth() -> Result<()> {
-    let server = start_server_w_module_get_connection("auth")?;
+    let server = start_server_with_module("auth")?;
     let port = server.port;
-    let (_guard, mut con) = server.into_parts();
-    let mut monitor_con =
-        get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let (_guard, client) = server.into_parts();
+    let monitor_client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
 
     // Set up test user with delay for testing blocking behavior
     let users = [("blockUserDelay", "blockPassDelay")];
     setup_acl_users(
-        &mut con,
+        &client,
         &users.iter().map(|(u, _)| (*u, None)).collect::<Vec<_>>(),
     )?;
 
@@ -1747,8 +1783,8 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
     let users_clone = users; // Clone the array for the thread
     let auth_handle = std::thread::spawn(move || {
         let (user, module_pass) = users_clone[0]; // Using the first (and only) user
-        let result: RedisResult<String> =
-            redis::cmd("AUTH").arg(&[user, module_pass]).query(&mut con);
+        let result: ValkeyResult<String> =
+            glide::cmd("AUTH").arg(&[user, module_pass]).query(&client);
 
         // We expect this to fail due to connection being closed
         match result {
@@ -1756,22 +1792,22 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
             Err(e) => {
                 let err = e.to_string();
                 assert!(
-                    err.contains("end of file"),
-                    "Expected 'end of file' error, got: {}",
+                    matches!(e, GlideError::Connection(_)),
+                    "Expected a connection error, got: {}",
                     err
                 );
             }
         }
     });
 
-    wait_for_blocked_clients(&mut monitor_con)?;
+    wait_for_blocked_clients(&monitor_client)?;
 
     // Force disconnect all clients except our monitoring connection
-    redis::cmd("CLIENT")
+    glide::cmd("CLIENT")
         .arg(&["KILL", "SKIPME", "YES"])
-        .query::<()>(&mut monitor_con)?;
+        .query::<()>(&monitor_client)?;
 
-    wait_for_no_blocked_clients(&mut monitor_con)?;
+    wait_for_no_blocked_clients(&monitor_client)?;
 
     // Wait for auth thread to complete and handle any panics
     auth_handle.join().unwrap_or_else(|e| {
@@ -1779,11 +1815,10 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
     });
 
     // Verify we can still authenticate with a new connection
-    let mut verify_con =
-        get_valkey_connection(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
+    let verify_client = get_valkey_client(port).with_context(|| FAILED_TO_CONNECT_TO_SERVER)?;
     let (user, module_pass) = users[0];
     check_auth(
-        &mut verify_con,
+        &verify_client,
         user,
         module_pass,
         AuthExpectedResult::Success,
@@ -1794,11 +1829,11 @@ fn test_disconnect_client_during_blocking_auth() -> Result<()> {
 
 #[test]
 fn test_preload() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("preload")?;
+    let server = start_server_with_module("preload")?;
     // unload the module
-    redis::cmd("MODULE")
+    glide::cmd("MODULE")
         .arg(&["UNLOAD", "preload"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed to unload module")?;
 
     Ok(())
@@ -1806,49 +1841,49 @@ fn test_preload() -> Result<()> {
 
 #[test]
 fn test_subcmd() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("subcmd")?;
+    let server = start_server_with_module("subcmd")?;
 
     // test cmd1
-    let resp: Vec<String> = redis::cmd("cmd1")
-        .query(&mut con)
+    let resp: Vec<String> = glide::cmd("cmd1")
+        .query(server.client())
         .with_context(|| "failed execute cmd1")?;
     // array([simple-string("cmd1 - top level command"), simple-string("cmd1 s1 - first level subcommand"), simple-string("cmd1 s1 s1 - second level command"), simple-string("cmd1 s1 s1 s1 - third level command"), simple-string("cmd1 help - display this message")]))
     assert_eq!(resp.len(), 5);
     // test cmd1 help
-    let resp: Vec<String> = redis::cmd("cmd1")
+    let resp: Vec<String> = glide::cmd("cmd1")
         .arg(&["help"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 help")?;
     assert_eq!(resp.len(), 5);
     // test cmd1 info key
-    let resp: Vec<String> = redis::cmd("cmd1")
+    let resp: Vec<String> = glide::cmd("cmd1")
         .arg(&["info", "key"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 info")?;
     assert!(resp == vec!["key", "value"]);
     // test cmd1 info array
-    let resp: Vec<Vec<String>> = redis::cmd("cmd1")
+    let resp: Vec<Vec<String>> = glide::cmd("cmd1")
         .arg(&["info", "array"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 info")?;
     assert!(resp.len() == 2);
     assert!(resp[1] == vec!["a", "b", "c"]);
     // test cmd1 s1
-    let resp: String = redis::cmd("cmd1")
+    let resp: String = glide::cmd("cmd1")
         .arg(&["s1"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1")?;
     assert_eq!(resp, "sub1");
     // test cmd1 s1 s1
-    let resp: String = redis::cmd("cmd1")
+    let resp: String = glide::cmd("cmd1")
         .arg(&["s1", "s1"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1 s1")?;
     assert_eq!(resp, "sub11");
     // test cmd1 s1 s1 s1
-    let resp: String = redis::cmd("cmd1")
+    let resp: String = glide::cmd("cmd1")
         .arg(&["s1", "s1", "s1"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute cmd1 s1 s1 s1")?;
     assert_eq!(resp, "sub111");
 
@@ -1857,30 +1892,30 @@ fn test_subcmd() -> Result<()> {
 
 #[test]
 fn test_data_type3() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("data_type3")?;
+    let server = start_server_with_module("data_type3")?;
 
     // check empty key
-    redis::cmd("my-get")
+    glide::cmd("my-get")
         .arg(&["my-data-type1"])
-        .exec(&mut con)
+        .exec(server.client())
         .with_context(|| "failed execute my-get")?;
     // write data to different key elements
-    redis::cmd("my-set-string")
+    glide::cmd("my-set-string")
         .arg(&["my-data-type1", "string1"])
-        .exec(&mut con)?;
-    redis::cmd("my-set-number")
+        .exec(server.client())?;
+    glide::cmd("my-set-number")
         .arg(&["my-data-type1", "1"])
-        .exec(&mut con)?;
-    redis::cmd("my-vec-push")
+        .exec(server.client())?;
+    glide::cmd("my-vec-push")
         .arg(&["my-data-type1", "a"])
-        .exec(&mut con)?;
-    redis::cmd("my-map-insert")
+        .exec(server.client())?;
+    glide::cmd("my-map-insert")
         .arg(&["my-data-type1", "k1", "v1"])
-        .exec(&mut con)?;
+        .exec(server.client())?;
     // TODO - how to test output when it returns vector of string, number, vector and map
-    let _resp: () = redis::cmd("my-get")
+    let _resp: () = glide::cmd("my-get")
         .arg(&["my-data-type1"])
-        .query(&mut con)
+        .query(server.client())
         .with_context(|| "failed execute my-get")?;
     //assert_eq!(resp, vec!["my_number", "1", "my_string", "string1"]);
 
@@ -1889,7 +1924,7 @@ fn test_data_type3() -> Result<()> {
 
 #[test]
 fn test_crontab() -> Result<()> {
-    let _con = start_server_w_module_get_connection("crontab")?;
+    let _server = start_server_with_module("crontab")?;
     // TODO - add more tests for crontab module, this just loads the module and checks that it doesn't crash
     Ok(())
 }
@@ -1897,39 +1932,39 @@ fn test_crontab() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_master_link_change_event() -> Result<()> {
-    let mut primary_con = start_server_w_module_get_connection("server_events")?;
-    let primary_port = primary_con.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
 
-    let mut replica_con = start_server_w_module_get_connection("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
 
     // set replicaof to primary_port
     println!("Setting up replication");
-    let _: () = redis::cmd("replicaof")
+    let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&mut replica_con)?;
+        .query(replica_server.client())?;
 
-    wait_for_master_link_state(&mut replica_con, true, 1)?;
+    wait_for_master_link_state(replica_server.client(), true, 1)?;
 
     // shut down server on primary port
     println!("Shutting down primary server");
-    match redis::cmd("SHUTDOWN")
+    match glide::cmd("SHUTDOWN")
         .arg("NOSAVE")
-        .query::<String>(&mut primary_con)
+        .query::<String>(primary_server.client())
     {
         Ok(_) => {
             println!("Primary server shut down successfully")
         }
-        Err(e) if e.is_io_error() => {
+        Err(GlideError::Connection(_)) => {
             println!("Primary server shut down successfully")
         }
         Err(_) => {
             println!("Failed to shut down primary server")
         }
     }
-    drop(primary_con);
+    drop(primary_server);
 
-    wait_for_master_link_state(&mut replica_con, false, 2)?;
+    wait_for_master_link_state(replica_server.client(), false, 2)?;
 
     Ok(())
 }
@@ -1937,13 +1972,13 @@ fn test_master_link_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_fork_child_event() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
-    redis::cmd("bgsave")
-        .exec(&mut con)
+    glide::cmd("bgsave")
+        .exec(server.client())
         .with_context(|| "failed to run bgsave")?;
 
-    wait_for_event_count(&mut con, "num_fork_child_events", 2)?;
+    wait_for_event_count(server.client(), "num_fork_child_events", 2)?;
 
     Ok(())
 }
@@ -1951,24 +1986,24 @@ fn test_fork_child_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_replica_change_event() -> Result<()> {
-    let mut primary_con = start_server_w_module_get_connection("server_events")?;
-    let primary_port = primary_con.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
 
-    let mut replica_con = start_server_w_module_get_connection("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
 
     // setup replication
-    let _: () = redis::cmd("replicaof")
+    let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&mut replica_con)?;
-    wait_for_replica_change_events(&mut primary_con, 1)?;
+        .query(replica_server.client())?;
+    wait_for_replica_change_events(primary_server.client(), 1)?;
 
     // disable replication
-    let _: () = redis::cmd("replicaof")
+    let _: () = glide::cmd("replicaof")
         .arg("no")
         .arg("one")
-        .query(&mut replica_con)?;
-    wait_for_replica_change_events(&mut primary_con, 2)?;
+        .query(replica_server.client())?;
+    wait_for_replica_change_events(primary_server.client(), 2)?;
 
     Ok(())
 }
@@ -1976,29 +2011,29 @@ fn test_replica_change_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_repl_async_load_event() -> Result<()> {
-    let mut primary_con = start_server_w_module_get_connection("server_events")?;
-    let primary_port = primary_con.port;
+    let primary_server = start_server_with_module("server_events")?;
+    let primary_port = primary_server.port;
     // repl-diskless-load swapdb
-    let _: () = redis::cmd("config")
+    let _: () = glide::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
-        .exec(&mut primary_con)
+        .exec(primary_server.client())
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
-    let mut replica_con = start_server_w_module_get_connection("server_events")?;
+    let replica_server = start_server_with_module("server_events")?;
     // repl-diskless-load swapdb
-    let _: () = redis::cmd("config")
+    let _: () = glide::cmd("config")
         .arg(&["set", "repl-diskless-load", "swapdb"])
-        .exec(&mut replica_con)
+        .exec(replica_server.client())
         .with_context(|| "failed to run config set repl-diskless-load")?;
 
     // setup replication
-    let _: () = redis::cmd("replicaof")
+    let _: () = glide::cmd("replicaof")
         .arg("127.0.0.1")
         .arg(primary_port)
-        .query(&mut replica_con)?;
+        .query(replica_server.client())?;
     // The primary delays the diskless BGSAVE before the replica receives the
     // RDB. Wait for the started and completed callbacks instead of racing it.
-    wait_for_repl_async_load_events(&mut replica_con, 2)?;
+    wait_for_repl_async_load_events(replica_server.client(), 2)?;
 
     Ok(())
 }
@@ -2006,18 +2041,22 @@ fn test_repl_async_load_event() -> Result<()> {
 #[test]
 #[cfg(feature = "min-redis-compatibility-version-7-2")]
 fn test_swapdb_event() -> Result<()> {
-    let mut con = start_server_w_module_get_connection("server_events")?;
+    let server = start_server_with_module("server_events")?;
 
     // run swapdb between db 0 and db 1
-    let _: () = redis::cmd("swapdb").arg(&["0", "1"]).query(&mut con)?;
+    let _: () = glide::cmd("swapdb")
+        .arg(&["0", "1"])
+        .query(server.client())?;
     // check swapdb event count
-    let event_count1: i64 = redis::cmd("num_swapdb_events").query(&mut con)?;
+    let event_count1: i64 = glide::cmd("num_swapdb_events").query(server.client())?;
     assert_eq!(event_count1, 1);
 
     // run swapdb between db 1 and db 2
-    let _: () = redis::cmd("swapdb").arg(&["1", "2"]).query(&mut con)?;
+    let _: () = glide::cmd("swapdb")
+        .arg(&["1", "2"])
+        .query(server.client())?;
     // check swapdb event count
-    let event_count2: i64 = redis::cmd("num_swapdb_events").query(&mut con)?;
+    let event_count2: i64 = glide::cmd("num_swapdb_events").query(server.client())?;
     assert_eq!(event_count2, 2);
 
     Ok(())
