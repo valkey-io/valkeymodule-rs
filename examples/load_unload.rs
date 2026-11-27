@@ -1,6 +1,9 @@
 use std::sync::{LazyLock, Mutex};
 use valkey_module::alloc::ValkeyAlloc;
-use valkey_module::{logging::ValkeyLogLevel, valkey_module, Context, Status, ValkeyString};
+use valkey_module::{
+    logging::ValkeyLogLevel, valkey_module, Context, Status, ValkeyResult, ValkeyString,
+    ValkeyValue,
+};
 
 static GLOBAL_STATE: LazyLock<Mutex<Option<String>>> = LazyLock::new(|| Mutex::new(None));
 
@@ -16,6 +19,13 @@ fn init(ctx: &Context, args: &[ValkeyString]) -> Status {
         ValkeyLogLevel::Warning,
         &format!("Update global state on LOAD. BEFORE: {before:?}, AFTER: {after:?}",),
     );
+
+    // The `log` crate logger can only be set once per process. It is still set
+    // here on a reload if the server did not unmap the module on unload.
+    if let Err(e) = valkey_module::logging::setup() {
+        ctx.log(ValkeyLogLevel::Warning, &format!("Logger not set: {e}"));
+    }
+    log::info!("load_unload loaded");
 
     Status::Ok
 }
@@ -35,6 +45,12 @@ fn deinit(ctx: &Context) -> Status {
     Status::Ok
 }
 
+fn log_message(_ctx: &Context, args: Vec<ValkeyString>) -> ValkeyResult {
+    let message = args.into_iter().skip(1).collect::<Vec<_>>().join(" ");
+    log::info!("{message}");
+    Ok(ValkeyValue::SimpleStringStatic("OK"))
+}
+
 //////////////////////////////////////////////////////
 
 valkey_module! {
@@ -44,5 +60,7 @@ valkey_module! {
     data_types: [],
     init: init,
     deinit: deinit,
-    commands: [],
+    commands: [
+        ["load_unload.log", log_message, "", 0, 0, 0],
+    ],
 }
